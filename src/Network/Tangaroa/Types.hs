@@ -2,12 +2,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Network.Tangaroa.Types
-  ( Term, startTerm, nextTerm
-  , Index, startIndex, nextIndex
-  , Config(..), cfgNodeSet, cfgNodeId, cfgElectionTimeout, cfgHeartbeatTimeout
-  , FollowerState(..), fLeader
-  , CandidateState(..), cVotes
-  , LeaderState(..), nextIndexMap, matchIndexMap
+  ( Term, startTerm, succTerm
+  , Index, startIndex, succIndex
+  , Config(..), cfgNodeSet, cfgNodeId, cfgElectionTimeoutRange, cfgHeartbeatTimeout
+  , CandidateState(..), votes
+  , LeaderState(..), nextIndex, matchIndex
   , Role(..)
   , PersistentState(..), currentTerm, votedFor, logEntries
   , VolatileState(..), role, commitIndex, lastApplied
@@ -36,8 +35,8 @@ newtype Term = Term Word64
 startTerm :: Term
 startTerm = Term 0
 
-nextTerm :: Term -> Term
-nextTerm (Term t) = Term (succ t)
+succTerm :: Term -> Term
+succTerm (Term t) = Term (succ t)
 
 newtype Index = Index Word64
   deriving (Show, Read, Eq, Ord, Generic)
@@ -45,40 +44,34 @@ newtype Index = Index Word64
 startIndex :: Index
 startIndex = Index 0
 
-nextIndex :: Index -> Index
-nextIndex (Index i) = Index (succ i)
+succIndex :: Index -> Index
+succIndex (Index i) = Index (succ i)
 
-data Config nt et = Config
-  { _cfgNodeSet          :: Set nt
-  , _cfgNodeId           :: nt
-  , _cfgElectionTimeout  :: Int -- in microseconds
-  , _cfgHeartbeatTimeout :: Int -- in microseconds
+data Config nt = Config
+  { _cfgNodeSet               :: Set nt
+  , _cfgNodeId                :: nt
+  , _cfgElectionTimeoutRange  :: (Int,Int) -- in microseconds
+  , _cfgHeartbeatTimeout      :: Int -- in microseconds
   }
   deriving (Show, Generic)
 makeLenses ''Config
 
-data FollowerState nt et = FollowerState
-  { _fLeader :: nt
-  }
-  deriving (Show, Generic)
-makeLenses ''FollowerState
-
-data CandidateState nt et = CandidateState
-  { _cVotes  :: Map nt ByteString
+data CandidateState nt = CandidateState
+  { _votes  :: Map nt ByteString
   }
   deriving (Show, Generic)
 makeLenses ''CandidateState
 
-data LeaderState nt et = LeaderState
-  { _nextIndexMap  :: Map nt Index
-  , _matchIndexMap :: Map nt Index
+data LeaderState nt = LeaderState
+  { _nextIndex  :: Map nt Index
+  , _matchIndex :: Map nt Index
   }
   deriving (Show, Generic)
 makeLenses ''LeaderState
 
-data Role nt et = Follower  (FollowerState  nt et)
-                | Candidate (CandidateState nt et)
-                | Leader    (LeaderState    nt et)
+data Role nt = Follower
+                | Candidate (CandidateState nt)
+                | Leader    (LeaderState    nt)
   deriving (Show, Generic)
 
 data PersistentState nt et = PersistentState
@@ -89,8 +82,8 @@ data PersistentState nt et = PersistentState
   deriving (Show, Generic)
 makeLenses ''PersistentState
 
-data VolatileState nt et = VolatileState
-  { _role        :: Role nt et
+data VolatileState nt = VolatileState
+  { _role        :: Role nt
   , _commitIndex :: Index
   , _lastApplied :: Index
   }
