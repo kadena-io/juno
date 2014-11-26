@@ -1,0 +1,3 @@
+[submodule "concurrent-state"]
+	path = concurrent-state
+	url = git@github.com:chrisnc/concurrent-state.git
