@@ -15,6 +15,7 @@ module Network.Tangaroa.Types
   , RequestVoteResponse(..), rvrTerm, voteGranted
   , RPC(..)
   , term
+  , Event(..)
   ) where
 
 import Control.Lens hiding (Index)
@@ -114,11 +115,17 @@ data RequestVoteResponse = RequestVoteResponse
   deriving (Show, Read, Generic)
 makeLenses ''RequestVoteResponse
 
-data RPC nt et = AE (AppendEntries nt et)
-               | AER AppendEntriesResponse
-               | RV (RequestVote nt)
-               | RVR RequestVoteResponse
+data RPC nt et rt = AE (AppendEntries nt et)
+                  | AER AppendEntriesResponse
+                  | RV (RequestVote nt)
+                  | RVR RequestVoteResponse
+                  | CMD et
+                  | CMDR rt
   deriving (Show, Read, Generic)
+
+data Event mt = Message mt
+              | Election String
+              | Heartbeat String
 
 -- let all the RPC's have a single lens called term
 class MessageTerm m where
@@ -140,4 +147,4 @@ instance Binary AppendEntriesResponse
 instance Binary nt => Binary (RequestVote nt)
 instance Binary RequestVoteResponse
 
-instance (Binary nt, Binary et) => Binary (RPC nt et)
+instance (Binary nt, Binary et, Binary rt) => Binary (RPC nt et rt)

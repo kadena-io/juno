@@ -33,8 +33,6 @@ raftspec = RaftSpec
     -- don't open a connection
   , openConnection  = return . const ()
     -- serialize with show
-  , serializeResult = show
-    -- serialize with show
   , serializeRPC    = show
     -- deserialize with read
   , deserializeRPC  = read
