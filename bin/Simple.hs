@@ -13,14 +13,23 @@ import qualified Data.Set as Set
 -- and the serialization type is also String
 raftspec :: RaftSpec String String () String ()
 raftspec = RaftSpec
-  { -- commit by showing to stdout
-    commit          = putStrLn
-    -- constant persistent state
-  , getPS           = return (PersistentState startTerm Nothing ["foo"])
+  {
     -- constant configuration
-  , getCfg          = return (Config (Set.fromList ["node0"]) "node0" (5000000,10000000) 1000000)
-    -- don't write persistent state
-  , writePS         = return . const ()
+    readCfg          = return (Config (Set.fromList ["node0"]) "node0" (5000000,10000000) 1000000)
+    -- all log entries are ""
+  , readLogEntry    = return . const ""
+    -- don't write log entries
+  , writeLogEntry    = \_ _ -> return ()
+    -- always read startTerm
+  , readTermNumber = return startTerm
+    -- don't write term numbers
+  , writeTermNumber = return . const ()
+    -- never voted for anyone
+  , readVotedFor    = return Nothing
+    -- don't record votes
+  , writeVotedFor   = return . const ()
+    -- commit by showing to stdout
+  , commit          = putStrLn
     -- don't open a connection
   , openConnection  = return . const ()
     -- serialize with show

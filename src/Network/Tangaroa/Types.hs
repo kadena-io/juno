@@ -8,7 +8,6 @@ module Network.Tangaroa.Types
   , CandidateState(..), votes
   , LeaderState(..), nextIndex, matchIndex
   , Role(..)
-  , PersistentState(..), currentTerm, votedFor, logEntries
   , VolatileState(..), role, commitIndex, lastApplied
   , AppendEntries(..), aeTerm, leaderId, prevLogIndex, entries, leaderCommit
   , AppendEntriesResponse(..), aerTerm, success
@@ -74,14 +73,6 @@ data Role nt = Follower
                 | Leader    (LeaderState    nt)
   deriving (Show, Generic)
 
-data PersistentState nt et = PersistentState
-  { _currentTerm :: Term
-  , _votedFor    :: Maybe nt
-  , _logEntries  :: [et] -- TODO: maybe not a list?
-  }
-  deriving (Show, Generic)
-makeLenses ''PersistentState
-
 data VolatileState nt = VolatileState
   { _role        :: Role nt
   , _commitIndex :: Index
@@ -143,7 +134,6 @@ instance MessageTerm RequestVoteResponse where
 
 instance Binary Term
 instance Binary Index
-instance (Binary nt, Binary et) => Binary (PersistentState nt et)
 
 instance (Binary nt, Binary et) => Binary (AppendEntries nt et)
 instance Binary AppendEntriesResponse

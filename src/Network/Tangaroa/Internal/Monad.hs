@@ -1,4 +1,4 @@
-module Network.Tangaroa.Monad
+module Network.Tangaroa.Internal.Monad
   ( Raft
   ) where
 

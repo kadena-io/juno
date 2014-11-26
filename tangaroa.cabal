@@ -17,7 +17,8 @@ cabal-version:       >=1.20
 library
   exposed-modules:     Network.Tangaroa
                      , Network.Tangaroa.Types
-                     , Network.Tangaroa.Monad
+                     , Network.Tangaroa.Internal.Monad
+                     , Network.Tangaroa.Internal.State
   build-depends:       base < 5
                      , binary
                      , bytestring
