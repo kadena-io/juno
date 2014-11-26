@@ -4,7 +4,7 @@
 module Network.Tangaroa.Types
   ( Term, startTerm, succTerm
   , Index, startIndex, succIndex
-  , Config(..), cfgNodeSet, cfgNodeId, cfgElectionTimeoutRange, cfgHeartbeatTimeout
+  , Config(..), nodeSet, nodeId, electionTimeoutRange, heartbeatTimeout
   , CandidateState(..), votes
   , LeaderState(..), nextIndex, matchIndex
   , Role(..)
@@ -48,10 +48,10 @@ succIndex :: Index -> Index
 succIndex (Index i) = Index (succ i)
 
 data Config nt = Config
-  { _cfgNodeSet               :: Set nt
-  , _cfgNodeId                :: nt
-  , _cfgElectionTimeoutRange  :: (Int,Int) -- in microseconds
-  , _cfgHeartbeatTimeout      :: Int -- in microseconds
+  { _nodeSet               :: Set nt
+  , _nodeId                :: nt
+  , _electionTimeoutRange  :: (Int,Int) -- in microseconds
+  , _heartbeatTimeout      :: Int -- in microseconds
   }
   deriving (Show, Generic)
 makeLenses ''Config
@@ -121,11 +121,13 @@ data RPC nt et rt = AE (AppendEntries nt et)
                   | RVR RequestVoteResponse
                   | CMD et
                   | CMDR rt
+                  | DBG String
   deriving (Show, Read, Generic)
 
 data Event mt = Message mt
               | Election String
               | Heartbeat String
+  deriving (Show)
 
 -- let all the RPC's have a single lens called term
 class MessageTerm m where
