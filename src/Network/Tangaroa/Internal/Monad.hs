@@ -8,6 +8,7 @@ module Network.Tangaroa.Internal.Monad
   , becomeFollower
   , becomeLeader
   , becomeCandidate
+  , incrementCommitIndex
   , cancelTimer
   , setTimedEvent
   , sendAppendEntries
@@ -61,35 +62,67 @@ becomeLeader = role .= Leader initialLeaderState
 becomeCandidate :: Raft nt mt ht ()
 becomeCandidate = role .= Candidate initialCandidateState
 
+incrementCommitIndex :: Raft nt mt ht ()
+incrementCommitIndex = undefined -- TODO
+--N = self.commitIndex+1
+--while true:
+--  count = 0
+--  for matchIndex in self.matchIndex:
+--    if matchIndex >= N:
+--      count++
+--  if self.log[N].term == self.term and count >= quorum_size:
+--    N = N+1
+--  else:
+--    break
+--self.commitIndex = N-1
+
 sendAppendEntries :: RaftSpec nt et rt mt ht -> nt -> Raft nt mt ht ()
 sendAppendEntries = undefined -- TODO
---aeVotes = ()
---if nt not in leader.convincedFollowers:
---  aeVotes = leader.votes
---prevLogIndex, prevLogTerm = last log entry
---commitId = max(logIndex that has 2f success response)
---followerCommits = (2f+1) success response signatures at log index = commitId
+--AppendEntries ae
+--ae._aeTerm = self.term
+--ae._leaderId = self.nodeId
+--ae._prevLogIndex = self.nextIndex[nt] - 1
+--ae._prevLogTerm = self.log[ae._prevLogIndex].term
+--ae._entries = self.log[ae._prevLogIndex+1:]
+--ae._leaderCommit = self.commitIndex
+--send ae
 
 handleAppendEntries :: RaftSpec nt et rt mt ht -> AppendEntries nt et -> Raft nt mt ht ()
 handleAppendEntries = undefined -- TODO
---success = false if invalidSig(termSignature)
---success = false if aeTerm < self.term
---success = false if aeVotes == null and termCertificates[aeTerm] == null
---self.term = max(aeTerm, self.term)
---termCertificates[self.term] = aeVotes if aeVotes != null
-
---success = false if invalidMsg(logEntry) for any logEntry in entries
---success = false if log[prevLogIndex] == null or logTerm[prevLogIndex] != prevLogTerm
---success = false if invalidSig(followerCommit) for any followerCommit in followerCommits
---if success:
---  firstConflictEntry = min(entries with same index but different term)
---  delete firstConflictEntry...end_of_log
---  sendResultRPC, success = true for each entry in log
-
-
+--AppendEntriesResponse aer
+--aer._aerTerm = self.term
+--if ae._aeTerm < self.term:
+--  aer._success = false
+--if self.log[ae._prevLogIndex] == null
+--  or self.log[_prevLogIndex].term != ae._prevLogTerm:
+--  aer._success = false
+--for entry in ae._entries:
+--  existingEntry = self.log[entry.index]
+--  if existingEntry != null and existingEntry.term != entry.term:
+--    delete self.log[entry.index:]
+--for entry in ae._entries:
+--  if self.log[entry.index] == null:
+--    self.log[entry.index] = entry
+--commitIndex = min(ae._leaderCommit, ae._entries[-1].index)
+--for entry in self.log[self.commitIndex+1:commitIndex]:
+--  commit entry
+--self.commitIndex = commitIndex
 
 sendAppendEntriesResponse :: RaftSpec nt et rt mt ht -> nt -> Raft nt mt ht ()
 sendAppendEntriesResponse = undefined -- TODO
 
 handleAppendEntriesResponse :: RaftSpec nt et rt mt ht -> AppendEntriesResponse -> Raft nt mt ht ()
 handleAppendEntriesResponse = undefined -- TODO
+--AppendEntries ae
+--AppendEntriesResponse aer
+--if aer._aerTerm > self.term:
+--  self.term = aer._aerTerm
+--  self.becomeFollower
+--else:
+--  if aer._success:
+--    self.nextIndex[nt] = ae._prevLogIndex+1+len(ae._entries)
+--    self.matchIndex[nt] = self.nextIndex[nt]
+--    self.incrementCommitIndex
+--  else:
+--    self.nextIndex[nt] -= 1
+--    retry AppendEntries

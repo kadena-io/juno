@@ -104,6 +104,7 @@ data AppendEntries nt et = AppendEntries
   { _aeTerm :: Term
   , _leaderId :: nt
   , _prevLogIndex :: Index
+  , _prevLogTerm :: Term
   , _entries :: [et] -- TODO: maybe not a list
   , _leaderCommit :: Index
   }
