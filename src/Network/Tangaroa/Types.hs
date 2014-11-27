@@ -266,7 +266,6 @@ makeLenses ''RaftEnv
 
 type Raft nt et rt mt ht a = RWST (RaftEnv nt et rt mt ht) () (RaftState nt) IO a
 
-
 -- let all the RPC's have a single lens called term
 class MessageTerm m where
   term :: Functor f => (Term -> f Term) -> m -> f m
