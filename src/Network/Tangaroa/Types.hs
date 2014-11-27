@@ -9,7 +9,7 @@ module Network.Tangaroa.Types
   , LiftedRaftSpec(..)
   , readCfg, readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
   , readVotedFor, writeVotedFor, commitLogEntry, openConnection, serializeRPC
-  , deserializeRPC , sendMessage , getMessage
+  , deserializeRPC, sendMessage, getMessage
   , liftRaftSpec
   , Term, startTerm, succTerm
   , Index, startIndex, succIndex

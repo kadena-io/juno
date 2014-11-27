@@ -26,10 +26,13 @@ module Network.Tangaroa.Internal.Monad
   , handleRequestVoteResponse
   , handleCommand
   , (^$)
+  , (^$^)
   , (>>=^)
   , (^>>=^)
+  , (>>=$)
   ) where
 
+import Control.Applicative
 import Control.Concurrent (threadDelay, killThread)
 import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
@@ -193,25 +196,35 @@ handleCommand cmd =
   lift $ putStrLn "Got a command RPC."
 -- TODO
 
---bbind :: MonadReader r m => m a -> m (a -> m b) -> m b
---bbind ma mf = mf >>= (ma >>=)
+-- like $, but the function is a lens from the reader environment with a
+-- pure function as its target
+infixr 2 ^$
+(^$) :: forall (m :: * -> *) b r a. (MonadReader r m, Functor m) =>
+  Getting (a -> b) r (a -> b) -> a -> m b
+lf ^$ a = fmap ($ a) (view lf)
+
+infixr 2 ^$^
+(^$^) :: forall (m :: * -> *) b r t. (MonadReader r m, Applicative m) =>
+  Getting (t -> b) r (t -> b) -> Getting t r t -> m b
+lf ^$^ la = view lf <*> view la
 
 -- like bind, but the monadic function is a lens from the reader environment of
 -- the same monad
 infixl 1 >>=^
-(>>=^) :: forall (m :: * -> *) b s a. MonadReader s m =>
-  m a -> Getting (a -> m b) s (a -> m b) -> m b
+(>>=^) :: forall (m :: * -> *) b r a. MonadReader r m =>
+  m a -> Getting (a -> m b) r (a -> m b) -> m b
 ma >>=^ lf = view lf >>= (ma >>=)
 
 -- like the above, except both the function and the argument are reader lenses
-(^>>=^) :: forall (m :: * -> *) b s a. MonadReader s m =>
-  Getting a s a -> Getting (a -> m b) s (a -> m b) -> m b
+(^>>=^) :: forall (m :: * -> *) b r a. MonadReader r m =>
+  Getting a r a -> Getting (a -> m b) r (a -> m b) -> m b
 infixl 1 ^>>=^
 la ^>>=^ lf = view lf >>= (view la >>=)
 
--- like $, but the function is a lens from the reader environment with a
--- pure function as its target
-infixr 0 ^$
-(^$) :: forall (m :: * -> *) b s a. (MonadReader s m, Functor m) =>
-  Getting (a -> b) s (a -> b) -> a -> m b
-l ^$ a = fmap ($ a) (view l)
+-- apply a monadic function that's wrapped in the same monad to a pure value
+infixl 1 >>=$
+(>>=$) :: Monad m => m (a -> m b) -> a -> m b
+mmf >>=$ x = mmf >>= ($ x)
+
+-- lets you do things like:
+-- rs.sendMessage ^$^ cfg.nodeId >>=$ m
