@@ -20,10 +20,10 @@ import Control.Concurrent.Chan.Unagi
 
 runRaft :: RaftSpec nt et rt mt ht -> IO ()
 runRaft spec@RaftSpec{..} = do
-  rconf <- _readCfg
+  rconf <- __readCfg
   (ein, eout) <- newChan
-  h <- _openConnection (rconf ^. nodeId)
-  runRWS_ raft (RaftEnv rconf h ein eout spec) initialRaftState
+  h <- __openConnection (rconf ^. nodeId)
+  runRWS_ raft (RaftEnv rconf h ein eout (liftRaftSpec spec)) initialRaftState
 
 runRWS_ :: Monad m => RWST r w s m a -> r -> s -> m ()
 runRWS_ ma r s = runRWST ma r s >> return ()
@@ -36,12 +36,8 @@ raft = do
 
 -- | Thread to take incoming messages and write them to the event queue.
 messageReceiver :: Raft nt et rt mt ht ()
-messageReceiver = do
-  h <- view conn
-  gm <- view (rs.getMessage)
-  forever $ do
-    m <- lift $ gm h
-    sendEvent (Message m)
+messageReceiver =
+  forever $ conn ^>>=^ rs.getMessage >>= sendEvent . Message
 
 -- | Thread to generate random timeout events within a range.
 electionLoop :: Raft nt et rt mt ht ()

@@ -13,33 +13,32 @@ import qualified Data.Set as Set
 -- trivial raft spec where everything is a String and handles are ()
 raftspec :: RaftSpec String String String String ()
 raftspec = RaftSpec
-  {
-    -- constant configuration
-    _readCfg         = return dummyConfig
+  { -- constant configuration
+    __readCfg         = return dummyConfig
     -- all log entries are ""
-  , _readLogEntry    = return . const ""
+  , __readLogEntry    = return . const ""
     -- don't write log entries
-  , _writeLogEntry   = \_ _ -> return ()
+  , __writeLogEntry   = \_ _ -> return ()
     -- always read startTerm
-  , _readTermNumber  = return startTerm
+  , __readTermNumber  = return startTerm
     -- don't write term numbers
-  , _writeTermNumber = return . const ()
+  , __writeTermNumber = return . const ()
     -- never voted for anyone
-  , _readVotedFor    = return Nothing
+  , __readVotedFor    = return Nothing
     -- don't record votes
-  , _writeVotedFor   = return . const ()
+  , __writeVotedFor   = return . const ()
     -- commit by showing to stdout and returning empty string
-  , _commit          = \e -> putStrLn e >> return ""
+  , __commitLogEntry  = \e -> putStrLn e >> return ""
     -- don't open a connection
-  , _openConnection  = return . const ()
+  , __openConnection  = return . const ()
     -- serialize with show
-  , _serializeRPC    = show
+  , __serializeRPC    = show
     -- deserialize with readMaybe
-  , _deserializeRPC  = readMaybe
+  , __deserializeRPC  = readMaybe
     -- don't send messages
-  , _sendMessage     = \_ _ -> return ()
+  , __sendMessage     = \_ _ -> return ()
     -- get dummy messages every 5 seconds
-  , _getMessage      = \_ -> threadDelay 5000000 >> (return $ show dummyMessage)
+  , __getMessage      = \_ -> threadDelay 5000000 >> (return $ show dummyMessage)
   }
 
 dummyMessage :: RPC String String String

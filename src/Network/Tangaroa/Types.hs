@@ -1,10 +1,16 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Network.Tangaroa.Types
-  ( RaftSpec(..), readCfg, readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
-  , readVotedFor, writeVotedFor, commit, openConnection, serializeRPC
+  ( Raft
+  , RaftSpec(..)
+  , LiftedRaftSpec(..)
+  , readCfg, readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
+  , readVotedFor, writeVotedFor, commitLogEntry, openConnection, serializeRPC
   , deserializeRPC , sendMessage , getMessage
+  , liftRaftSpec
   , Term, startTerm, succTerm
   , Index, startIndex, succIndex
   , Config(..), nodeSet, nodeId, electionTimeoutRange, heartbeatTimeout
@@ -13,7 +19,7 @@ module Network.Tangaroa.Types
   , Role(..)
   , RaftEnv(..), cfg, conn, eventIn, eventOut, rs
   , RaftState(..), role, commitIndex, lastApplied, timerThread
-  , AppendEntries(..), aeTerm, leaderId, prevLogIndex, entries, leaderCommit
+  , AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm, entries, leaderCommit
   , AppendEntriesResponse(..), aerTerm, success
   , RequestVote(..), rvTerm, candidateId, lastLogIndex, lastLogTerm
   , RequestVoteResponse(..), rvrTerm, voteGranted
@@ -23,19 +29,16 @@ module Network.Tangaroa.Types
   , Event(..)
   ) where
 
-import Control.Lens hiding (Index)
-
-import Data.Word
-import Data.Set (Set)
-import Data.Map (Map)
-import Data.ByteString (ByteString)
-
-import Data.Binary
-
-import GHC.Generics
-
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.Chan.Unagi
+import Control.Lens hiding (Index)
+import Control.Monad.RWS
+import Data.Binary
+import Data.ByteString (ByteString)
+import Data.Map (Map)
+import Data.Set (Set)
+--import Data.Word
+import GHC.Generics
 
 newtype Term = Term Word64
   deriving (Show, Read, Eq, Ord, Generic)
@@ -68,6 +71,7 @@ data AppendEntries nt et = AppendEntries
   { _aeTerm :: Term
   , _leaderId :: nt
   , _prevLogIndex :: Index
+  , _prevLogTerm :: Term
   , _entries :: [et] -- TODO: maybe not a list
   , _leaderCommit :: Index
   }
@@ -103,7 +107,6 @@ data Command et = Command
   deriving (Show, Read, Generic)
 makeLenses ''Command
 
-
 data RPC nt et rt = AE (AppendEntries nt et)
                   | AER AppendEntriesResponse
                   | RV (RequestVote nt)
@@ -118,45 +121,44 @@ data RPC nt et rt = AE (AppendEntries nt et)
 data RaftSpec nt et rt mt ht = RaftSpec
   {
     -- ^ Function to read configuration.
-    _readCfg          :: IO (Config nt)
+    __readCfg          :: IO (Config nt)
 
     -- ^ Function to get a log entry from persistent storage.
-  , _readLogEntry     :: Index -> IO et
+  , __readLogEntry     :: Index -> IO et
 
     -- ^ Function to write a log entry to persistent storage.
-  , _writeLogEntry    :: Index -> et -> IO ()
+  , __writeLogEntry    :: Index -> et -> IO ()
 
     -- ^ Function to get the term number from persistent storage.
-  , _readTermNumber   :: IO Term
+  , __readTermNumber   :: IO Term
 
     -- ^ Function to write the term number to persistent storage.
-  , _writeTermNumber   :: Term -> IO ()
+  , __writeTermNumber  :: Term -> IO ()
 
     -- ^ Function to read the node voted for from persistent storage.
-  , _readVotedFor      :: IO (Maybe nt)
+  , __readVotedFor     :: IO (Maybe nt)
 
     -- ^ Function to write the node voted for to persistent storage.
-  , _writeVotedFor     :: nt -> IO ()
+  , __writeVotedFor    :: nt -> IO ()
 
     -- ^ Function to commit a log entry.
-  , _commit           :: et -> IO rt
+  , __commitLogEntry   :: et -> IO rt
 
     -- ^ Function to open a connection handle.
-  , _openConnection   :: nt -> IO ht
+  , __openConnection   :: nt -> IO ht
 
     -- ^ Function to serialize an RPC.
-  , _serializeRPC     :: RPC nt et rt -> mt
+  , __serializeRPC     :: RPC nt et rt -> mt
 
     -- ^ Function to deserialize an RPC.
-  , _deserializeRPC   :: mt -> Maybe (RPC nt et rt)
+  , __deserializeRPC   :: mt -> Maybe (RPC nt et rt)
 
     -- ^ Function to send a message to a node.
-  , _sendMessage      :: nt -> mt -> IO ()
+  , __sendMessage      :: nt -> mt -> IO ()
 
     -- ^ Function to get the next message.
-  , _getMessage       :: ht -> IO mt
+  , __getMessage       :: ht -> IO mt
   }
-makeLenses ''RaftSpec
 
 data CandidateState nt = CandidateState
   { _votes  :: Map nt ByteString
@@ -181,14 +183,68 @@ data Event mt = Message mt
               | Heartbeat String
   deriving (Show)
 
-data RaftEnv nt et rt mt ht = RaftEnv
-  { _cfg      :: Config nt
-  , _conn     :: ht
-  , _eventIn  :: InChan (Event mt)
-  , _eventOut :: OutChan (Event mt)
-  , _rs       :: RaftSpec nt et rt mt ht
+-- | A version of RaftSpec where all IO functions are lifted
+-- into the Raft monad.
+data LiftedRaftSpec nt et rt mt ht t = LiftedRaftSpec
+  {
+    -- ^ Function to read configuration.
+    _readCfg          :: MonadTrans t => t IO (Config nt)
+
+    -- ^ Function to get a log entry from persistent storage.
+  , _readLogEntry     :: MonadTrans t => Index -> t IO et
+
+    -- ^ Function to write a log entry to persistent storage.
+  , _writeLogEntry    :: MonadTrans t => Index -> et -> t IO ()
+
+    -- ^ Function to get the term number from persistent storage.
+  , _readTermNumber   :: MonadTrans t => t IO Term
+
+    -- ^ Function to write the term number to persistent storage.
+  , _writeTermNumber  :: MonadTrans t => Term -> t IO ()
+
+    -- ^ Function to read the node voted for from persistent storage.
+  , _readVotedFor     :: MonadTrans t => t IO (Maybe nt)
+
+    -- ^ Function to write the node voted for to persistent storage.
+  , _writeVotedFor    :: MonadTrans t => nt -> t IO ()
+
+    -- ^ Function to commit a log entry.
+  , _commitLogEntry   :: MonadTrans t => et -> t IO rt
+
+    -- ^ Function to open a connection handle.
+  , _openConnection   :: MonadTrans t => nt -> t IO ht
+
+    -- ^ Function to serialize an RPC.
+  , _serializeRPC     :: RPC nt et rt -> mt
+
+    -- ^ Function to deserialize an RPC.
+  , _deserializeRPC   :: mt -> Maybe (RPC nt et rt)
+
+    -- ^ Function to send a message to a node.
+  , _sendMessage      :: MonadTrans t => nt -> mt -> t IO ()
+
+    -- ^ Function to get the next message.
+  , _getMessage       :: MonadTrans t => ht -> t IO mt
   }
-makeLenses ''RaftEnv
+makeLenses ''LiftedRaftSpec
+
+liftRaftSpec :: MonadTrans t => RaftSpec nt et rt mt ht -> LiftedRaftSpec nt et rt mt ht t
+liftRaftSpec RaftSpec{..} =
+  LiftedRaftSpec
+    { _readCfg         = lift __readCfg
+    , _readLogEntry    = lift . __readLogEntry
+    , _writeLogEntry   = \i et -> lift (__writeLogEntry i et)
+    , _readTermNumber  = lift __readTermNumber
+    , _writeTermNumber = lift . __writeTermNumber
+    , _readVotedFor    = lift __readVotedFor
+    , _writeVotedFor   = lift . __writeVotedFor
+    , _commitLogEntry  = lift . __commitLogEntry
+    , _openConnection  = lift . __openConnection
+    , _serializeRPC    = __serializeRPC
+    , _deserializeRPC  = __deserializeRPC
+    , _sendMessage     = \n m -> lift (__sendMessage n m)
+    , _getMessage      = lift . __getMessage
+    }
 
 data RaftState nt = RaftState
   { _role        :: Role nt
@@ -198,6 +254,18 @@ data RaftState nt = RaftState
   }
   deriving (Show, Generic)
 makeLenses ''RaftState
+
+data RaftEnv nt et rt mt ht = RaftEnv
+  { _cfg      :: Config nt
+  , _conn     :: ht
+  , _eventIn  :: InChan (Event mt)
+  , _eventOut :: OutChan (Event mt)
+  , _rs       :: LiftedRaftSpec nt et rt mt ht (RWST (RaftEnv nt et rt mt ht) () (RaftState nt))
+  }
+makeLenses ''RaftEnv
+
+type Raft nt et rt mt ht a = RWST (RaftEnv nt et rt mt ht) () (RaftState nt) IO a
+
 
 -- let all the RPC's have a single lens called term
 class MessageTerm m where

@@ -16,4 +16,3 @@ initialCandidateState = CandidateState Map.empty
 
 initialLeaderState :: LeaderState nt
 initialLeaderState = LeaderState Map.empty Map.empty
-
