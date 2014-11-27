@@ -6,12 +6,12 @@ import Network.Tangaroa
 
 import Control.Concurrent
 
+import Text.Read
+
 import qualified Data.Set as Set
 
--- trivial raft spec where nodes and log entries are strings
--- command results are (), and handles are ()
--- and the serialization type is also String
-raftspec :: RaftSpec String String () String ()
+-- trivial raft spec where everything is a String and handles are ()
+raftspec :: RaftSpec String String String String ()
 raftspec = RaftSpec
   {
     -- constant configuration
@@ -28,19 +28,22 @@ raftspec = RaftSpec
   , readVotedFor    = return Nothing
     -- don't record votes
   , writeVotedFor   = return . const ()
-    -- commit by showing to stdout
-  , commit          = putStrLn
+    -- commit by showing to stdout and returning empty string
+  , commit          = \e -> putStrLn e >> return ""
     -- don't open a connection
   , openConnection  = return . const ()
     -- serialize with show
   , serializeRPC    = show
-    -- deserialize with read
-  , deserializeRPC  = read
+    -- deserialize with readMaybe
+  , deserializeRPC  = readMaybe
     -- don't send messages
   , sendMessage     = \_ _ -> return ()
     -- get dummy messages every 5 seconds
-  , getMessage      = \_ -> do threadDelay 5000000; return "A message!"
+  , getMessage      = \_ -> threadDelay 5000000 >> (return $ show dummyMessage)
   }
+
+dummyMessage :: RPC String String String
+dummyMessage = DBG "A message!"
 
 main :: IO ()
 main = runRaft raftspec

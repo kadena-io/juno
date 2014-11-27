@@ -39,7 +39,7 @@ data RaftSpec nt et rt mt ht = RaftSpec
   , serializeRPC     :: RPC nt et rt -> mt
 
     -- ^ Function to deserialize an RPC.
-  , deserializeRPC   :: mt -> RPC nt et rt
+  , deserializeRPC   :: mt -> Maybe (RPC nt et rt)
 
     -- ^ Function to send a message to a node.
   , sendMessage      :: nt -> mt -> IO ()

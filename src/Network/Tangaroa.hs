@@ -53,9 +53,29 @@ electionLoop chan range = lift . forever $ do
   writeChan chan $ Election $ show (timeout `div` 1000) ++ "ms"
 
 handleEvents :: RaftSpec nt et rt mt ht -> OutChan (Event mt) -> Raft nt mt ht ()
-handleEvents RaftSpec{..} chan = forever $ do
+handleEvents rs@RaftSpec{..} chan = forever $ do
   e <- lift (readChan chan)
-  lift $ case e of
-    Message _   -> return ()
-    Election s  -> putStr "Got election timeout: " >> putStrLn s
-    Heartbeat s -> putStr "Got heartbeat timeout: " >> putStrLn s
+  case e of
+    Message m   -> handleMessage rs m
+    Election s  -> handleElectionTimeout rs s
+    Heartbeat s -> handleHeartbeatTimeout rs s
+
+handleElectionTimeout :: RaftSpec nt et rt mt ht -> String -> Raft nt mt ht ()
+handleElectionTimeout _ s = lift $ putStr "Got election timeout: " >> putStrLn s
+-- TODO
+
+handleHeartbeatTimeout :: RaftSpec nt et rt mt ht -> String -> Raft nt mt ht ()
+handleHeartbeatTimeout _ s = lift $ putStr "Got heartbeat timeout: " >> putStrLn s
+-- TODO
+
+handleMessage :: RaftSpec nt et rt mt ht -> mt -> Raft nt mt ht ()
+handleMessage RaftSpec{..} m = case deserializeRPC m of
+  Just (AE _)   -> lift $ putStrLn "Got an appendEntries RPC."
+  Just (AER _)  -> lift $ putStrLn "Got an appendEntriesResponse RPC."
+  Just (RV _)   -> lift $ putStrLn "Got a requestVote RPC."
+  Just (RVR _)  -> lift $ putStrLn "Got a requestVoteResponse RPC."
+  Just (CMD _)  -> lift $ putStrLn "Got a command RPC."
+  Just (CMDR _) -> lift $ putStrLn "Got a command response RPC."
+  Just (DBG s)  -> lift $ putStrLn $ "Got a debug RPC: " ++ s
+  Nothing       -> lift $ putStrLn "Got a message, but it failed to deserialize."
+-- TODO
