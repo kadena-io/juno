@@ -1,5 +1,5 @@
 module Network.Tangaroa.Internal.State
-  ( initialVolatileState
+  ( initialRaftState
   , initialCandidateState
   , initialLeaderState
   ) where
@@ -8,8 +8,8 @@ import Data.Map as Map
 
 import Network.Tangaroa.Types
 
-initialVolatileState :: VolatileState nt
-initialVolatileState = VolatileState Follower startIndex startIndex
+initialRaftState :: RaftState nt
+initialRaftState = RaftState Follower startIndex startIndex Nothing
 
 initialCandidateState :: CandidateState nt
 initialCandidateState = CandidateState Map.empty

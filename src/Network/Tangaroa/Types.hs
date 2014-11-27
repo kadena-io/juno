@@ -8,7 +8,8 @@ module Network.Tangaroa.Types
   , CandidateState(..), votes
   , LeaderState(..), nextIndex, matchIndex
   , Role(..)
-  , VolatileState(..), role, commitIndex, lastApplied
+  , RaftEnv(..), cfg, conn, eventIn, eventOut
+  , RaftState(..), role, commitIndex, lastApplied, timerThread
   , AppendEntries(..), aeTerm, leaderId, prevLogIndex, entries, leaderCommit
   , AppendEntriesResponse(..), aerTerm, success
   , RequestVote(..), rvTerm, candidateId, lastLogIndex, lastLogTerm
@@ -28,6 +29,9 @@ import Data.ByteString (ByteString)
 import Data.Binary
 
 import GHC.Generics
+
+import Control.Concurrent (ThreadId)
+import Control.Concurrent.Chan.Unagi
 
 newtype Term = Term Word64
   deriving (Show, Read, Eq, Ord, Generic)
@@ -70,17 +74,31 @@ data LeaderState nt = LeaderState
 makeLenses ''LeaderState
 
 data Role nt = Follower
-                | Candidate (CandidateState nt)
-                | Leader    (LeaderState    nt)
+             | Candidate (CandidateState nt)
+             | Leader    (LeaderState    nt)
   deriving (Show, Generic)
 
-data VolatileState nt = VolatileState
+data Event mt = Message mt
+              | Election String
+              | Heartbeat String
+  deriving (Show)
+
+data RaftEnv nt mt ht = RaftEnv
+  { _cfg      :: Config nt
+  , _conn     :: ht
+  , _eventIn  :: InChan (Event mt)
+  , _eventOut :: OutChan (Event mt)
+  }
+makeLenses ''RaftEnv
+
+data RaftState nt = RaftState
   { _role        :: Role nt
   , _commitIndex :: Index
   , _lastApplied :: Index
+  , _timerThread :: Maybe ThreadId
   }
   deriving (Show, Generic)
-makeLenses ''VolatileState
+makeLenses ''RaftState
 
 data AppendEntries nt et = AppendEntries
   { _aeTerm :: Term
@@ -123,11 +141,6 @@ data RPC nt et rt = AE (AppendEntries nt et)
                   | CMDR rt
                   | DBG String
   deriving (Show, Read, Generic)
-
-data Event mt = Message mt
-              | Election String
-              | Heartbeat String
-  deriving (Show)
 
 -- let all the RPC's have a single lens called term
 class MessageTerm m where

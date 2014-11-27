@@ -27,6 +27,7 @@ library
                      , crypto-api
                      , lens
                      , mtl
+                     , monad-fork
                      , QuickCheck
                      , random
                      , RSA

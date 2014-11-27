@@ -26,7 +26,7 @@ runRaft rs@RaftSpec{..} = do
   rconf <- readCfg
   (ein, eout) <- newChan
   h <- openConnection (rconf ^. nodeId)
-  runRWS_ (raft rs) (RaftEnv rconf h ein eout) initialVolatileState
+  runRWS_ (raft rs) (RaftEnv rconf h ein eout) initialRaftState
 
 runRWS_ :: Monad m => RWST r w s m a -> r -> s -> m ()
 runRWS_ ma r s = runRWST ma r s >> return ()
@@ -41,13 +41,13 @@ raft rs@RaftSpec{..} = do
   handleEvents rs eout
 
 -- | Thread to take incoming messages and write them to the event queue.
-messageReceiver :: (ht -> IO mt) -> ht -> InChan (Event mt) -> IO ()
+messageReceiver :: (ht -> IO mt) -> ht -> InChan (Event mt) -> Raft nt mt ht ()
 messageReceiver getMsg h chan =
-  forever $ getMsg h >>= writeChan chan . Message
+  lift . forever $ getMsg h >>= writeChan chan . Message
 
 -- | Thread to generate random timeout events within a range.
-electionLoop :: InChan (Event mt) -> (Int,Int) -> IO ()
-electionLoop chan range = forever $ do
+electionLoop :: InChan (Event mt) -> (Int,Int) -> Raft nt mt ht ()
+electionLoop chan range = lift . forever $ do
   timeout <- randomRIO range
   threadDelay timeout
   writeChan chan $ Election $ show (timeout `div` 1000) ++ "ms"
