@@ -15,13 +15,13 @@ raftspec :: RaftSpec String String String String ()
 raftspec = RaftSpec
   {
     -- constant configuration
-    readCfg          = return (Config (Set.fromList ["node0"]) "node0" (5000000,10000000) 1000000)
+    readCfg         = return dummyConfig
     -- all log entries are ""
   , readLogEntry    = return . const ""
     -- don't write log entries
-  , writeLogEntry    = \_ _ -> return ()
+  , writeLogEntry   = \_ _ -> return ()
     -- always read startTerm
-  , readTermNumber = return startTerm
+  , readTermNumber  = return startTerm
     -- don't write term numbers
   , writeTermNumber = return . const ()
     -- never voted for anyone
@@ -44,6 +44,9 @@ raftspec = RaftSpec
 
 dummyMessage :: RPC String String String
 dummyMessage = DBG "A message!"
+
+dummyConfig :: Config String
+dummyConfig = Config (Set.fromList ["node0"]) "node0" (5000000,10000000) 1000000
 
 main :: IO ()
 main = runRaft raftspec
