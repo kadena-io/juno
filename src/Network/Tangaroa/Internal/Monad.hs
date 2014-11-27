@@ -63,9 +63,12 @@ becomeFollower = role .= Follower
 
 becomeLeader :: Raft nt mt ht ()
 becomeLeader = role .= Leader initialLeaderState
+--send initial heartbeat
 
 becomeCandidate :: Raft nt mt ht ()
 becomeCandidate = role .= Candidate initialCandidateState
+--self._votes.add(self)
+--send RequestVote RPC
 
 incrementCommitIndex :: Raft nt mt ht ()
 incrementCommitIndex = undefined -- TODO
@@ -85,7 +88,7 @@ applyLogEntries :: Raft nt mt ht ()
 applyLogEntries = undefined -- TODO
 --while self.commitIndex > self.lastApplied:
 --  self.lastApplied++
---  apply self.log[self.lastApplied]
+--  commit self.log[self.lastApplied]
 
 sendAppendEntries :: RaftSpec nt et rt mt ht -> nt -> Raft nt mt ht ()
 sendAppendEntries = undefined -- TODO
@@ -171,6 +174,6 @@ handleRequestVoteResponse = undefined -- TODO
 --  self.becomeFollower
 --else:
 --  if rvr._voteGranted:
---    self.votesAcquired++
---  if self.votesAcquired >= quorum_size:
---    self.becomeLeader
+--    self._votes.add(nt)
+--    if self._votes.size() >= quorum_size:
+--      self.becomeLeader
