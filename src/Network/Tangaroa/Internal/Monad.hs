@@ -11,6 +11,7 @@ module Network.Tangaroa.Internal.Monad
   , cancelTimer
   , setTimedEvent
   , sendAppendEntries
+  , sendAppendEntriesResponse
   , handleAppendEntries
   , handleAppendEntriesResponse
   ) where
@@ -62,9 +63,33 @@ becomeCandidate = role .= Candidate initialCandidateState
 
 sendAppendEntries :: RaftSpec nt et rt mt ht -> nt -> Raft nt mt ht ()
 sendAppendEntries = undefined -- TODO
+--aeVotes = ()
+--if nt not in leader.convincedFollowers:
+--  aeVotes = leader.votes
+--prevLogIndex, prevLogTerm = last log entry
+--commitId = max(logIndex that has 2f success response)
+--followerCommits = (2f+1) success response signatures at log index = commitId
 
 handleAppendEntries :: RaftSpec nt et rt mt ht -> AppendEntries nt et -> Raft nt mt ht ()
 handleAppendEntries = undefined -- TODO
+--success = false if invalidSig(termSignature)
+--success = false if aeTerm < self.term
+--success = false if aeVotes == null and termCertificates[aeTerm] == null
+--self.term = max(aeTerm, self.term)
+--termCertificates[self.term] = aeVotes if aeVotes != null
+
+--success = false if invalidMsg(logEntry) for any logEntry in entries
+--success = false if log[prevLogIndex] == null or logTerm[prevLogIndex] != prevLogTerm
+--success = false if invalidSig(followerCommit) for any followerCommit in followerCommits
+--if success:
+--  firstConflictEntry = min(entries with same index but different term)
+--  delete firstConflictEntry...end_of_log
+--  sendResultRPC, success = true for each entry in log
+
+
+
+sendAppendEntriesResponse :: RaftSpec nt et rt mt ht -> nt -> Raft nt mt ht ()
+sendAppendEntriesResponse = undefined -- TODO
 
 handleAppendEntriesResponse :: RaftSpec nt et rt mt ht -> AppendEntriesResponse -> Raft nt mt ht ()
 handleAppendEntriesResponse = undefined -- TODO
