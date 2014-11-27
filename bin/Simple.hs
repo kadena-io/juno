@@ -15,31 +15,31 @@ raftspec :: RaftSpec String String String String ()
 raftspec = RaftSpec
   {
     -- constant configuration
-    readCfg         = return dummyConfig
+    _readCfg         = return dummyConfig
     -- all log entries are ""
-  , readLogEntry    = return . const ""
+  , _readLogEntry    = return . const ""
     -- don't write log entries
-  , writeLogEntry   = \_ _ -> return ()
+  , _writeLogEntry   = \_ _ -> return ()
     -- always read startTerm
-  , readTermNumber  = return startTerm
+  , _readTermNumber  = return startTerm
     -- don't write term numbers
-  , writeTermNumber = return . const ()
+  , _writeTermNumber = return . const ()
     -- never voted for anyone
-  , readVotedFor    = return Nothing
+  , _readVotedFor    = return Nothing
     -- don't record votes
-  , writeVotedFor   = return . const ()
+  , _writeVotedFor   = return . const ()
     -- commit by showing to stdout and returning empty string
-  , commit          = \e -> putStrLn e >> return ""
+  , _commit          = \e -> putStrLn e >> return ""
     -- don't open a connection
-  , openConnection  = return . const ()
+  , _openConnection  = return . const ()
     -- serialize with show
-  , serializeRPC    = show
+  , _serializeRPC    = show
     -- deserialize with readMaybe
-  , deserializeRPC  = readMaybe
+  , _deserializeRPC  = readMaybe
     -- don't send messages
-  , sendMessage     = \_ _ -> return ()
+  , _sendMessage     = \_ _ -> return ()
     -- get dummy messages every 5 seconds
-  , getMessage      = \_ -> threadDelay 5000000 >> (return $ show dummyMessage)
+  , _getMessage      = \_ -> threadDelay 5000000 >> (return $ show dummyMessage)
   }
 
 dummyMessage :: RPC String String String
