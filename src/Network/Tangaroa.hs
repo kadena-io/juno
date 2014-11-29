@@ -29,8 +29,8 @@ runRWS_ ma r s = runRWST ma r s >> return ()
 
 raft :: Ord nt => Raft nt et rt mt ht ()
 raft = do
-  _ <- fork $ electionLoop
-  _ <- fork $ messageReceiver
+  fork_ electionLoop
+  fork_ messageReceiver
   handleEvents
 
 -- | Thread to take incoming messages and write them to the event queue.
