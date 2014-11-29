@@ -8,18 +8,18 @@ module Network.Tangaroa.Types
   , RaftSpec(..)
   , LiftedRaftSpec(..)
   , readCfg, readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
-  , readVotedFor, writeVotedFor, commitLogEntry, openConnection, serializeRPC
-  , deserializeRPC, sendMessage, getMessage
+  , readVotedFor, writeVotedFor, applyLogEntry, openConnection, serializeRPC
+  , deserializeRPC, sendMessage, getMessage, debugPrint
   , liftRaftSpec
   , Term, startTerm, succTerm
-  , Index, startIndex, succIndex
+  , Index, startIndex
   , Config(..), nodeSet, nodeId, electionTimeoutRange, heartbeatTimeout
-  , CandidateState(..), votes
-  , LeaderState(..), nextIndex, matchIndex
   , Role(..)
   , RaftEnv(..), cfg, conn, eventIn, eventOut, rs
-  , RaftState(..), role, commitIndex, lastApplied, timerThread
-  , AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm, entries, leaderCommit
+  , RaftState(..), role, logEntries, commitIndex, lastApplied, timerThread
+  , cYesVotes, cNoVotes, cUndecided, lNextIndex, lMatchIndex
+  , AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm
+  , aeEntries, leaderCommit
   , AppendEntriesResponse(..), aerTerm, success
   , RequestVote(..), rvTerm, candidateId, lastLogIndex, lastLogTerm
   , RequestVoteResponse(..), rvrTerm, voteGranted
@@ -35,9 +35,10 @@ import Control.Lens hiding (Index)
 import Control.Monad.RWS
 import Data.Binary
 import Data.ByteString (ByteString)
+import Data.Sequence (Seq)
 import Data.Map (Map)
 import Data.Set (Set)
---import Data.Word
+
 import GHC.Generics
 
 newtype Term = Term Word64
@@ -49,30 +50,26 @@ startTerm = Term 0
 succTerm :: Term -> Term
 succTerm (Term t) = Term (succ t)
 
-newtype Index = Index Word64
-  deriving (Show, Read, Eq, Ord, Generic)
+type Index = Int
 
 startIndex :: Index
-startIndex = Index 0
-
-succIndex :: Index -> Index
-succIndex (Index i) = Index (succ i)
+startIndex = 0
 
 data Config nt = Config
   { _nodeSet               :: Set nt
   , _nodeId                :: nt
   , _electionTimeoutRange  :: (Int,Int) -- in microseconds
-  , _heartbeatTimeout      :: Int -- in microseconds
+  , _heartbeatTimeout      :: Int       -- in microseconds
   }
   deriving (Show, Generic)
 makeLenses ''Config
 
 data AppendEntries nt et = AppendEntries
-  { _aeTerm :: Term
-  , _leaderId :: nt
+  { _aeTerm       :: Term
+  , _leaderId     :: nt
   , _prevLogIndex :: Index
-  , _prevLogTerm :: Term
-  , _entries :: [et] -- TODO: maybe not a list
+  , _prevLogTerm  :: Term
+  , _aeEntries      :: Seq (Term,et)
   , _leaderCommit :: Index
   }
   deriving (Show, Read, Generic)
@@ -86,16 +83,16 @@ data AppendEntriesResponse = AppendEntriesResponse
 makeLenses ''AppendEntriesResponse
 
 data RequestVote nt = RequestVote
-  { _rvTerm :: Term
-  , _candidateId :: nt
+  { _rvTerm       :: Term
+  , _candidateId  :: nt
   , _lastLogIndex :: Index
-  , _lastLogTerm :: Term
+  , _lastLogTerm  :: Term
   }
   deriving (Show, Read, Generic)
 makeLenses ''RequestVote
 
 data RequestVoteResponse = RequestVoteResponse
-  { _rvrTerm :: Term
+  { _rvrTerm     :: Term
   , _voteGranted :: Bool
   }
   deriving (Show, Read, Generic)
@@ -127,7 +124,7 @@ data RaftSpec nt et rt mt ht = RaftSpec
   , __readLogEntry     :: Index -> IO et
 
     -- ^ Function to write a log entry to persistent storage.
-  , __writeLogEntry    :: Index -> et -> IO ()
+  , __writeLogEntry    :: Index -> (Term,et) -> IO ()
 
     -- ^ Function to get the term number from persistent storage.
   , __readTermNumber   :: IO Term
@@ -141,8 +138,8 @@ data RaftSpec nt et rt mt ht = RaftSpec
     -- ^ Function to write the node voted for to persistent storage.
   , __writeVotedFor    :: nt -> IO ()
 
-    -- ^ Function to commit a log entry.
-  , __commitLogEntry   :: et -> IO rt
+    -- ^ Function to apply a log entry to the state machine.
+  , __applyLogEntry    :: et -> IO rt
 
     -- ^ Function to open a connection handle.
   , __openConnection   :: nt -> IO ht
@@ -158,24 +155,20 @@ data RaftSpec nt et rt mt ht = RaftSpec
 
     -- ^ Function to get the next message.
   , __getMessage       :: ht -> IO mt
-  }
 
-data CandidateState nt = CandidateState
-  { _votes  :: Map nt ByteString
+    -- ^ Function to log a debug message (no newline).
+  , __debugPrint       :: String -> IO ()
   }
-  deriving (Show, Generic)
-makeLenses ''CandidateState
 
 data LeaderState nt = LeaderState
-  { _nextIndex  :: Map nt Index
-  , _matchIndex :: Map nt Index
+  {
   }
   deriving (Show, Generic)
 makeLenses ''LeaderState
 
 data Role nt = Follower
-             | Candidate (CandidateState nt)
-             | Leader    (LeaderState    nt)
+             | Candidate
+             | Leader
   deriving (Show, Generic)
 
 data Event mt = Message mt
@@ -194,7 +187,7 @@ data LiftedRaftSpec nt et rt mt ht t = LiftedRaftSpec
   , _readLogEntry     :: MonadTrans t => Index -> t IO et
 
     -- ^ Function to write a log entry to persistent storage.
-  , _writeLogEntry    :: MonadTrans t => Index -> et -> t IO ()
+  , _writeLogEntry    :: MonadTrans t => Index -> (Term,et) -> t IO ()
 
     -- ^ Function to get the term number from persistent storage.
   , _readTermNumber   :: MonadTrans t => t IO Term
@@ -208,8 +201,8 @@ data LiftedRaftSpec nt et rt mt ht t = LiftedRaftSpec
     -- ^ Function to write the node voted for to persistent storage.
   , _writeVotedFor    :: MonadTrans t => nt -> t IO ()
 
-    -- ^ Function to commit a log entry.
-  , _commitLogEntry   :: MonadTrans t => et -> t IO rt
+    -- ^ Function to apply a log entry to the state machine.
+  , _applyLogEntry    :: MonadTrans t => et -> t IO rt
 
     -- ^ Function to open a connection handle.
   , _openConnection   :: MonadTrans t => nt -> t IO ht
@@ -225,6 +218,9 @@ data LiftedRaftSpec nt et rt mt ht t = LiftedRaftSpec
 
     -- ^ Function to get the next message.
   , _getMessage       :: MonadTrans t => ht -> t IO mt
+
+    -- ^ Function to log a debug message (no newline).
+  , _debugPrint       :: String -> t IO ()
   }
 makeLenses ''LiftedRaftSpec
 
@@ -238,19 +234,27 @@ liftRaftSpec RaftSpec{..} =
     , _writeTermNumber = lift . __writeTermNumber
     , _readVotedFor    = lift __readVotedFor
     , _writeVotedFor   = lift . __writeVotedFor
-    , _commitLogEntry  = lift . __commitLogEntry
+    , _applyLogEntry   = lift . __applyLogEntry
     , _openConnection  = lift . __openConnection
     , _serializeRPC    = __serializeRPC
     , _deserializeRPC  = __deserializeRPC
     , _sendMessage     = \n m -> lift (__sendMessage n m)
     , _getMessage      = lift . __getMessage
+    , _debugPrint      = lift . __debugPrint
     }
 
-data RaftState nt = RaftState
+data RaftState nt et = RaftState
   { _role        :: Role nt
+  , _term        :: Term
+  , _logEntries  :: Seq (Term,et)
   , _commitIndex :: Index
   , _lastApplied :: Index
   , _timerThread :: Maybe ThreadId
+  , _cYesVotes   :: Map nt ByteString
+  , _cNoVotes    :: Set nt
+  , _cUndecided  :: Set nt
+  , _lNextIndex  :: Map nt Index
+  , _lMatchIndex :: Map nt Index
   }
   deriving (Show, Generic)
 makeLenses ''RaftState
@@ -260,26 +264,13 @@ data RaftEnv nt et rt mt ht = RaftEnv
   , _conn     :: ht
   , _eventIn  :: InChan (Event mt)
   , _eventOut :: OutChan (Event mt)
-  , _rs       :: LiftedRaftSpec nt et rt mt ht (RWST (RaftEnv nt et rt mt ht) () (RaftState nt))
+  , _rs       :: LiftedRaftSpec nt et rt mt ht (RWST (RaftEnv nt et rt mt ht) () (RaftState nt et))
   }
 makeLenses ''RaftEnv
 
-type Raft nt et rt mt ht a = RWST (RaftEnv nt et rt mt ht) () (RaftState nt) IO a
-
--- let all the RPC's have a single lens called term
-class MessageTerm m where
-  term :: Functor f => (Term -> f Term) -> m -> f m
-instance MessageTerm (AppendEntries nt et) where
-  term = aeTerm
-instance MessageTerm AppendEntriesResponse where
-  term = aerTerm
-instance MessageTerm (RequestVote nt) where
-  term = rvTerm
-instance MessageTerm RequestVoteResponse where
-  term = rvrTerm
+type Raft nt et rt mt ht a = RWST (RaftEnv nt et rt mt ht) () (RaftState nt et) IO a
 
 instance Binary Term
-instance Binary Index
 
 instance (Binary nt, Binary et) => Binary (AppendEntries nt et)
 instance Binary AppendEntriesResponse

@@ -19,7 +19,6 @@ library
                      , Network.Tangaroa.Spec
                      , Network.Tangaroa.Types
                      , Network.Tangaroa.Internal.Monad
-                     , Network.Tangaroa.Internal.State
   build-depends:       base < 5
                      , binary
                      , bytestring
@@ -34,7 +33,7 @@ library
                      , transformers
                      , unagi-chan
   hs-source-dirs:      src
-  ghc-options:         -Wall -O2 -threaded
+  ghc-options:         -Wall -O2 -threaded -fno-warn-unused-do-bind
   default-language:    Haskell2010
 
 executable simpleraft

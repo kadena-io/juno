@@ -27,8 +27,8 @@ raftspec = RaftSpec
   , __readVotedFor    = return Nothing
     -- don't record votes
   , __writeVotedFor   = return . const ()
-    -- commit by showing to stdout and returning empty string
-  , __commitLogEntry  = \e -> putStrLn e >> return ""
+    -- apply a log entry by showing to stdout and returning empty string
+  , __applyLogEntry  = \e -> putStrLn e >> return ""
     -- don't open a connection
   , __openConnection  = return . const ()
     -- serialize with show
@@ -39,6 +39,8 @@ raftspec = RaftSpec
   , __sendMessage     = \_ _ -> return ()
     -- get dummy messages every 5 seconds
   , __getMessage      = \_ -> threadDelay 5000000 >> (return $ show dummyMessage)
+    -- use putStrLn for debug messages
+  , __debugPrint      = putStrLn
   }
 
 dummyMessage :: RPC String String String

@@ -6,7 +6,8 @@
 module Network.Tangaroa.Internal.Monad
   ( Raft
   , RaftEnv(..), cfg, conn, eventIn, eventOut
-  , fork
+  , initialRaftState
+  , fork, fork_
   , sendEvent
   , wait
   , becomeFollower
@@ -26,21 +27,29 @@ module Network.Tangaroa.Internal.Monad
   , handleRequestVoteResponse
   , handleCommand
   , (^$)
+  , ($^)
   , (^$^)
   , (>>=^)
   , (^>>=^)
   , (>>=$)
   ) where
 
+import Prelude hiding (mapM)
 import Control.Applicative
 import Control.Concurrent (threadDelay, killThread)
 import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
-import Control.Monad.Fork.Class (fork)
-import Control.Monad.RWS
+import Control.Monad.Fork.Class
+import Control.Monad.RWS hiding (mapM)
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
+import qualified Data.Set as Set
+import qualified Data.Map as Map
+import Data.Traversable (mapM)
 
-import Network.Tangaroa.Internal.State
 import Network.Tangaroa.Types
+
+import System.Random
 
 sendEvent :: Event mt -> Raft nt et rt mt ht ()
 sendEvent event = do
@@ -50,7 +59,7 @@ sendEvent event = do
 wait :: Int -> Raft nt et rt mt ht ()
 wait t = lift (threadDelay t)
 
--- | Cancel any exiting timer.
+-- | Cancel any existing timer.
 cancelTimer :: Raft nt et rt mt ht ()
 cancelTimer = do
   use timerThread >>= maybe (return ()) (lift . killThread)
@@ -64,15 +73,20 @@ setTimedEvent e t = do
   tmr <- fork $ wait t >> sendEvent e
   timerThread .= Just tmr
 
+initialRaftState :: RaftState nt et
+initialRaftState = RaftState
+  Follower startTerm Seq.empty startIndex startIndex Nothing
+  Map.empty Set.empty Set.empty Map.empty Map.empty
+
 becomeFollower :: Raft nt et rt mt ht ()
 becomeFollower = role .= Follower
 
 becomeLeader :: Raft nt et rt mt ht ()
-becomeLeader = role .= Leader initialLeaderState
+becomeLeader = role .= Leader
 --send initial heartbeat
 
 becomeCandidate :: Raft nt et rt mt ht ()
-becomeCandidate = role .= Candidate initialCandidateState
+becomeCandidate = role .= Candidate
 --self._votes.add(self)
 --send RequestVote RPC
 
@@ -90,8 +104,17 @@ incrementCommitIndex = undefined -- TODO
 --    break
 --self.commitIndex = N-1
 
+
 applyLogEntries :: Raft nt et rt mt ht ()
-applyLogEntries = undefined -- TODO
+applyLogEntries = do
+  la <- use lastApplied
+  ci <- use commitIndex
+  apply <- view (rs.applyLogEntry)
+  le <- use logEntries
+  let leToApply = fmap snd . Seq.drop (la + 1) . Seq.take (ci + 1) $ le
+  _ <- mapM apply leToApply
+  return ()
+-- TODO: apply un-applied log entries up through commitIndex
 --while self.commitIndex > self.lastApplied:
 --  self.lastApplied++
 --  commit self.log[self.lastApplied]
@@ -107,7 +130,7 @@ sendAppendEntries = undefined -- TODO
 --ae._leaderCommit = self.commitIndex
 --send ae
 
-sendAppendEntriesResponse :: nt -> Raft nt et rt mt ht ()
+sendAppendEntriesResponse :: nt -> AppendEntriesResponse -> Raft nt et rt mt ht ()
 sendAppendEntriesResponse = undefined -- TODO
 
 sendRequestVote :: nt -> Raft nt et rt mt ht ()
@@ -121,27 +144,45 @@ sendRequestVote = undefined -- TODO
 sendRequestVoteResponse :: nt -> Raft nt et rt mt ht ()
 sendRequestVoteResponse = undefined -- TODO
 
+getNewElectionTimeout :: Raft nt et rt mt ht Int
+getNewElectionTimeout = view (cfg.electionTimeoutRange) >>= lift . randomRIO
+
+resetElectionTimer :: Raft nt et rt mt ht ()
+resetElectionTimer = do
+  timeout <- getNewElectionTimeout
+  setTimedEvent (Election $ show (timeout `div` 1000) ++ "ms") timeout
+
+hasMatchingPrevLogEntry :: Index -> Term -> Raft nt et rt mt ht Bool
+hasMatchingPrevLogEntry pli plt = do
+  es <- use logEntries
+  return $ pli >= Seq.length es && fst (Seq.index es pli) == plt
+
+updateTerm :: Term -> Raft nt et rt mt ht ()
+updateTerm t = do
+  rs.writeTermNumber ^$ t
+  term .= t
+
+appendLogEntries :: Index -> Seq (Term,et) -> Raft nt et rt mt ht ()
+appendLogEntries pli es = return () -- TODO: append entries to the log starting with the one after pli
+
+fork_ :: (Monad m, MonadFork m) => m () -> m ()
+fork_ a = fork a >>= return . const ()
+
 handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ht ()
-handleAppendEntries ae =
-  lift $ putStrLn "Got an appendEntries RPC."
---AppendEntriesResponse aer
---if role != Follower and ae._aeTerm > self.term:
---  self.becomeFollower
---aer._aerTerm = self.term
---if ae._aeTerm < self.term:
---  aer._success = false
---if self.log[ae._prevLogIndex] == null
---  or self.log[_prevLogIndex].term != ae._prevLogTerm:
---  aer._success = false
---for entry in ae._entries:
---  existingEntry = self.log[entry.index]
---  if existingEntry != null and existingEntry.term != entry.term:
---    delete self.log[entry.index:]
---for entry in ae._entries:
---  if self.log[entry.index] == null:
---    self.log[entry.index] = entry
---self.commitIndex = min(ae._leaderCommit, ae._entries[-1].index)
---self.applyLogEntries
+handleAppendEntries AppendEntries{..} = do
+  rs.debugPrint ^$ "got an appendEntries RPC"
+  ct <- use term
+  when (_aeTerm > ct) $ updateTerm _aeTerm >> becomeFollower
+  when (_aeTerm == ct) resetElectionTimer
+  plmatch <- hasMatchingPrevLogEntry _prevLogIndex _prevLogTerm
+  if _aeTerm < ct || not plmatch
+    then sendAppendEntriesResponse _leaderId $ AppendEntriesResponse ct False
+    else do
+      appendLogEntries _prevLogIndex _aeEntries
+      nc <- use commitIndex
+      when (_leaderCommit > nc) $
+        commitIndex .= min _leaderCommit (_prevLogIndex + Seq.length _aeEntries)
+      fork_ applyLogEntries
 
 handleAppendEntriesResponse :: AppendEntriesResponse -> Raft nt et rt mt ht ()
 handleAppendEntriesResponse aer =
@@ -202,6 +243,11 @@ infixr 2 ^$
 (^$) :: forall (m :: * -> *) b r a. (MonadReader r m, Functor m) =>
   Getting (a -> b) r (a -> b) -> a -> m b
 lf ^$ a = fmap ($ a) (view lf)
+
+infixr 2 $^
+($^) :: forall (m :: * -> *) b r a. (MonadReader r m, Functor m) =>
+  (a -> b) -> Getting a r a -> m b
+f $^ la = fmap f (view la)
 
 infixr 2 ^$^
 (^$^) :: forall (m :: * -> *) b r t. (MonadReader r m, Applicative m) =>

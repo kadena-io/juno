@@ -7,7 +7,6 @@ module Network.Tangaroa
 
 import Network.Tangaroa.Types
 import Network.Tangaroa.Internal.Monad
-import Network.Tangaroa.Internal.State
 import System.Random
 
 import Control.Lens hiding (Index)
