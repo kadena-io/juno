@@ -17,7 +17,7 @@ import Control.Monad.RWS
 
 import Control.Concurrent.Chan.Unagi
 
-runRaft :: RaftSpec nt et rt mt ht -> IO ()
+runRaft :: Ord nt => RaftSpec nt et rt mt ht -> IO ()
 runRaft spec@RaftSpec{..} = do
   rconf <- __readCfg
   (ein, eout) <- newChan
@@ -27,7 +27,7 @@ runRaft spec@RaftSpec{..} = do
 runRWS_ :: Monad m => RWST r w s m a -> r -> s -> m ()
 runRWS_ ma r s = runRWST ma r s >> return ()
 
-raft :: Raft nt et rt mt ht ()
+raft :: Ord nt => Raft nt et rt mt ht ()
 raft = do
   _ <- fork $ electionLoop
   _ <- fork $ messageReceiver
@@ -48,7 +48,7 @@ electionLoop = forever $ do
 getEvent :: Raft nt et rt mt ht (Event mt)
 getEvent = lift . readChan =<< view eventOut
 
-handleEvents :: Raft nt et rt mt ht ()
+handleEvents :: Ord nt => Raft nt et rt mt ht ()
 handleEvents = forever $ do
   e <- getEvent
   case e of
@@ -64,7 +64,7 @@ handleHeartbeatTimeout :: String -> Raft nt et rt mt ht ()
 handleHeartbeatTimeout s = lift $ putStr "Heartbeat timeout: " >> putStrLn s
 -- TODO
 
-handleMessage :: mt -> Raft nt et rt mt ht ()
+handleMessage :: Ord nt => mt -> Raft nt et rt mt ht ()
 handleMessage m = do
   dm <- rs.deserializeRPC ^$ m
   case dm of

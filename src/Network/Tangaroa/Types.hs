@@ -20,7 +20,7 @@ module Network.Tangaroa.Types
   , cYesVotes, cNoVotes, cUndecided, lNextIndex, lMatchIndex
   , AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm
   , aeEntries, leaderCommit
-  , AppendEntriesResponse(..), aerTerm, success
+  , AppendEntriesResponse(..), aerTerm, aerSuccess, aerNodeId, aerIndex
   , RequestVote(..), rvTerm, candidateId, lastLogIndex, lastLogTerm
   , RequestVoteResponse(..), rvrTerm, voteGranted
   , Command(..), entry
@@ -75,9 +75,11 @@ data AppendEntries nt et = AppendEntries
   deriving (Show, Read, Generic)
 makeLenses ''AppendEntries
 
-data AppendEntriesResponse = AppendEntriesResponse
-  { _aerTerm :: Term
-  , _success :: Bool
+data AppendEntriesResponse nt = AppendEntriesResponse
+  { _aerTerm    :: Term
+  , _aerNodeId  :: nt
+  , _aerSuccess :: Bool
+  , _aerIndex   :: Index
   }
   deriving (Show, Read, Generic)
 makeLenses ''AppendEntriesResponse
@@ -105,7 +107,7 @@ data Command et = Command
 makeLenses ''Command
 
 data RPC nt et rt = AE (AppendEntries nt et)
-                  | AER AppendEntriesResponse
+                  | AER (AppendEntriesResponse nt)
                   | RV (RequestVote nt)
                   | RVR RequestVoteResponse
                   | CMD (Command et)
@@ -166,10 +168,10 @@ data LeaderState nt = LeaderState
   deriving (Show, Generic)
 makeLenses ''LeaderState
 
-data Role nt = Follower
-             | Candidate
-             | Leader
-  deriving (Show, Generic)
+data Role = Follower
+          | Candidate
+          | Leader
+  deriving (Show, Generic, Eq)
 
 data Event mt = Message mt
               | Election String
@@ -244,7 +246,7 @@ liftRaftSpec RaftSpec{..} =
     }
 
 data RaftState nt et = RaftState
-  { _role        :: Role nt
+  { _role        :: Role
   , _term        :: Term
   , _logEntries  :: Seq (Term,et)
   , _commitIndex :: Index
@@ -256,7 +258,7 @@ data RaftState nt et = RaftState
   , _lNextIndex  :: Map nt Index
   , _lMatchIndex :: Map nt Index
   }
-  deriving (Show, Generic)
+  deriving (Show)
 makeLenses ''RaftState
 
 data RaftEnv nt et rt mt ht = RaftEnv
@@ -273,7 +275,7 @@ type Raft nt et rt mt ht a = RWST (RaftEnv nt et rt mt ht) () (RaftState nt et) 
 instance Binary Term
 
 instance (Binary nt, Binary et) => Binary (AppendEntries nt et)
-instance Binary AppendEntriesResponse
+instance Binary nt => Binary (AppendEntriesResponse nt)
 instance Binary nt => Binary (RequestVote nt)
 instance Binary RequestVoteResponse
 instance Binary et => Binary (Command et)

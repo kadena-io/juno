@@ -13,7 +13,6 @@ module Network.Tangaroa.Internal.Monad
   , becomeFollower
   , becomeLeader
   , becomeCandidate
-  , incrementCommitIndex
   , applyLogEntries
   , cancelTimer
   , setTimedEvent
@@ -90,21 +89,8 @@ becomeCandidate = role .= Candidate
 --self._votes.add(self)
 --send RequestVote RPC
 
-incrementCommitIndex :: Raft nt et rt mt ht ()
-incrementCommitIndex = undefined -- TODO
---N = self.commitIndex+1
---while true:
---  count = 0
---  for matchIndex in self.matchIndex:
---    if matchIndex >= N:
---      count++
---  if self.log[N].term == self.term and count >= quorum_size:
---    N = N+1
---  else:
---    break
---self.commitIndex = N-1
-
-
+-- apply the un-applied log entries up through commitIndex
+-- TODO: have this done on a separate thread via event passing
 applyLogEntries :: Raft nt et rt mt ht ()
 applyLogEntries = do
   la <- use lastApplied
@@ -112,15 +98,14 @@ applyLogEntries = do
   apply <- view (rs.applyLogEntry)
   le <- use logEntries
   let leToApply = fmap snd . Seq.drop (la + 1) . Seq.take (ci + 1) $ le
-  _ <- mapM apply leToApply
-  return ()
--- TODO: apply un-applied log entries up through commitIndex
---while self.commitIndex > self.lastApplied:
---  self.lastApplied++
---  commit self.log[self.lastApplied]
+  results <- mapM apply leToApply
+  -- TODO: send results to client if you are the leader
+  lastApplied .= ci
 
 sendAppendEntries :: nt -> Raft nt et rt mt ht ()
-sendAppendEntries = undefined -- TODO
+sendAppendEntries target = do
+  return ()
+-- TODO
 --AppendEntries ae
 --ae._aeTerm = self.term
 --ae._leaderId = self.nodeId
@@ -130,7 +115,7 @@ sendAppendEntries = undefined -- TODO
 --ae._leaderCommit = self.commitIndex
 --send ae
 
-sendAppendEntriesResponse :: nt -> AppendEntriesResponse -> Raft nt et rt mt ht ()
+sendAppendEntriesResponse :: nt -> AppendEntriesResponse nt -> Raft nt et rt mt ht ()
 sendAppendEntriesResponse = undefined -- TODO
 
 sendRequestVote :: nt -> Raft nt et rt mt ht ()
@@ -172,36 +157,58 @@ handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ht ()
 handleAppendEntries AppendEntries{..} = do
   rs.debugPrint ^$ "got an appendEntries RPC"
   ct <- use term
+  nid <- view (cfg.nodeId)
   when (_aeTerm > ct) $ updateTerm _aeTerm >> becomeFollower
   when (_aeTerm == ct) resetElectionTimer
   plmatch <- hasMatchingPrevLogEntry _prevLogIndex _prevLogTerm
+  es <- use logEntries
+  let oldLastEntry = Seq.length es - 1
+  let newLastEntry = _prevLogIndex + Seq.length _aeEntries
   if _aeTerm < ct || not plmatch
-    then sendAppendEntriesResponse _leaderId $ AppendEntriesResponse ct False
+    then sendAppendEntriesResponse _leaderId $
+      AppendEntriesResponse ct nid False oldLastEntry
     else do
       appendLogEntries _prevLogIndex _aeEntries
+      sendAppendEntriesResponse _leaderId $
+        AppendEntriesResponse ct nid True newLastEntry
       nc <- use commitIndex
-      when (_leaderCommit > nc) $
-        commitIndex .= min _leaderCommit (_prevLogIndex + Seq.length _aeEntries)
-      fork_ applyLogEntries
+      when (_leaderCommit > nc) $ do
+        commitIndex .= min _leaderCommit newLastEntry
+        applyLogEntries
 
-handleAppendEntriesResponse :: AppendEntriesResponse -> Raft nt et rt mt ht ()
-handleAppendEntriesResponse aer =
-  lift $ putStrLn "Got an appendEntriesResponse RPC."
--- TODO
---AppendEntries ae
---AppendEntriesResponse aer
---if role != Follower and aer._aerTerm > self.term:
---  self.term = aer._aerTerm
---  self.becomeFollower
---else:
---  if aer._success:
---    self.nextIndex[nt] = ae._prevLogIndex+1+len(ae._entries)
---    self.matchIndex[nt] = self.nextIndex[nt]
---    self.incrementCommitIndex
---    self.applyLogEntries
+handleAppendEntriesResponse :: Ord nt => AppendEntriesResponse nt -> Raft nt et rt mt ht ()
+handleAppendEntriesResponse AppendEntriesResponse{..} = do
+  rs.debugPrint ^$ "got an appendEntriesResponse RPC"
+  ct <- use term
+  when (_aerTerm > ct) $ updateTerm _aerTerm >> becomeFollower
+  r <- use role
+  when (r == Leader && _aerTerm == ct) $
+    if _aerSuccess
+      then do
+        lMatchIndex.at _aerNodeId .= Just _aerIndex
+        lNextIndex .at _aerNodeId .= Just (_aerIndex + 1)
+        leaderUpdateCommitIndex
+        applyLogEntries
+      else do
+        lNextIndex %= Map.adjust (subtract 1) _aerNodeId
+        fork_ $ sendAppendEntries _aerNodeId
+
+-- called only as leader
+-- checks to see what the largest N where a majority of
+-- the lMatchIndex set is >= N
+leaderUpdateCommitIndex :: Ord nt => Raft nt et rt mt ht ()
+leaderUpdateCommitIndex = return () -- TODO
+--N = self.commitIndex+1
+--while true:
+--  count = 0
+--  for matchIndex in self.matchIndex:
+--    if matchIndex >= N:
+--      count++
+--  if self.log[N].term == self.term and count >= quorum_size:
+--    N = N+1
 --  else:
---    self.nextIndex[nt] -= 1
---    retry AppendEntries
+--    break
+--self.commitIndex = N-1
 
 handleRequestVote :: RequestVote nt -> Raft nt et rt mt ht ()
 handleRequestVote rv =
