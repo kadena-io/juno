@@ -103,11 +103,17 @@ applyLogEntries = do
   lastApplied .= ci
 
 -- TODO: check this
-computePrevLog :: Maybe Index -> Seq (Term,et) -> (Index,Term)
-computePrevLog mni es =
+logInfoForNextIndex :: Maybe Index -> Seq (Term,et) -> (Index,Term)
+logInfoForNextIndex mni es =
   case mni of
     Just ni -> let pli = ni - 1 in (pli, fst (Seq.index es pli))
     Nothing -> (startIndex, startTerm)
+
+lastLogInfo :: Seq (Term,et) -> (Index,Term)
+lastLogInfo es =
+  case Seq.viewr es of
+    Seq.EmptyR      -> (startIndex, startTerm)
+    _ Seq.:> (t, _) -> (Seq.length es - 1, t)
 
 sendAppendEntries :: Ord nt => nt -> Raft nt et rt mt ht ()
 sendAppendEntries target = do
@@ -115,7 +121,7 @@ sendAppendEntries target = do
   ser <- view (rs.serializeRPC)
   mni <- use $ lNextIndex.at target
   es <- use logEntries
-  let (pli,plt) = computePrevLog mni es
+  let (pli,plt) = logInfoForNextIndex mni es
   ct <- use term
   nid <- view (cfg.nodeId)
   ci <- use commitIndex
@@ -131,12 +137,14 @@ sendAppendEntriesResponse target success lindex = do
   send target $ ser $ AER $ AppendEntriesResponse ct nid success lindex
 
 sendRequestVote :: nt -> Raft nt et rt mt ht ()
-sendRequestVote = undefined -- TODO
---RequestVote rv
---rv._rvTerm = self.term
---rv._candidateId = self.nodeId
---rv._lastLogIndex = self.log[-1].index
---rv._lastLogTerm = self.log[-1].term
+sendRequestVote target = do
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  send <- view (rs.sendMessage)
+  ser <- view (rs.serializeRPC)
+  es <- use logEntries
+  let (lli, llt) = lastLogInfo es
+  send target $ ser $ RV $ RequestVote ct nid lli llt
 
 sendRequestVoteResponse :: nt -> Raft nt et rt mt ht ()
 sendRequestVoteResponse = undefined -- TODO
