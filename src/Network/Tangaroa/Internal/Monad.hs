@@ -102,18 +102,25 @@ applyLogEntries = do
   -- TODO: send results to client if you are the leader
   lastApplied .= ci
 
-sendAppendEntries :: nt -> Raft nt et rt mt ht ()
+-- TODO: check this
+computePrevLog :: Maybe Index -> Seq (Term,et) -> (Index,Term)
+computePrevLog mni es =
+  case mni of
+    Just ni -> let pli = ni - 1 in (pli, fst (Seq.index es pli))
+    Nothing -> (startIndex, startTerm)
+
+sendAppendEntries :: Ord nt => nt -> Raft nt et rt mt ht ()
 sendAppendEntries target = do
-  return ()
--- TODO
---AppendEntries ae
---ae._aeTerm = self.term
---ae._leaderId = self.nodeId
---ae._prevLogIndex = self.nextIndex[nt] - 1
---ae._prevLogTerm = self.log[ae._prevLogIndex].term
---ae._entries = self.log[ae._prevLogIndex+1:]
---ae._leaderCommit = self.commitIndex
---send ae
+  send <- view (rs.sendMessage)
+  ser <- view (rs.serializeRPC)
+  mni <- use $ lNextIndex.at target
+  es <- use logEntries
+  let (pli,plt) = computePrevLog mni es
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  ci <- use commitIndex
+  send target $ ser $ AE $
+    AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci
 
 sendAppendEntriesResponse :: nt -> AppendEntriesResponse nt -> Raft nt et rt mt ht ()
 sendAppendEntriesResponse = undefined -- TODO

@@ -41,11 +41,11 @@ import Data.Set (Set)
 
 import GHC.Generics
 
-newtype Term = Term Word64
+newtype Term = Term Int
   deriving (Show, Read, Eq, Ord, Generic)
 
 startTerm :: Term
-startTerm = Term 0
+startTerm = Term (-1)
 
 succTerm :: Term -> Term
 succTerm (Term t) = Term (succ t)
@@ -53,7 +53,7 @@ succTerm (Term t) = Term (succ t)
 type Index = Int
 
 startIndex :: Index
-startIndex = 0
+startIndex = (-1)
 
 data Config nt = Config
   { _nodeSet               :: Set nt
@@ -69,7 +69,7 @@ data AppendEntries nt et = AppendEntries
   , _leaderId     :: nt
   , _prevLogIndex :: Index
   , _prevLogTerm  :: Term
-  , _aeEntries      :: Seq (Term,et)
+  , _aeEntries    :: Seq (Term,et)
   , _leaderCommit :: Index
   }
   deriving (Show, Read, Generic)
