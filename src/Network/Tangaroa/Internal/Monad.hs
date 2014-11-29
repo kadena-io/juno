@@ -146,8 +146,13 @@ sendRequestVote target = do
   let (lli, llt) = lastLogInfo es
   send target $ ser $ RV $ RequestVote ct nid lli llt
 
-sendRequestVoteResponse :: nt -> Raft nt et rt mt ht ()
-sendRequestVoteResponse = undefined -- TODO
+sendRequestVoteResponse :: nt -> Bool -> Raft nt et rt mt ht ()
+sendRequestVoteResponse target vote = do
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  send <- view (rs.sendMessage)
+  ser <- view (rs.serializeRPC)
+  send target $ ser $ RVR $ RequestVoteResponse ct nid vote
 
 getNewElectionTimeout :: Raft nt et rt mt ht Int
 getNewElectionTimeout = view (cfg.electionTimeoutRange) >>= lift . randomRIO
@@ -244,7 +249,7 @@ handleRequestVote rv =
 --  rvr._voteGranted = false
 
 
-handleRequestVoteResponse :: RequestVoteResponse -> Raft nt et rt mt ht ()
+handleRequestVoteResponse :: RequestVoteResponse nt -> Raft nt et rt mt ht ()
 handleRequestVoteResponse rvr =
   lift $ putStrLn "Got a requestVoteResponse RPC."
 -- TODO

@@ -22,7 +22,7 @@ module Network.Tangaroa.Types
   , aeEntries, leaderCommit
   , AppendEntriesResponse(..), aerTerm, aerSuccess, aerNodeId, aerIndex
   , RequestVote(..), rvTerm, candidateId, lastLogIndex, lastLogTerm
-  , RequestVoteResponse(..), rvrTerm, voteGranted
+  , RequestVoteResponse(..), rvrTerm, voterId, voteGranted
   , Command(..), entry
   , RPC(..)
   , term
@@ -93,8 +93,9 @@ data RequestVote nt = RequestVote
   deriving (Show, Read, Generic)
 makeLenses ''RequestVote
 
-data RequestVoteResponse = RequestVoteResponse
+data RequestVoteResponse nt = RequestVoteResponse
   { _rvrTerm     :: Term
+  , _voterId     :: nt
   , _voteGranted :: Bool
   }
   deriving (Show, Read, Generic)
@@ -109,7 +110,7 @@ makeLenses ''Command
 data RPC nt et rt = AE (AppendEntries nt et)
                   | AER (AppendEntriesResponse nt)
                   | RV (RequestVote nt)
-                  | RVR RequestVoteResponse
+                  | RVR (RequestVoteResponse nt)
                   | CMD (Command et)
                   | CMDR rt
                   | DBG String
@@ -275,9 +276,9 @@ type Raft nt et rt mt ht a = RWST (RaftEnv nt et rt mt ht) () (RaftState nt et) 
 instance Binary Term
 
 instance (Binary nt, Binary et) => Binary (AppendEntries nt et)
-instance Binary nt => Binary (AppendEntriesResponse nt)
-instance Binary nt => Binary (RequestVote nt)
-instance Binary RequestVoteResponse
-instance Binary et => Binary (Command et)
+instance Binary nt              => Binary (AppendEntriesResponse nt)
+instance Binary nt              => Binary (RequestVote nt)
+instance Binary nt              => Binary (RequestVoteResponse nt)
+instance Binary et              => Binary (Command et)
 
 instance (Binary nt, Binary et, Binary rt) => Binary (RPC nt et rt)
