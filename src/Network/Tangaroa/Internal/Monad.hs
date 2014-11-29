@@ -122,8 +122,13 @@ sendAppendEntries target = do
   send target $ ser $ AE $
     AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci
 
-sendAppendEntriesResponse :: nt -> AppendEntriesResponse nt -> Raft nt et rt mt ht ()
-sendAppendEntriesResponse = undefined -- TODO
+sendAppendEntriesResponse :: nt -> Bool -> Index -> Raft nt et rt mt ht ()
+sendAppendEntriesResponse target success lindex = do
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  send <- view (rs.sendMessage)
+  ser <- view (rs.serializeRPC)
+  send target $ ser $ AER $ AppendEntriesResponse ct nid success lindex
 
 sendRequestVote :: nt -> Raft nt et rt mt ht ()
 sendRequestVote = undefined -- TODO
@@ -164,7 +169,6 @@ handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ht ()
 handleAppendEntries AppendEntries{..} = do
   rs.debugPrint ^$ "got an appendEntries RPC"
   ct <- use term
-  nid <- view (cfg.nodeId)
   when (_aeTerm > ct) $ updateTerm _aeTerm >> becomeFollower
   when (_aeTerm == ct) resetElectionTimer
   plmatch <- hasMatchingPrevLogEntry _prevLogIndex _prevLogTerm
@@ -172,12 +176,10 @@ handleAppendEntries AppendEntries{..} = do
   let oldLastEntry = Seq.length es - 1
   let newLastEntry = _prevLogIndex + Seq.length _aeEntries
   if _aeTerm < ct || not plmatch
-    then sendAppendEntriesResponse _leaderId $
-      AppendEntriesResponse ct nid False oldLastEntry
+    then sendAppendEntriesResponse _leaderId False oldLastEntry
     else do
       appendLogEntries _prevLogIndex _aeEntries
-      sendAppendEntriesResponse _leaderId $
-        AppendEntriesResponse ct nid True newLastEntry
+      sendAppendEntriesResponse _leaderId True newLastEntry
       nc <- use commitIndex
       when (_leaderCommit > nc) $ do
         commitIndex .= min _leaderCommit newLastEntry
