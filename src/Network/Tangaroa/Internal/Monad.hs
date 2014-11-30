@@ -299,21 +299,6 @@ handleRequestVote RequestVote{..} = do
       else
         sendRequestVoteResponse _candidateId False
 
-
--- TODO
---RequestVoteResponse rvr
---if role != Follower and rv._rvTerm > self.term:
---  self.becomeFollower
---rvr._rvrTerm = self.term
---if rv._rvTerm < self.term:
---  rvr._voteGranted = false
---if (self.votedFor == null or self.votedFor == rv._candidateId)
---  and (rv._lastLogIndex >= self.log[-1].index and rv._lastLogTerm >= self.log[-1].term)
---  rvr._voteGranted = true
---else:
---  rvr._voteGranted = false
-
-
 handleRequestVoteResponse :: RequestVoteResponse nt -> Raft nt et rt mt ht ()
 handleRequestVoteResponse rvr =
   lift $ putStrLn "Got a requestVoteResponse RPC."
