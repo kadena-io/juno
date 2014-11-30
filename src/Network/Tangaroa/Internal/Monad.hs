@@ -111,9 +111,10 @@ applyLogEntries = do
 logInfoForNextIndex :: Maybe Index -> Seq (Term,et) -> (Index,Term)
 logInfoForNextIndex mni es =
   case mni of
-    Just ni -> let pli = ni - 1 in case seqIndex es pli of
-      Just (t,_) -> (pli, t)
-      Nothing -> (startIndex, startTerm) -- this shouldn't happen
+    Just ni -> let pli = ni - 1 in
+      case seqIndex es pli of
+        Just (t,_) -> (pli, t)
+        Nothing -> (startIndex, startTerm) -- this shouldn't happen
     Nothing -> (startIndex, startTerm)
 
 lastLogInfo :: Seq (Term,et) -> (Index,Term)
