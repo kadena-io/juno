@@ -1,7 +1,7 @@
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE KindSignatures #-}
 
 module Network.Tangaroa.Internal.Monad
   ( Raft
@@ -74,8 +74,13 @@ setTimedEvent e t = do
 
 initialRaftState :: RaftState nt et
 initialRaftState = RaftState
-  Follower startTerm Seq.empty startIndex startIndex Nothing
+  Follower startTerm Nothing Seq.empty startIndex startIndex Nothing
   Map.empty Set.empty Set.empty Map.empty Map.empty
+
+setVotedFor :: Maybe nt -> Raft nt et rt mt ht ()
+setVotedFor mvote = do
+  rs.writeVotedFor ^$ mvote
+  votedFor .= mvote
 
 becomeFollower :: Raft nt et rt mt ht ()
 becomeFollower = role .= Follower
@@ -106,7 +111,9 @@ applyLogEntries = do
 logInfoForNextIndex :: Maybe Index -> Seq (Term,et) -> (Index,Term)
 logInfoForNextIndex mni es =
   case mni of
-    Just ni -> let pli = ni - 1 in (pli, fst (Seq.index es pli))
+    Just ni -> let pli = ni - 1 in case seqIndex es pli of
+      Just (t,_) -> (pli, t)
+      Nothing -> (startIndex, startTerm) -- this shouldn't happen
     Nothing -> (startIndex, startTerm)
 
 lastLogInfo :: Seq (Term,et) -> (Index,Term)
@@ -165,11 +172,14 @@ resetElectionTimer = do
 hasMatchingPrevLogEntry :: Index -> Term -> Raft nt et rt mt ht Bool
 hasMatchingPrevLogEntry pli plt = do
   es <- use logEntries
-  return $ pli >= Seq.length es && fst (Seq.index es pli) == plt
+  case seqIndex es pli of
+    Nothing    -> return False
+    Just (t,_) -> return (t == plt)
 
 updateTerm :: Term -> Raft nt et rt mt ht ()
 updateTerm t = do
   rs.writeTermNumber ^$ t
+  setVotedFor Nothing
   term .= t
 
 appendLogEntries :: Index -> Seq (Term,et) -> Raft nt et rt mt ht ()
@@ -197,6 +207,12 @@ handleAppendEntries AppendEntries{..} = do
       when (_leaderCommit > nc) $ do
         commitIndex .= min _leaderCommit newLastEntry
         applyLogEntries
+
+seqIndex :: Seq a -> Int -> Maybe a
+seqIndex s i =
+  if i >= 0 && i < Seq.length s
+    then Just (Seq.index s i)
+    else Nothing
 
 handleAppendEntriesResponse :: Ord nt => AppendEntriesResponse nt -> Raft nt et rt mt ht ()
 handleAppendEntriesResponse AppendEntriesResponse{..} = do
@@ -232,9 +248,57 @@ leaderUpdateCommitIndex = return () -- TODO
 --    break
 --self.commitIndex = N-1
 
-handleRequestVote :: RequestVote nt -> Raft nt et rt mt ht ()
-handleRequestVote rv =
-  lift $ putStrLn "Got a requestVote RPC."
+-- compare a candidate's prevLog(Index/Term) to our log return true if the
+-- candidate's log is at least as up to date as ours measured first by term at
+-- the candidate's last log index, and then by log length
+candidateLogCompare :: Index -> Term -> Seq (Term,et) -> Bool
+candidateLogCompare llIndex llTerm es =
+  case seqIndex es llIndex of
+
+    -- we don't have the candidate's log entry
+    Nothing -> True
+
+    -- we have an entry, but the candidate's entry has a higher term
+    Just (t,_) | t > llTerm -> True
+
+    -- we have an entry with matching term, so return true if the candidate's
+    -- last log entry is also the last log entry we have (it will never be
+    -- longer in this case, because we have an entry at this index)
+    Just (t,_) | t == llTerm -> llIndex == Seq.length es - 1
+
+    -- we have an entry with higher term than the candidate
+    _ -> False
+
+handleRequestVote :: Eq nt => RequestVote nt -> Raft nt et rt mt ht ()
+handleRequestVote RequestVote{..} = do
+  rs.debugPrint ^$ "got a requestVote RPC"
+  ct <- use term
+  mvote <- use votedFor
+  es <- use logEntries
+  when (_rvTerm > ct) $ updateTerm _rvTerm >> becomeFollower
+  case mvote of
+    _      | _rvTerm < ct ->
+      -- this is an old candidate
+      sendRequestVoteResponse _candidateId False
+
+    Just c | c == _candidateId ->
+      -- already voted for this candidate
+      sendRequestVoteResponse _candidateId True
+
+    Just _ ->
+      -- already voted for a different candidate this term
+      sendRequestVoteResponse _candidateId False
+
+    Nothing -> if candidateLogCompare _lastLogIndex _lastLogTerm es
+      -- haven't voted yet, so vote for the candidate if it's log is at least as
+      -- up to date as ours
+      then do
+        setVotedFor (Just _candidateId)
+        sendRequestVoteResponse _candidateId True
+      else
+        sendRequestVoteResponse _candidateId False
+
+
 -- TODO
 --RequestVoteResponse rvr
 --if role != Follower and rv._rvTerm > self.term:

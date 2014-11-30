@@ -16,7 +16,7 @@ module Network.Tangaroa.Types
   , Config(..), nodeSet, nodeId, electionTimeoutRange, heartbeatTimeout
   , Role(..)
   , RaftEnv(..), cfg, conn, eventIn, eventOut, rs
-  , RaftState(..), role, logEntries, commitIndex, lastApplied, timerThread
+  , RaftState(..), role, votedFor, logEntries, commitIndex, lastApplied, timerThread
   , cYesVotes, cNoVotes, cUndecided, lNextIndex, lMatchIndex
   , AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm
   , aeEntries, leaderCommit
@@ -139,7 +139,7 @@ data RaftSpec nt et rt mt ht = RaftSpec
   , __readVotedFor     :: IO (Maybe nt)
 
     -- ^ Function to write the node voted for to persistent storage.
-  , __writeVotedFor    :: nt -> IO ()
+  , __writeVotedFor    :: Maybe nt -> IO ()
 
     -- ^ Function to apply a log entry to the state machine.
   , __applyLogEntry    :: et -> IO rt
@@ -202,7 +202,7 @@ data LiftedRaftSpec nt et rt mt ht t = LiftedRaftSpec
   , _readVotedFor     :: MonadTrans t => t IO (Maybe nt)
 
     -- ^ Function to write the node voted for to persistent storage.
-  , _writeVotedFor    :: MonadTrans t => nt -> t IO ()
+  , _writeVotedFor    :: MonadTrans t => Maybe nt -> t IO ()
 
     -- ^ Function to apply a log entry to the state machine.
   , _applyLogEntry    :: MonadTrans t => et -> t IO rt
@@ -249,6 +249,7 @@ liftRaftSpec RaftSpec{..} =
 data RaftState nt et = RaftState
   { _role        :: Role
   , _term        :: Term
+  , _votedFor    :: Maybe nt
   , _logEntries  :: Seq (Term,et)
   , _commitIndex :: Index
   , _lastApplied :: Index
