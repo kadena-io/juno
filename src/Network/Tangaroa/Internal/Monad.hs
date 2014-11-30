@@ -74,8 +74,19 @@ setTimedEvent e t = do
 
 initialRaftState :: RaftState nt et
 initialRaftState = RaftState
-  Follower startTerm Nothing Seq.empty startIndex startIndex Nothing
-  Map.empty Set.empty Set.empty Map.empty Map.empty
+  Follower   -- role
+  startTerm  -- term
+  Nothing    -- votedFor
+  Nothing    -- currentLeader
+  Seq.empty  -- log
+  startIndex -- commitIndex
+  startIndex -- lastApplied
+  Nothing    -- timerThread
+  Set.empty  -- cYesVotes
+  Set.empty  -- cNoVotes
+  Set.empty  -- cUndecided
+  Map.empty  -- lNextIndex
+  Map.empty  -- lMatchIndex
 
 setVotedFor :: Maybe nt -> Raft nt et rt mt ht ()
 setVotedFor mvote = do
@@ -86,7 +97,9 @@ becomeFollower :: Raft nt et rt mt ht ()
 becomeFollower = role .= Follower
 
 becomeLeader :: Raft nt et rt mt ht ()
-becomeLeader = role .= Leader
+becomeLeader = do
+  role .= Leader
+  (currentLeader .=) . Just =<< view (cfg.nodeId)
 --send initial heartbeat
 
 becomeCandidate :: Raft nt et rt mt ht ()
@@ -94,20 +107,34 @@ becomeCandidate = role .= Candidate
 --self._votes.add(self)
 --send RequestVote RPC
 
+applyCommand :: Command nt et -> Raft nt et rt mt ht (rt,nt)
+applyCommand Command{..} = do
+  apply <- view (rs.applyLogEntry)
+  result <- apply _entry
+  return (result, _clientId)
+
+sendResults :: Seq (rt,nt) -> Raft nt et rt mt ht ()
+sendResults results =
+  mapM (\(result,target) -> sendRPC target $ CMDR result) results >> return ()
+
 -- apply the un-applied log entries up through commitIndex
+-- and send results to the client if you are the leader
 -- TODO: have this done on a separate thread via event passing
 applyLogEntries :: Raft nt et rt mt ht ()
 applyLogEntries = do
   la <- use lastApplied
   ci <- use commitIndex
-  apply <- view (rs.applyLogEntry)
   le <- use logEntries
-  let leToApply = fmap snd . Seq.drop (la + 1) . Seq.take (ci + 1) $ le
-  results <- mapM apply leToApply
-  -- TODO: send results to client if you are the leader
+  let leToApply = fmap (^. _2) . Seq.drop (la + 1) . Seq.take (ci + 1) $ le
+  results <- mapM applyCommand leToApply
+  r <- use role
+  when (r == Leader) $ sendResults results
   lastApplied .= ci
 
 -- TODO: check this
+-- called by leaders sending appendEntries.
+-- given a replica's nextIndex, get the index and term to send as
+-- prevLog(Index/Term)
 logInfoForNextIndex :: Maybe Index -> Seq (Term,et) -> (Index,Term)
 logInfoForNextIndex mni es =
   case mni of
@@ -125,42 +152,34 @@ lastLogInfo es =
 
 sendAppendEntries :: Ord nt => nt -> Raft nt et rt mt ht ()
 sendAppendEntries target = do
-  send <- view (rs.sendMessage)
-  ser <- view (rs.serializeRPC)
   mni <- use $ lNextIndex.at target
   es <- use logEntries
   let (pli,plt) = logInfoForNextIndex mni es
   ct <- use term
   nid <- view (cfg.nodeId)
   ci <- use commitIndex
-  send target $ ser $ AE $
+  sendRPC target $ AE $
     AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci
 
 sendAppendEntriesResponse :: nt -> Bool -> Index -> Raft nt et rt mt ht ()
 sendAppendEntriesResponse target success lindex = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  send <- view (rs.sendMessage)
-  ser <- view (rs.serializeRPC)
-  send target $ ser $ AER $ AppendEntriesResponse ct nid success lindex
+  sendRPC target $ AER $ AppendEntriesResponse ct nid success lindex
 
 sendRequestVote :: nt -> Raft nt et rt mt ht ()
 sendRequestVote target = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  send <- view (rs.sendMessage)
-  ser <- view (rs.serializeRPC)
   es <- use logEntries
   let (lli, llt) = lastLogInfo es
-  send target $ ser $ RV $ RequestVote ct nid lli llt
+  sendRPC target $ RV $ RequestVote ct nid lli llt
 
 sendRequestVoteResponse :: nt -> Bool -> Raft nt et rt mt ht ()
 sendRequestVoteResponse target vote = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  send <- view (rs.sendMessage)
-  ser <- view (rs.serializeRPC)
-  send target $ ser $ RVR $ RequestVoteResponse ct nid vote
+  sendRPC target $ RVR $ RequestVoteResponse ct nid vote
 
 getNewElectionTimeout :: Raft nt et rt mt ht Int
 getNewElectionTimeout = view (cfg.electionTimeoutRange) >>= lift . randomRIO
@@ -183,18 +202,22 @@ updateTerm t = do
   setVotedFor Nothing
   term .= t
 
-appendLogEntries :: Index -> Seq (Term,et) -> Raft nt et rt mt ht ()
-appendLogEntries pli es = return () -- TODO: append entries to the log starting with the one after pli
+-- TODO: check this
+appendLogEntries :: Index -> Seq (Term, Command nt et) -> Raft nt et rt mt ht ()
+appendLogEntries pli es =
+  logEntries %= (Seq.>< es) . Seq.take (pli + 1)
 
 fork_ :: (Monad m, MonadFork m) => m () -> m ()
 fork_ a = fork a >>= return . const ()
 
 handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ht ()
 handleAppendEntries AppendEntries{..} = do
-  rs.debugPrint ^$ "got an appendEntries RPC"
+  debug "got an appendEntries RPC"
   ct <- use term
   when (_aeTerm > ct) $ updateTerm _aeTerm >> becomeFollower
-  when (_aeTerm == ct) resetElectionTimer
+  when (_aeTerm >= ct) $ do
+    resetElectionTimer
+    currentLeader .= Just _leaderId
   plmatch <- hasMatchingPrevLogEntry _prevLogIndex _prevLogTerm
   es <- use logEntries
   let oldLastEntry = Seq.length es - 1
@@ -217,7 +240,7 @@ seqIndex s i =
 
 handleAppendEntriesResponse :: Ord nt => AppendEntriesResponse nt -> Raft nt et rt mt ht ()
 handleAppendEntriesResponse AppendEntriesResponse{..} = do
-  rs.debugPrint ^$ "got an appendEntriesResponse RPC"
+  debug "got an appendEntriesResponse RPC"
   ct <- use term
   when (_aerTerm > ct) $ updateTerm _aerTerm >> becomeFollower
   r <- use role
@@ -236,18 +259,23 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
 -- checks to see what the largest N where a majority of
 -- the lMatchIndex set is >= N
 leaderUpdateCommitIndex :: Ord nt => Raft nt et rt mt ht ()
-leaderUpdateCommitIndex = return () -- TODO
---N = self.commitIndex+1
---while true:
---  count = 0
---  for matchIndex in self.matchIndex:
---    if matchIndex >= N:
---      count++
---  if self.log[N].term == self.term and count >= quorum_size:
---    N = N+1
---  else:
---    break
---self.commitIndex = N-1
+leaderUpdateCommitIndex = do
+  ci <- use commitIndex
+  lmi <- use lMatchIndex
+  qsize <- view quorumSize
+  ct <- use term
+  es <- use logEntries
+
+  -- get all indices in the log past commitIndex and take the ones where the entry's
+  -- term is equal to the current term
+  let ctinds = filter (\i -> maybe False ((== ct) . fst) (seqIndex es i))
+                      [(ci + 1)..(Seq.length es - 1)]
+
+  -- get the prefix of these indices where a quorum of nodes have matching
+  -- indices for that entry
+  let qcinds = takeWhile (\i -> Map.size (Map.filter (>= i) lmi) >= qsize) ctinds
+
+  when (not $ null qcinds) $ commitIndex .= last qcinds
 
 -- compare a candidate's prevLog(Index/Term) to our log return true if the
 -- candidate's log is at least as up to date as ours measured first by term at
@@ -260,7 +288,7 @@ candidateLogCompare llIndex llTerm es =
     Nothing -> True
 
     -- we have an entry, but the candidate's entry has a higher term
-    Just (t,_) | t > llTerm -> True
+    Just (t,_) | t < llTerm -> True
 
     -- we have an entry with matching term, so return true if the candidate's
     -- last log entry is also the last log entry we have (it will never be
@@ -272,7 +300,7 @@ candidateLogCompare llIndex llTerm es =
 
 handleRequestVote :: Eq nt => RequestVote nt -> Raft nt et rt mt ht ()
 handleRequestVote RequestVote{..} = do
-  rs.debugPrint ^$ "got a requestVote RPC"
+  debug "got a requestVote RPC"
   ct <- use term
   mvote <- use votedFor
   es <- use logEntries
@@ -299,22 +327,48 @@ handleRequestVote RequestVote{..} = do
       else
         sendRequestVoteResponse _candidateId False
 
-handleRequestVoteResponse :: RequestVoteResponse nt -> Raft nt et rt mt ht ()
-handleRequestVoteResponse rvr =
-  lift $ putStrLn "Got a requestVoteResponse RPC."
--- TODO
---if role != Follower and rvr._rvrTerm > self.term:
---  self.term = rvr._aerTerm
---  self.becomeFollower --else:
---  if rvr._voteGranted:
---    self._votes.add(nt)
---    if self._votes.size() >= quorum_size:
---      self.becomeLeader
+debug :: String -> Raft nt et rt mt ht ()
+debug s = view (rs.debugPrint) >>= ($ s)
 
-handleCommand :: Command et -> Raft nt et rt mt ht ()
-handleCommand cmd =
-  lift $ putStrLn "Got a command RPC."
--- TODO
+handleRequestVoteResponse :: Ord nt => RequestVoteResponse nt -> Raft nt et rt mt ht ()
+handleRequestVoteResponse RequestVoteResponse{..} = do
+  debug "got a requestVoteResponse RPC"
+  ct <- use term
+  when (_rvrTerm > ct) $ updateTerm _rvrTerm >> becomeFollower
+  cUndecided %= Set.delete _rvrNodeId
+  if _voteGranted
+    then do
+      cYesVotes %= Set.insert _rvrNodeId
+      nyes <- fmap Set.size (use cYesVotes)
+      qsize <- view quorumSize
+      when (nyes >= qsize) $ becomeLeader
+    else
+      cNoVotes %= Set.insert _rvrNodeId
+
+sendRPC :: nt -> RPC nt et rt -> Raft nt et rt mt ht ()
+sendRPC target rpc = do
+  send <- view (rs.sendMessage)
+  ser <- view (rs.serializeRPC)
+  send target $ ser rpc
+
+handleCommand :: Command nt et -> Raft nt et rt mt ht ()
+handleCommand cmd = do
+  debug "got a command RPC"
+  r <- use role
+  ct <- use term
+  mlid <- use currentLeader
+  case (r, mlid) of
+    (Leader, _) ->
+      -- we're the leader, so append this to our log with the current term
+      logEntries %= (Seq.|> (ct, cmd))
+    (_, Just lid) -> do
+      -- we're not the leader, but we know who the leader is, so forward this
+      -- command
+      sendRPC lid $ CMD cmd
+    (_, Nothing) ->
+      -- we're not the leader, and we don't know who the leader is, so can't do
+      -- anything (TODO)
+      return ()
 
 -- like $, but the function is a lens from the reader environment with a
 -- pure function as its target
@@ -340,7 +394,8 @@ infixl 1 >>=^
   m a -> Getting (a -> m b) r (a -> m b) -> m b
 ma >>=^ lf = view lf >>= (ma >>=)
 
--- like the above, except both the function and the argument are reader lenses
+-- like the above, except both the function and the argument are reader
+-- lenses
 (^>>=^) :: forall (m :: * -> *) b r a. MonadReader r m =>
   Getting a r a -> Getting (a -> m b) r (a -> m b) -> m b
 infixl 1 ^>>=^
@@ -350,6 +405,3 @@ la ^>>=^ lf = view lf >>= (view la >>=)
 infixl 1 >>=$
 (>>=$) :: Monad m => m (a -> m b) -> a -> m b
 mmf >>=$ x = mmf >>= ($ x)
-
--- lets you do things like:
--- rs.sendMessage ^$^ cfg.nodeId >>=$ m

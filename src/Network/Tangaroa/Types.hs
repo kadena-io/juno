@@ -15,15 +15,15 @@ module Network.Tangaroa.Types
   , Index, startIndex
   , Config(..), nodeSet, nodeId, electionTimeoutRange, heartbeatTimeout
   , Role(..)
-  , RaftEnv(..), cfg, conn, eventIn, eventOut, rs
-  , RaftState(..), role, votedFor, logEntries, commitIndex, lastApplied, timerThread
+  , RaftEnv(..), cfg, quorumSize, conn, eventIn, eventOut, rs
+  , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
   , cYesVotes, cNoVotes, cUndecided, lNextIndex, lMatchIndex
   , AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm
   , aeEntries, leaderCommit
   , AppendEntriesResponse(..), aerTerm, aerSuccess, aerNodeId, aerIndex
   , RequestVote(..), rvTerm, candidateId, lastLogIndex, lastLogTerm
-  , RequestVoteResponse(..), rvrTerm, voterId, voteGranted
-  , Command(..), entry
+  , RequestVoteResponse(..), rvrTerm, rvrNodeId, voteGranted
+  , Command(..), entry, clientId
   , RPC(..)
   , term
   , Event(..)
@@ -34,7 +34,6 @@ import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad.RWS
 import Data.Binary
-import Data.ByteString (ByteString)
 import Data.Sequence (Seq)
 import Data.Map (Map)
 import Data.Set (Set)
@@ -56,20 +55,27 @@ startIndex :: Index
 startIndex = (-1)
 
 data Config nt = Config
-  { _nodeSet               :: Set nt
-  , _nodeId                :: nt
-  , _electionTimeoutRange  :: (Int,Int) -- in microseconds
-  , _heartbeatTimeout      :: Int       -- in microseconds
+  { _nodeSet              :: Set nt
+  , _nodeId               :: nt
+  , _electionTimeoutRange :: (Int,Int) -- in microseconds
+  , _heartbeatTimeout     :: Int       -- in microseconds
   }
   deriving (Show, Generic)
 makeLenses ''Config
+
+data Command nt et = Command
+  { _entry    :: et
+  , _clientId :: nt
+  }
+  deriving (Show, Read, Generic)
+makeLenses ''Command
 
 data AppendEntries nt et = AppendEntries
   { _aeTerm       :: Term
   , _leaderId     :: nt
   , _prevLogIndex :: Index
   , _prevLogTerm  :: Term
-  , _aeEntries    :: Seq (Term,et)
+  , _aeEntries    :: Seq (Term, Command nt et)
   , _leaderCommit :: Index
   }
   deriving (Show, Read, Generic)
@@ -95,23 +101,17 @@ makeLenses ''RequestVote
 
 data RequestVoteResponse nt = RequestVoteResponse
   { _rvrTerm     :: Term
-  , _voterId     :: nt
+  , _rvrNodeId   :: nt
   , _voteGranted :: Bool
   }
   deriving (Show, Read, Generic)
 makeLenses ''RequestVoteResponse
 
-data Command et = Command
-  { _entry :: et
-  }
-  deriving (Show, Read, Generic)
-makeLenses ''Command
-
 data RPC nt et rt = AE (AppendEntries nt et)
                   | AER (AppendEntriesResponse nt)
                   | RV (RequestVote nt)
                   | RVR (RequestVoteResponse nt)
-                  | CMD (Command et)
+                  | CMD (Command nt et)
                   | CMDR rt
                   | DBG String
   deriving (Show, Read, Generic)
@@ -247,28 +247,30 @@ liftRaftSpec RaftSpec{..} =
     }
 
 data RaftState nt et = RaftState
-  { _role        :: Role
-  , _term        :: Term
-  , _votedFor    :: Maybe nt
-  , _logEntries  :: Seq (Term,et)
-  , _commitIndex :: Index
-  , _lastApplied :: Index
-  , _timerThread :: Maybe ThreadId
-  , _cYesVotes   :: Map nt ByteString
-  , _cNoVotes    :: Set nt
-  , _cUndecided  :: Set nt
-  , _lNextIndex  :: Map nt Index
-  , _lMatchIndex :: Map nt Index
+  { _role          :: Role
+  , _term          :: Term
+  , _votedFor      :: Maybe nt
+  , _currentLeader :: Maybe nt
+  , _logEntries    :: Seq (Term, Command nt et)
+  , _commitIndex   :: Index
+  , _lastApplied   :: Index
+  , _timerThread   :: Maybe ThreadId
+  , _cYesVotes     :: Set nt
+  , _cNoVotes      :: Set nt
+  , _cUndecided    :: Set nt
+  , _lNextIndex    :: Map nt Index
+  , _lMatchIndex   :: Map nt Index
   }
   deriving (Show)
 makeLenses ''RaftState
 
 data RaftEnv nt et rt mt ht = RaftEnv
-  { _cfg      :: Config nt
-  , _conn     :: ht
-  , _eventIn  :: InChan (Event mt)
-  , _eventOut :: OutChan (Event mt)
-  , _rs       :: LiftedRaftSpec nt et rt mt ht (RWST (RaftEnv nt et rt mt ht) () (RaftState nt et))
+  { _cfg        :: Config nt
+  , _quorumSize :: Int
+  , _conn       :: ht
+  , _eventIn    :: InChan (Event mt)
+  , _eventOut   :: OutChan (Event mt)
+  , _rs         :: LiftedRaftSpec nt et rt mt ht (RWST (RaftEnv nt et rt mt ht) () (RaftState nt et))
   }
 makeLenses ''RaftEnv
 
@@ -280,6 +282,6 @@ instance (Binary nt, Binary et) => Binary (AppendEntries nt et)
 instance Binary nt              => Binary (AppendEntriesResponse nt)
 instance Binary nt              => Binary (RequestVote nt)
 instance Binary nt              => Binary (RequestVoteResponse nt)
-instance Binary et              => Binary (Command et)
+instance (Binary nt, Binary et) => Binary (Command nt et)
 
 instance (Binary nt, Binary et, Binary rt) => Binary (RPC nt et rt)

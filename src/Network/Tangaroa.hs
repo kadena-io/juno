@@ -5,24 +5,29 @@ module Network.Tangaroa
   , module Network.Tangaroa.Types
   ) where
 
-import Network.Tangaroa.Types
-import Network.Tangaroa.Internal.Monad
-import System.Random
-
+import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad
-import Control.Monad.Trans
-
 import Control.Monad.RWS
+import qualified Data.Set as Set
+import System.Random
 
-import Control.Concurrent.Chan.Unagi
+import Network.Tangaroa.Types
+import Network.Tangaroa.Internal.Monad
+
+getQsize :: Int -> Int
+getQsize n =
+  if even n
+    then n `div` 2 + 1
+    else (n - 1) `div` 2 + 1
 
 runRaft :: Ord nt => RaftSpec nt et rt mt ht -> IO ()
 runRaft spec@RaftSpec{..} = do
   rconf <- __readCfg
+  let qsize = getQsize $ Set.size $ rconf ^. nodeSet
   (ein, eout) <- newChan
   h <- __openConnection (rconf ^. nodeId)
-  runRWS_ raft (RaftEnv rconf h ein eout (liftRaftSpec spec)) initialRaftState
+  runRWS_ raft (RaftEnv rconf qsize h ein eout (liftRaftSpec spec)) initialRaftState
 
 runRWS_ :: Monad m => RWST r w s m a -> r -> s -> m ()
 runRWS_ ma r s = runRWST ma r s >> return ()
