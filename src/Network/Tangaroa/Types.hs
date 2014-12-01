@@ -8,14 +8,14 @@ module Network.Tangaroa.Types
   , RaftSpec(..)
   , LiftedRaftSpec(..)
   , readCfg, readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
-  , readVotedFor, writeVotedFor, applyLogEntry, openConnection, serializeRPC
+  , readVotedFor, writeVotedFor, applyLogEntry, serializeRPC
   , deserializeRPC, sendMessage, getMessage, debugPrint
   , liftRaftSpec
   , Term, startTerm, succTerm
   , Index, startIndex
   , Config(..), nodeSet, nodeId, electionTimeoutRange, heartbeatTimeout
   , Role(..)
-  , RaftEnv(..), cfg, quorumSize, conn, eventIn, eventOut, rs
+  , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
   , cYesVotes, cNoVotes, cUndecided, lNextIndex, lMatchIndex
   , AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm
@@ -118,7 +118,7 @@ data RPC nt et rt = AE (AppendEntries nt et)
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
-data RaftSpec nt et rt mt ht = RaftSpec
+data RaftSpec nt et rt mt = RaftSpec
   {
     -- ^ Function to read configuration.
     __readCfg          :: IO (Config nt)
@@ -144,9 +144,6 @@ data RaftSpec nt et rt mt ht = RaftSpec
     -- ^ Function to apply a log entry to the state machine.
   , __applyLogEntry    :: et -> IO rt
 
-    -- ^ Function to open a connection handle.
-  , __openConnection   :: nt -> IO ht
-
     -- ^ Function to serialize an RPC.
   , __serializeRPC     :: RPC nt et rt -> mt
 
@@ -157,7 +154,7 @@ data RaftSpec nt et rt mt ht = RaftSpec
   , __sendMessage      :: nt -> mt -> IO ()
 
     -- ^ Function to get the next message.
-  , __getMessage       :: ht -> IO mt
+  , __getMessage       :: IO mt
 
     -- ^ Function to log a debug message (no newline).
   , __debugPrint       :: String -> IO ()
@@ -181,7 +178,7 @@ data Event mt = Message mt
 
 -- | A version of RaftSpec where all IO functions are lifted
 -- into the Raft monad.
-data LiftedRaftSpec nt et rt mt ht t = LiftedRaftSpec
+data LiftedRaftSpec nt et rt mt t = LiftedRaftSpec
   {
     -- ^ Function to read configuration.
     _readCfg          :: MonadTrans t => t IO (Config nt)
@@ -207,9 +204,6 @@ data LiftedRaftSpec nt et rt mt ht t = LiftedRaftSpec
     -- ^ Function to apply a log entry to the state machine.
   , _applyLogEntry    :: MonadTrans t => et -> t IO rt
 
-    -- ^ Function to open a connection handle.
-  , _openConnection   :: MonadTrans t => nt -> t IO ht
-
     -- ^ Function to serialize an RPC.
   , _serializeRPC     :: RPC nt et rt -> mt
 
@@ -220,14 +214,14 @@ data LiftedRaftSpec nt et rt mt ht t = LiftedRaftSpec
   , _sendMessage      :: MonadTrans t => nt -> mt -> t IO ()
 
     -- ^ Function to get the next message.
-  , _getMessage       :: MonadTrans t => ht -> t IO mt
+  , _getMessage       :: MonadTrans t => t IO mt
 
     -- ^ Function to log a debug message (no newline).
   , _debugPrint       :: String -> t IO ()
   }
 makeLenses ''LiftedRaftSpec
 
-liftRaftSpec :: MonadTrans t => RaftSpec nt et rt mt ht -> LiftedRaftSpec nt et rt mt ht t
+liftRaftSpec :: MonadTrans t => RaftSpec nt et rt mt -> LiftedRaftSpec nt et rt mt t
 liftRaftSpec RaftSpec{..} =
   LiftedRaftSpec
     { _readCfg         = lift __readCfg
@@ -238,11 +232,10 @@ liftRaftSpec RaftSpec{..} =
     , _readVotedFor    = lift __readVotedFor
     , _writeVotedFor   = lift . __writeVotedFor
     , _applyLogEntry   = lift . __applyLogEntry
-    , _openConnection  = lift . __openConnection
     , _serializeRPC    = __serializeRPC
     , _deserializeRPC  = __deserializeRPC
     , _sendMessage     = \n m -> lift (__sendMessage n m)
-    , _getMessage      = lift . __getMessage
+    , _getMessage      = lift __getMessage
     , _debugPrint      = lift . __debugPrint
     }
 
@@ -264,17 +257,16 @@ data RaftState nt et = RaftState
   deriving (Show)
 makeLenses ''RaftState
 
-data RaftEnv nt et rt mt ht = RaftEnv
+data RaftEnv nt et rt mt = RaftEnv
   { _cfg        :: Config nt
   , _quorumSize :: Int
-  , _conn       :: ht
   , _eventIn    :: InChan (Event mt)
   , _eventOut   :: OutChan (Event mt)
-  , _rs         :: LiftedRaftSpec nt et rt mt ht (RWST (RaftEnv nt et rt mt ht) () (RaftState nt et))
+  , _rs         :: LiftedRaftSpec nt et rt mt (RWST (RaftEnv nt et rt mt) () (RaftState nt et))
   }
 makeLenses ''RaftEnv
 
-type Raft nt et rt mt ht a = RWST (RaftEnv nt et rt mt ht) () (RaftState nt et) IO a
+type Raft nt et rt mt a = RWST (RaftEnv nt et rt mt) () (RaftState nt et) IO a
 
 instance Binary Term
 

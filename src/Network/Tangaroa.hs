@@ -20,25 +20,24 @@ getQsize n =
     then n `div` 2 + 1
     else (n - 1) `div` 2 + 1
 
-runRaft :: Ord nt => RaftSpec nt et rt mt ht -> IO ()
+runRaft :: Ord nt => RaftSpec nt et rt mt -> IO ()
 runRaft spec@RaftSpec{..} = do
   rconf <- __readCfg
   let qsize = getQsize $ Set.size $ rconf ^. nodeSet
   (ein, eout) <- newChan
-  h <- __openConnection (rconf ^. nodeId)
-  runRWS_ raft (RaftEnv rconf qsize h ein eout (liftRaftSpec spec)) initialRaftState
+  runRWS_ raft (RaftEnv rconf qsize ein eout (liftRaftSpec spec)) initialRaftState
 
 runRWS_ :: Monad m => RWST r w s m a -> r -> s -> m ()
 runRWS_ ma r s = runRWST ma r s >> return ()
 
-raft :: Ord nt => Raft nt et rt mt ht ()
+raft :: Ord nt => Raft nt et rt mt ()
 raft = do
   fork_ messageReceiver
   resetElectionTimer
   handleEvents
 
 -- | Thread to take incoming messages and write them to the event queue.
-messageReceiver :: Raft nt et rt mt ht ()
-messageReceiver =
-  forever $ conn ^>>=^ rs.getMessage >>= sendEvent . Message
-
+messageReceiver :: Raft nt et rt mt ()
+messageReceiver = do
+  gm <- view (rs.getMessage)
+  forever $ gm >>= sendEvent . Message

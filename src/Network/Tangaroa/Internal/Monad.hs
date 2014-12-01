@@ -4,9 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Network.Tangaroa.Internal.Monad
-  ( Raft
-  , RaftEnv(..), cfg, conn, eventIn, eventOut
-  , initialRaftState
+  ( initialRaftState
   , fork, fork_
   , sendEvent
   , handleEvents
@@ -33,6 +31,7 @@ module Network.Tangaroa.Internal.Monad
   , (^$)
   , ($^)
   , (^$^)
+  , (^>>=)
   , (>>=^)
   , (^>>=^)
   , (>>=$)
@@ -57,23 +56,23 @@ import Network.Tangaroa.Types
 
 import System.Random
 
-sendEvent :: Event mt -> Raft nt et rt mt ht ()
+sendEvent :: Event mt -> Raft nt et rt mt ()
 sendEvent event = do
   ein <- view eventIn
   lift $ writeChan ein event
 
-wait :: Int -> Raft nt et rt mt ht ()
+wait :: Int -> Raft nt et rt mt ()
 wait t = lift (threadDelay t)
 
 -- | Cancel any existing timer.
-cancelTimer :: Raft nt et rt mt ht ()
+cancelTimer :: Raft nt et rt mt ()
 cancelTimer = do
   use timerThread >>= maybe (return ()) (lift . killThread)
   timerThread .= Nothing
 
 -- | Cancels any pending timer and sets a new timer to trigger an event after t
 -- microseconds.
-setTimedEvent :: Event mt -> Int -> Raft nt et rt mt ht ()
+setTimedEvent :: Event mt -> Int -> Raft nt et rt mt ()
 setTimedEvent e t = do
   cancelTimer
   tmr <- fork $ wait t >> sendEvent e
@@ -95,35 +94,35 @@ initialRaftState = RaftState
   Map.empty  -- lNextIndex
   Map.empty  -- lMatchIndex
 
-setVotedFor :: Maybe nt -> Raft nt et rt mt ht ()
+setVotedFor :: Maybe nt -> Raft nt et rt mt ()
 setVotedFor mvote = do
   rs.writeVotedFor ^$ mvote
   votedFor .= mvote
 
-becomeFollower :: Raft nt et rt mt ht ()
+becomeFollower :: Raft nt et rt mt ()
 becomeFollower = do
   role .= Follower
   resetElectionTimer
 
-otherNodes :: Ord nt => Raft nt et rt mt ht (Set nt)
+otherNodes :: Ord nt => Raft nt et rt mt (Set nt)
 otherNodes = do
   nset <- view (cfg.nodeSet)
   nid <- view (cfg.nodeId)
   return (Set.delete nid nset)
 
-becomeLeader :: Ord nt => Raft nt et rt mt ht ()
+becomeLeader :: Ord nt => Raft nt et rt mt ()
 becomeLeader = do
   role .= Leader
   (currentLeader .=) . Just =<< view (cfg.nodeId)
   mapM_ sendAppendEntries =<< otherNodes
   resetHeartbeatTimer
 
-bumpTerm :: Raft nt et rt mt ht ()
+bumpTerm :: Raft nt et rt mt ()
 bumpTerm = do
   term %= succTerm
   term .>>=^ rs.writeTermNumber
 
-becomeCandidate :: Ord nt => Raft nt et rt mt ht ()
+becomeCandidate :: Ord nt => Raft nt et rt mt ()
 becomeCandidate = do
   role .= Candidate
   nid <- view (cfg.nodeId)
@@ -136,20 +135,20 @@ becomeCandidate = do
   mapM_ sendRequestVote =<< use cUndecided
   resetHeartbeatTimer
 
-applyCommand :: Command nt et -> Raft nt et rt mt ht (rt,nt)
+applyCommand :: Command nt et -> Raft nt et rt mt (rt,nt)
 applyCommand Command{..} = do
   apply <- view (rs.applyLogEntry)
   result <- apply _entry
   return (result, _clientId)
 
-sendResults :: Seq (rt,nt) -> Raft nt et rt mt ht ()
+sendResults :: Seq (rt,nt) -> Raft nt et rt mt ()
 sendResults results =
   mapM (\(result,target) -> sendRPC target $ CMDR result) results >> return ()
 
 -- apply the un-applied log entries up through commitIndex
 -- and send results to the client if you are the leader
 -- TODO: have this done on a separate thread via event passing
-applyLogEntries :: Raft nt et rt mt ht ()
+applyLogEntries :: Raft nt et rt mt ()
 applyLogEntries = do
   la <- use lastApplied
   ci <- use commitIndex
@@ -179,7 +178,7 @@ lastLogInfo es =
     Seq.EmptyR      -> (startIndex, startTerm)
     _ Seq.:> (t, _) -> (Seq.length es - 1, t)
 
-sendAppendEntries :: Ord nt => nt -> Raft nt et rt mt ht ()
+sendAppendEntries :: Ord nt => nt -> Raft nt et rt mt ()
 sendAppendEntries target = do
   mni <- use $ lNextIndex.at target
   es <- use logEntries
@@ -190,13 +189,13 @@ sendAppendEntries target = do
   sendRPC target $ AE $
     AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci
 
-sendAppendEntriesResponse :: nt -> Bool -> Index -> Raft nt et rt mt ht ()
+sendAppendEntriesResponse :: nt -> Bool -> Index -> Raft nt et rt mt ()
 sendAppendEntriesResponse target success lindex = do
   ct <- use term
   nid <- view (cfg.nodeId)
   sendRPC target $ AER $ AppendEntriesResponse ct nid success lindex
 
-sendRequestVote :: nt -> Raft nt et rt mt ht ()
+sendRequestVote :: nt -> Raft nt et rt mt ()
 sendRequestVote target = do
   ct <- use term
   nid <- view (cfg.nodeId)
@@ -204,42 +203,42 @@ sendRequestVote target = do
   let (lli, llt) = lastLogInfo es
   sendRPC target $ RV $ RequestVote ct nid lli llt
 
-sendRequestVoteResponse :: nt -> Bool -> Raft nt et rt mt ht ()
+sendRequestVoteResponse :: nt -> Bool -> Raft nt et rt mt ()
 sendRequestVoteResponse target vote = do
   ct <- use term
   nid <- view (cfg.nodeId)
   sendRPC target $ RVR $ RequestVoteResponse ct nid vote
 
-getNewElectionTimeout :: Raft nt et rt mt ht Int
+getNewElectionTimeout :: Raft nt et rt mt Int
 getNewElectionTimeout = view (cfg.electionTimeoutRange) >>= lift . randomRIO
 
-resetElectionTimer :: Raft nt et rt mt ht ()
+resetElectionTimer :: Raft nt et rt mt ()
 resetElectionTimer = do
   timeout <- getNewElectionTimeout
   setTimedEvent (ElectionTimeout $ show (timeout `div` 1000) ++ "ms") timeout
 
-resetHeartbeatTimer :: Raft nt et rt mt ht ()
+resetHeartbeatTimer :: Raft nt et rt mt ()
 resetHeartbeatTimer = do
   timeout <- view (cfg.heartbeatTimeout)
   setTimedEvent (HeartbeatTimeout $ show (timeout `div` 1000) ++ "ms") timeout
 
-hasMatchingPrevLogEntry :: Index -> Term -> Raft nt et rt mt ht Bool
+hasMatchingPrevLogEntry :: Index -> Term -> Raft nt et rt mt Bool
 hasMatchingPrevLogEntry pli plt = do
   es <- use logEntries
   case seqIndex es pli of
     Nothing    -> return False
     Just (t,_) -> return (t == plt)
 
-updateTerm :: Term -> Raft nt et rt mt ht ()
+updateTerm :: Term -> Raft nt et rt mt ()
 updateTerm t = do
   rs.writeTermNumber ^$ t
   setVotedFor Nothing
   term .= t
 
-getEvent :: Raft nt et rt mt ht (Event mt)
+getEvent :: Raft nt et rt mt (Event mt)
 getEvent = lift . readChan =<< view eventOut
 
-handleEvents :: Ord nt => Raft nt et rt mt ht ()
+handleEvents :: Ord nt => Raft nt et rt mt ()
 handleEvents = forever $ do
   e <- getEvent
   case e of
@@ -247,12 +246,12 @@ handleEvents = forever $ do
     ElectionTimeout s  -> handleElectionTimeout s
     HeartbeatTimeout s -> handleHeartbeatTimeout s
 
-handleElectionTimeout :: Ord nt => String -> Raft nt et rt mt ht ()
+handleElectionTimeout :: Ord nt => String -> Raft nt et rt mt ()
 handleElectionTimeout s = do
   debug $ "election timeout: " ++ s
   becomeCandidate
 
-handleHeartbeatTimeout :: Ord nt => String -> Raft nt et rt mt ht ()
+handleHeartbeatTimeout :: Ord nt => String -> Raft nt et rt mt ()
 handleHeartbeatTimeout s = do
   debug $ "heartbeat timeout: " ++ s
   r <- use role
@@ -267,7 +266,7 @@ handleHeartbeatTimeout s = do
       -- this shouldn't happen as becomeFollower already calls this
       resetElectionTimer
 
-handleMessage :: Ord nt => mt -> Raft nt et rt mt ht ()
+handleMessage :: Ord nt => mt -> Raft nt et rt mt ()
 handleMessage m = do
   dm <- rs.deserializeRPC ^$ m
   case dm of
@@ -283,14 +282,14 @@ handleMessage m = do
 
 
 -- TODO: check this
-appendLogEntries :: Index -> Seq (Term, Command nt et) -> Raft nt et rt mt ht ()
+appendLogEntries :: Index -> Seq (Term, Command nt et) -> Raft nt et rt mt ()
 appendLogEntries pli es =
   logEntries %= (Seq.>< es) . Seq.take (pli + 1)
 
 fork_ :: (Monad m, MonadFork m) => m () -> m ()
 fork_ a = fork a >>= return . const ()
 
-handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ht ()
+handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ()
 handleAppendEntries AppendEntries{..} = do
   debug "got an appendEntries RPC"
   ct <- use term
@@ -318,7 +317,7 @@ seqIndex s i =
     then Just (Seq.index s i)
     else Nothing
 
-handleAppendEntriesResponse :: Ord nt => AppendEntriesResponse nt -> Raft nt et rt mt ht ()
+handleAppendEntriesResponse :: Ord nt => AppendEntriesResponse nt -> Raft nt et rt mt ()
 handleAppendEntriesResponse AppendEntriesResponse{..} = do
   debug "got an appendEntriesResponse RPC"
   ct <- use term
@@ -338,7 +337,7 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
 -- called only as leader
 -- checks to see what the largest N where a majority of
 -- the lMatchIndex set is >= N
-leaderUpdateCommitIndex :: Ord nt => Raft nt et rt mt ht ()
+leaderUpdateCommitIndex :: Ord nt => Raft nt et rt mt ()
 leaderUpdateCommitIndex = do
   ci <- use commitIndex
   lmi <- use lMatchIndex
@@ -378,7 +377,7 @@ candidateLogCompare llIndex llTerm es =
     -- we have an entry with higher term than the candidate
     _ -> False
 
-handleRequestVote :: Eq nt => RequestVote nt -> Raft nt et rt mt ht ()
+handleRequestVote :: Eq nt => RequestVote nt -> Raft nt et rt mt ()
 handleRequestVote RequestVote{..} = do
   debug "got a requestVote RPC"
   ct <- use term
@@ -407,10 +406,10 @@ handleRequestVote RequestVote{..} = do
       else
         sendRequestVoteResponse _candidateId False
 
-debug :: String -> Raft nt et rt mt ht ()
+debug :: String -> Raft nt et rt mt ()
 debug s = view (rs.debugPrint) >>= ($ s)
 
-handleRequestVoteResponse :: Ord nt => RequestVoteResponse nt -> Raft nt et rt mt ht ()
+handleRequestVoteResponse :: Ord nt => RequestVoteResponse nt -> Raft nt et rt mt ()
 handleRequestVoteResponse RequestVoteResponse{..} = do
   debug "got a requestVoteResponse RPC"
   ct <- use term
@@ -425,13 +424,13 @@ handleRequestVoteResponse RequestVoteResponse{..} = do
     else
       cNoVotes %= Set.insert _rvrNodeId
 
-sendRPC :: nt -> RPC nt et rt -> Raft nt et rt mt ht ()
+sendRPC :: nt -> RPC nt et rt -> Raft nt et rt mt ()
 sendRPC target rpc = do
   send <- view (rs.sendMessage)
   ser <- view (rs.serializeRPC)
   send target $ ser rpc
 
-handleCommand :: Command nt et -> Raft nt et rt mt ht ()
+handleCommand :: Command nt et -> Raft nt et rt mt ()
 handleCommand cmd = do
   debug "got a command RPC"
   r <- use role
@@ -480,6 +479,11 @@ ma >>=^ lf = view lf >>= (ma >>=)
   Getting a r a -> Getting (a -> m b) r (a -> m b) -> m b
 infixl 1 ^>>=^
 la ^>>=^ lf = view lf >>= (view la >>=)
+
+(^>>=) :: forall (m :: * -> *) a b r. MonadReader r m =>
+  Getting a r a -> (a -> m b) -> m b
+infixl 1 ^>>=
+la ^>>= f = view la >>= f
 
 (.>>=^) :: forall a (m :: * -> *) b r s.
   (MonadReader r m, MonadState s m) =>
