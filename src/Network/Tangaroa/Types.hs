@@ -175,8 +175,8 @@ data Role = Follower
   deriving (Show, Generic, Eq)
 
 data Event mt = Message mt
-              | Election String
-              | Heartbeat String
+              | ElectionTimeout String
+              | HeartbeatTimeout String
   deriving (Show)
 
 -- | A version of RaftSpec where all IO functions are lifted

@@ -9,13 +9,18 @@ module Network.Tangaroa.Internal.Monad
   , initialRaftState
   , fork, fork_
   , sendEvent
+  , handleEvents
   , wait
   , becomeFollower
   , becomeLeader
   , becomeCandidate
+  , otherNodes
   , applyLogEntries
   , cancelTimer
   , setTimedEvent
+  , resetElectionTimer
+  , resetHeartbeatTimer
+  , debug
   , sendAppendEntries
   , sendAppendEntriesResponse
   , sendRequestVote
@@ -33,17 +38,19 @@ module Network.Tangaroa.Internal.Monad
   , (>>=$)
   ) where
 
-import Prelude hiding (mapM)
+import Prelude hiding (mapM, mapM_)
 import Control.Applicative
 import Control.Concurrent (threadDelay, killThread)
 import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad.Fork.Class
-import Control.Monad.RWS hiding (mapM)
+import Control.Monad.RWS hiding (mapM, mapM_)
 import Data.Sequence (Seq)
+import Data.Set (Set)
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
 import qualified Data.Map as Map
+import Data.Foldable (mapM_)
 import Data.Traversable (mapM)
 
 import Network.Tangaroa.Types
@@ -94,18 +101,40 @@ setVotedFor mvote = do
   votedFor .= mvote
 
 becomeFollower :: Raft nt et rt mt ht ()
-becomeFollower = role .= Follower
+becomeFollower = do
+  role .= Follower
+  resetElectionTimer
 
-becomeLeader :: Raft nt et rt mt ht ()
+otherNodes :: Ord nt => Raft nt et rt mt ht (Set nt)
+otherNodes = do
+  nset <- view (cfg.nodeSet)
+  nid <- view (cfg.nodeId)
+  return (Set.delete nid nset)
+
+becomeLeader :: Ord nt => Raft nt et rt mt ht ()
 becomeLeader = do
   role .= Leader
   (currentLeader .=) . Just =<< view (cfg.nodeId)
---send initial heartbeat
+  mapM_ sendAppendEntries =<< otherNodes
+  resetHeartbeatTimer
 
-becomeCandidate :: Raft nt et rt mt ht ()
-becomeCandidate = role .= Candidate
---self._votes.add(self)
---send RequestVote RPC
+bumpTerm :: Raft nt et rt mt ht ()
+bumpTerm = do
+  term %= succTerm
+  term .>>=^ rs.writeTermNumber
+
+becomeCandidate :: Ord nt => Raft nt et rt mt ht ()
+becomeCandidate = do
+  role .= Candidate
+  nid <- view (cfg.nodeId)
+  nset <- view (cfg.nodeSet)
+  bumpTerm
+  setVotedFor $ Just nid
+  cYesVotes  .= Set.singleton nid -- vote for yourself
+  cUndecided .= Set.delete nid nset
+  cNoVotes   .= Set.empty
+  mapM_ sendRequestVote =<< use cUndecided
+  resetHeartbeatTimer
 
 applyCommand :: Command nt et -> Raft nt et rt mt ht (rt,nt)
 applyCommand Command{..} = do
@@ -187,7 +216,12 @@ getNewElectionTimeout = view (cfg.electionTimeoutRange) >>= lift . randomRIO
 resetElectionTimer :: Raft nt et rt mt ht ()
 resetElectionTimer = do
   timeout <- getNewElectionTimeout
-  setTimedEvent (Election $ show (timeout `div` 1000) ++ "ms") timeout
+  setTimedEvent (ElectionTimeout $ show (timeout `div` 1000) ++ "ms") timeout
+
+resetHeartbeatTimer :: Raft nt et rt mt ht ()
+resetHeartbeatTimer = do
+  timeout <- view (cfg.heartbeatTimeout)
+  setTimedEvent (HeartbeatTimeout $ show (timeout `div` 1000) ++ "ms") timeout
 
 hasMatchingPrevLogEntry :: Index -> Term -> Raft nt et rt mt ht Bool
 hasMatchingPrevLogEntry pli plt = do
@@ -201,6 +235,52 @@ updateTerm t = do
   rs.writeTermNumber ^$ t
   setVotedFor Nothing
   term .= t
+
+getEvent :: Raft nt et rt mt ht (Event mt)
+getEvent = lift . readChan =<< view eventOut
+
+handleEvents :: Ord nt => Raft nt et rt mt ht ()
+handleEvents = forever $ do
+  e <- getEvent
+  case e of
+    Message m          -> handleMessage m
+    ElectionTimeout s  -> handleElectionTimeout s
+    HeartbeatTimeout s -> handleHeartbeatTimeout s
+
+handleElectionTimeout :: Ord nt => String -> Raft nt et rt mt ht ()
+handleElectionTimeout s = do
+  debug $ "election timeout: " ++ s
+  becomeCandidate
+
+handleHeartbeatTimeout :: Ord nt => String -> Raft nt et rt mt ht ()
+handleHeartbeatTimeout s = do
+  debug $ "heartbeat timeout: " ++ s
+  r <- use role
+  case r of
+    Leader -> do
+      mapM_ sendAppendEntries =<< otherNodes
+      resetHeartbeatTimer
+    Candidate -> do
+      mapM_ sendRequestVote =<< use cUndecided
+      resetHeartbeatTimer
+    Follower ->
+      -- this shouldn't happen as becomeFollower already calls this
+      resetElectionTimer
+
+handleMessage :: Ord nt => mt -> Raft nt et rt mt ht ()
+handleMessage m = do
+  dm <- rs.deserializeRPC ^$ m
+  case dm of
+    Just (AE ae)     -> handleAppendEntries ae
+    Just (AER aer)   -> handleAppendEntriesResponse aer
+    Just (RV rv)     -> handleRequestVote rv
+    Just (RVR rvr)   -> handleRequestVoteResponse rvr
+    Just (CMD cmd)   -> handleCommand cmd
+    Just (CMDR _)    -> lift $ putStrLn "got a command response RPC"
+    Just (DBG s)     -> lift $ putStrLn $ "got a debug RPC: " ++ s
+    Nothing          -> lift $ putStrLn "failed to deserialize RPC"
+
+
 
 -- TODO: check this
 appendLogEntries :: Index -> Seq (Term, Command nt et) -> Raft nt et rt mt ht ()
@@ -400,6 +480,12 @@ ma >>=^ lf = view lf >>= (ma >>=)
   Getting a r a -> Getting (a -> m b) r (a -> m b) -> m b
 infixl 1 ^>>=^
 la ^>>=^ lf = view lf >>= (view la >>=)
+
+(.>>=^) :: forall a (m :: * -> *) b r s.
+  (MonadReader r m, MonadState s m) =>
+  Getting a s a -> Getting (a -> m b) r (a -> m b) -> m b
+infixl 1 .>>=^
+la .>>=^ lf = view lf >>= (use la >>=)
 
 -- apply a monadic function that's wrapped in the same monad to a pure value
 infixl 1 >>=$
