@@ -1,6 +1,5 @@
 module Main (main) where
 
-import Control.Concurrent
 import Control.Monad (forever)
 import Network.Socket hiding (recv, recvFrom, send, sendTo)
 import Network.Socket.ByteString
@@ -19,7 +18,6 @@ main :: IO ()
 main = do
   sock <- socket AF_INET Datagram defaultProtocol
   bind sock (SockAddrInet port localhost)
-  _ <- forkIO $ forever $ do
+  forever $ do
     msg <- recv sock maxlen
     B.putStr msg
-  forever $ threadDelay 1000000
