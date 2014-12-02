@@ -6,7 +6,8 @@
 
 module Network.Tangaroa.Internal.Monad
   ( initialRaftState
-  , fork, fork_
+  , fork
+  , fork_
   , sendEvent
   , handleEvents
   , wait
@@ -190,7 +191,7 @@ sendAppendEntries target = do
   ct <- use term
   nid <- view (cfg.nodeId)
   ci <- use commitIndex
-  debug $ "sendAppendEntries: term " ++ show ct
+  debug $ "sendAppendEntries: " ++ show ct
   sendRPC target $ AE $
     AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci
 
@@ -198,7 +199,7 @@ sendAppendEntriesResponse :: nt -> Bool -> Index -> Raft nt et rt mt ()
 sendAppendEntriesResponse target success lindex = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  debug $ "sendAppendEntriesResponse: term " ++ show ct
+  debug $ "sendAppendEntriesResponse: " ++ show ct
   sendRPC target $ AER $ AppendEntriesResponse ct nid success lindex
 
 sendRequestVote :: nt -> Raft nt et rt mt ()
@@ -207,14 +208,14 @@ sendRequestVote target = do
   nid <- view (cfg.nodeId)
   es <- use logEntries
   let (lli, llt) = lastLogInfo es
-  debug $ "sendRequestVote: term " ++ show ct
+  debug $ "sendRequestVote: " ++ show ct
   sendRPC target $ RV $ RequestVote ct nid lli llt
 
 sendRequestVoteResponse :: nt -> Bool -> Raft nt et rt mt ()
 sendRequestVoteResponse target vote = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  debug $ "sendRequestVoteResponse: term " ++ show ct
+  debug $ "sendRequestVoteResponse: " ++ show ct
   sendRPC target $ RVR $ RequestVoteResponse ct nid vote
 
 getNewElectionTimeout :: Raft nt et rt mt Int
@@ -230,11 +231,13 @@ resetHeartbeatTimer = do
   timeout <- view (cfg.heartbeatTimeout)
   setTimedEvent (HeartbeatTimeout $ show (timeout `div` 1000) ++ "ms") timeout
 
-hasMatchingPrevLogEntry :: Index -> Term -> Raft nt et rt mt Bool
-hasMatchingPrevLogEntry pli plt = do
+prevLogEntryMatches :: Index -> Term -> Raft nt et rt mt Bool
+prevLogEntryMatches pli plt = do
   es <- use logEntries
   case seqIndex es pli of
-    Nothing    -> return False
+    -- if we don't have the entry, only return true if pli is startIndex
+    Nothing    -> return (pli == startIndex)
+    -- if we do have the entry, return true if the terms match
     Just (t,_) -> return (t == plt)
 
 updateTerm :: Term -> Raft nt et rt mt ()
@@ -269,9 +272,15 @@ handleHeartbeatTimeout s = do
       resetHeartbeatTimer
     Candidate -> do
       traverse_ sendRequestVote =<< use cUndecided
+      -- have to do this to prevent your voters from timing out
+      traverse_ sendRequestVote =<< use cYesVotes
       resetHeartbeatTimer
     Follower ->
-      -- this shouldn't happen as becomeFollower already calls this
+      -- This will rarely happen because followers don't get heartbeat timeouts
+      -- (becomeFollower cancels it). If we became a follower after the
+      -- heartbeat timer places its event on the queue, but before we handle
+      -- that event, then we will hit this case, and there's nothing to do but
+      -- set the election timer.
       resetElectionTimer
 
 handleMessage :: Ord nt => mt -> Raft nt et rt mt ()
@@ -297,13 +306,13 @@ fork_ a = fork a >>= return . const ()
 
 handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ()
 handleAppendEntries AppendEntries{..} = do
-  debug "got an appendEntries RPC"
+  debug $ "got an appendEntries RPC: prev log entry: Index " ++ show _prevLogIndex ++ " " ++ show _prevLogTerm
   ct <- use term
   when (_aeTerm > ct) $ updateTerm _aeTerm >> becomeFollower
   when (_aeTerm >= ct) $ do
     resetElectionTimer
     currentLeader .= Just _leaderId
-  plmatch <- hasMatchingPrevLogEntry _prevLogIndex _prevLogTerm
+  plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
   es <- use logEntries
   let oldLastEntry = Seq.length es - 1
   let newLastEntry = _prevLogIndex + Seq.length _aeEntries
@@ -360,7 +369,9 @@ leaderUpdateCommitIndex = do
   -- indices for that entry
   let qcinds = takeWhile (\i -> Map.size (Map.filter (>= i) lmi) >= qsize) ctinds
 
-  when (not $ null qcinds) $ commitIndex .= last qcinds
+  when (not $ null qcinds) $ do
+    commitIndex .= last qcinds
+    debug $ "commit index is now: " ++ show (last qcinds)
 
 -- compare a candidate's prevLog(Index/Term) to our log return true if the
 -- candidate's log is at least as up to date as ours measured first by term at
@@ -385,31 +396,36 @@ candidateLogCompare llIndex llTerm es =
 
 handleRequestVote :: Eq nt => RequestVote nt -> Raft nt et rt mt ()
 handleRequestVote RequestVote{..} = do
-  debug "got a requestVote RPC"
+  debug $ "got a requestVote RPC for " ++ show _rvTerm
   ct <- use term
+  when (_rvTerm > ct) $ updateTerm _rvTerm >> becomeFollower
   mvote <- use votedFor
   es <- use logEntries
-  when (_rvTerm > ct) $ updateTerm _rvTerm >> becomeFollower
   case mvote of
-    _      | _rvTerm < ct ->
+    _      | _rvTerm < ct -> do
       -- this is an old candidate
+      debug "this is for an old term"
       sendRequestVoteResponse _candidateId False
 
-    Just c | c == _candidateId ->
+    Just c | c == _candidateId -> do
       -- already voted for this candidate
+      debug "already voted for this candidate"
       sendRequestVoteResponse _candidateId True
 
-    Just _ ->
+    Just _ -> do
       -- already voted for a different candidate this term
+      debug "already voted for a different candidate"
       sendRequestVoteResponse _candidateId False
 
     Nothing -> if candidateLogCompare _lastLogIndex _lastLogTerm es
       -- haven't voted yet, so vote for the candidate if it's log is at least as
       -- up to date as ours
       then do
+        debug "haven't voted, voting for this candidate"
         setVotedFor (Just _candidateId)
         sendRequestVoteResponse _candidateId True
-      else
+      else do
+        debug "haven't voted, but my log is better than this candidate's"
         sendRequestVoteResponse _candidateId False
 
 debug :: String -> Raft nt et rt mt ()
@@ -425,7 +441,7 @@ checkElection = do
 
 handleRequestVoteResponse :: Ord nt => RequestVoteResponse nt -> Raft nt et rt mt ()
 handleRequestVoteResponse RequestVoteResponse{..} = do
-  debug "got a requestVoteResponse RPC"
+  debug $ "got a requestVoteResponse RPC for " ++ show _rvrTerm ++ ": " ++ show _voteGranted
   ct <- use term
   when (_rvrTerm > ct) $ updateTerm _rvrTerm >> becomeFollower
   cUndecided %= Set.delete _rvrNodeId

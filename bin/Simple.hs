@@ -24,9 +24,6 @@ data EntryType = AddOne | SubtractOne | GetValue
   deriving (Show,Read,Generic)
 type ResultType = Maybe Int
 
-dummyMessage :: RPC NodeType EntryType ResultType
-dummyMessage = DBG "A message!"
-
 localhost :: HostAddress
 localhost = 0x0100007f
 
@@ -38,17 +35,17 @@ defaultConfig =
   Config
     Set.empty          -- other nodes
     (localhost,defaultPortNum)  -- self address
-    (5000000,10000000) -- election timeout range
-    1000000            -- heartbeat timeout
+    (6000000,12000000) -- election timeout range
+    3000000            -- heartbeat timeout
 
 options :: [OptDescr (Config NodeType -> Config NodeType)]
 options =
   [ Option ['s'] ["self"]
-    (ReqArg (maybe id (\p -> nodeId .~ (localhost, p)) . readMaybe) "SELF_PORT_NUMBER")
+    (ReqArg setThisNode "SELF_PORT_NUMBER")
     "The port number of this node."
   ]
 
-applyEntry :: TVar Int -> EntryType -> IO (Maybe Int)
+applyEntry :: TVar Int -> EntryType -> IO ResultType
 applyEntry tv cmd = case cmd of
   AddOne      -> atomically $ modifyTVar tv (+ 1) >> return Nothing
   SubtractOne -> atomically $ modifyTVar tv (subtract 1) >> return Nothing
@@ -57,13 +54,20 @@ applyEntry tv cmd = case cmd of
 nodeSockAddr :: NodeType -> SockAddr
 nodeSockAddr (host,port) = SockAddrInet (PortNum port) host
 
+setThisNode :: String -> Config NodeType -> Config NodeType
+setThisNode =
+  maybe id (\p -> nodeId .~ (localhost, p)) . readMaybe
+
+addOtherNode :: String -> Config NodeType -> Config NodeType
+addOtherNode =
+  maybe id (\p -> otherNodes %~ Set.insert (localhost, p)) .  readMaybe
+
 getConfig :: IO (Config NodeType)
 getConfig = do
   argv <- getArgs
   case getOpt Permute options argv of
-    -- TODO, make unused args be node port numbers
-    (opts,args,[]) -> return $ foldr ($) defaultConfig opts
-    (_,_,errs)     -> exitFailure -- TODO, print errors
+    (opts,args,[]) -> return $ foldr addOtherNode (foldr ($) defaultConfig opts) args
+    (_,_,_)        -> exitFailure -- TODO, print errors
 
 getMsg :: Socket -> IO String
 getMsg sock = recv sock 8192

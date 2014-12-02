@@ -5,7 +5,6 @@ module Network.Tangaroa
   , module Network.Tangaroa.Types
   ) where
 
-import Control.Concurrent (forkIO)
 import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad
@@ -44,8 +43,3 @@ messageReceiver :: Raft nt et rt mt ()
 messageReceiver = do
   gm <- view (rs.getMessage)
   forever $ gm >>= sendEvent . Message
---  forever $ do
---    putStrLn "calling getMessage"
---    msg <- getMessage handle
---    putStrLn "got a message"
---    writeChan ein (Message msg)
