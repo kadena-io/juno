@@ -5,6 +5,7 @@ module Network.Tangaroa
   , module Network.Tangaroa.Types
   ) where
 
+import Control.Concurrent (forkIO)
 import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad
@@ -20,12 +21,14 @@ getQsize n =
     then n `div` 2 + 1
     else (n - 1) `div` 2 + 1
 
-runRaft :: Ord nt => RaftSpec nt et rt mt -> IO ()
-runRaft spec@RaftSpec{..} = do
-  rconf <- __readCfg
-  let qsize = getQsize $ Set.size $ rconf ^. nodeSet
+runRaft :: Ord nt => Config nt -> RaftSpec nt et rt mt -> IO ()
+runRaft rconf spec@RaftSpec{..} = do
+  let qsize = getQsize $ 1 + (Set.size $ rconf ^. otherNodes)
   (ein, eout) <- newChan
-  runRWS_ raft (RaftEnv rconf qsize ein eout (liftRaftSpec spec)) initialRaftState
+  runRWS_
+    raft
+    (RaftEnv rconf qsize ein eout (liftRaftSpec spec))
+    initialRaftState
 
 runRWS_ :: Monad m => RWST r w s m a -> r -> s -> m ()
 runRWS_ ma r s = runRWST ma r s >> return ()
@@ -41,3 +44,8 @@ messageReceiver :: Raft nt et rt mt ()
 messageReceiver = do
   gm <- view (rs.getMessage)
   forever $ gm >>= sendEvent . Message
+--  forever $ do
+--    putStrLn "calling getMessage"
+--    msg <- getMessage handle
+--    putStrLn "got a message"
+--    writeChan ein (Message msg)

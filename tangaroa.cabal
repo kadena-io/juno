@@ -39,8 +39,30 @@ library
 executable simpleraft
   main-is:             Simple.hs
   build-depends:       base < 5
-                     , tangaroa
+                     , bytestring
                      , containers
+                     , lens
+                     , network
+                     , stm
+                     , tangaroa
+  hs-source-dirs:      bin
+  ghc-options:         -Wall -O2 -threaded
+  default-language:    Haskell2010
+
+executable udprecv
+  main-is:             udprecv.hs
+  build-depends:       base < 5
+                     , bytestring
+                     , network
+  hs-source-dirs:      bin
+  ghc-options:         -Wall -O2 -threaded
+  default-language:    Haskell2010
+
+executable udpsend
+  main-is:             udpsend.hs
+  build-depends:       base < 5
+                     , bytestring
+                     , network
   hs-source-dirs:      bin
   ghc-options:         -Wall -O2 -threaded
   default-language:    Haskell2010

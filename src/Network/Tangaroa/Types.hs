@@ -7,23 +7,22 @@ module Network.Tangaroa.Types
   ( Raft
   , RaftSpec(..)
   , LiftedRaftSpec(..)
-  , readCfg, readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
+  , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
   , readVotedFor, writeVotedFor, applyLogEntry, serializeRPC
   , deserializeRPC, sendMessage, getMessage, debugPrint
   , liftRaftSpec
   , Term, startTerm, succTerm
   , Index, startIndex
-  , Config(..), nodeSet, nodeId, electionTimeoutRange, heartbeatTimeout
+  , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
   , cYesVotes, cNoVotes, cUndecided, lNextIndex, lMatchIndex
-  , AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm
-  , aeEntries, leaderCommit
-  , AppendEntriesResponse(..), aerTerm, aerSuccess, aerNodeId, aerIndex
-  , RequestVote(..), rvTerm, candidateId, lastLogIndex, lastLogTerm
-  , RequestVoteResponse(..), rvrTerm, rvrNodeId, voteGranted
-  , Command(..), entry, clientId
+  , AppendEntries(..)
+  , AppendEntriesResponse(..)
+  , RequestVote(..)
+  , RequestVoteResponse(..)
+  , Command(..)
   , RPC(..)
   , term
   , Event(..)
@@ -55,7 +54,7 @@ startIndex :: Index
 startIndex = (-1)
 
 data Config nt = Config
-  { _nodeSet              :: Set nt
+  { _otherNodes           :: Set nt
   , _nodeId               :: nt
   , _electionTimeoutRange :: (Int,Int) -- in microseconds
   , _heartbeatTimeout     :: Int       -- in microseconds
@@ -68,7 +67,6 @@ data Command nt et = Command
   , _clientId :: nt
   }
   deriving (Show, Read, Generic)
-makeLenses ''Command
 
 data AppendEntries nt et = AppendEntries
   { _aeTerm       :: Term
@@ -79,7 +77,6 @@ data AppendEntries nt et = AppendEntries
   , _leaderCommit :: Index
   }
   deriving (Show, Read, Generic)
-makeLenses ''AppendEntries
 
 data AppendEntriesResponse nt = AppendEntriesResponse
   { _aerTerm    :: Term
@@ -88,7 +85,6 @@ data AppendEntriesResponse nt = AppendEntriesResponse
   , _aerIndex   :: Index
   }
   deriving (Show, Read, Generic)
-makeLenses ''AppendEntriesResponse
 
 data RequestVote nt = RequestVote
   { _rvTerm       :: Term
@@ -97,7 +93,6 @@ data RequestVote nt = RequestVote
   , _lastLogTerm  :: Term
   }
   deriving (Show, Read, Generic)
-makeLenses ''RequestVote
 
 data RequestVoteResponse nt = RequestVoteResponse
   { _rvrTerm     :: Term
@@ -105,7 +100,6 @@ data RequestVoteResponse nt = RequestVoteResponse
   , _voteGranted :: Bool
   }
   deriving (Show, Read, Generic)
-makeLenses ''RequestVoteResponse
 
 data RPC nt et rt = AE (AppendEntries nt et)
                   | AER (AppendEntriesResponse nt)
@@ -120,11 +114,8 @@ data RPC nt et rt = AE (AppendEntries nt et)
 -- the raft protocol.
 data RaftSpec nt et rt mt = RaftSpec
   {
-    -- ^ Function to read configuration.
-    __readCfg          :: IO (Config nt)
-
     -- ^ Function to get a log entry from persistent storage.
-  , __readLogEntry     :: Index -> IO et
+    __readLogEntry     :: Index -> IO et
 
     -- ^ Function to write a log entry to persistent storage.
   , __writeLogEntry    :: Index -> (Term,et) -> IO ()
@@ -180,11 +171,8 @@ data Event mt = Message mt
 -- into the Raft monad.
 data LiftedRaftSpec nt et rt mt t = LiftedRaftSpec
   {
-    -- ^ Function to read configuration.
-    _readCfg          :: MonadTrans t => t IO (Config nt)
-
     -- ^ Function to get a log entry from persistent storage.
-  , _readLogEntry     :: MonadTrans t => Index -> t IO et
+    _readLogEntry     :: MonadTrans t => Index -> t IO et
 
     -- ^ Function to write a log entry to persistent storage.
   , _writeLogEntry    :: MonadTrans t => Index -> (Term,et) -> t IO ()
@@ -224,8 +212,7 @@ makeLenses ''LiftedRaftSpec
 liftRaftSpec :: MonadTrans t => RaftSpec nt et rt mt -> LiftedRaftSpec nt et rt mt t
 liftRaftSpec RaftSpec{..} =
   LiftedRaftSpec
-    { _readCfg         = lift __readCfg
-    , _readLogEntry    = lift . __readLogEntry
+    { _readLogEntry    = lift . __readLogEntry
     , _writeLogEntry   = \i et -> lift (__writeLogEntry i et)
     , _readTermNumber  = lift __readTermNumber
     , _writeTermNumber = lift . __writeTermNumber

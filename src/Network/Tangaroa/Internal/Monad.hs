@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Network.Tangaroa.Internal.Monad
   ( initialRaftState
@@ -37,24 +38,23 @@ module Network.Tangaroa.Internal.Monad
   , (>>=$)
   ) where
 
-import Prelude hiding (mapM, mapM_)
 import Control.Applicative
 import Control.Concurrent (threadDelay, killThread)
 import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad.Fork.Class
-import Control.Monad.RWS hiding (mapM, mapM_)
+import Control.Monad.RWS hiding (mapM)
+import Data.Foldable (traverse_)
 import Data.Sequence (Seq)
-import Data.Set (Set)
+import Data.Traversable (mapM)
+import Prelude hiding (mapM)
+import System.Random
+import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
-import qualified Data.Map as Map
-import Data.Foldable (mapM_)
-import Data.Traversable (mapM)
 
 import Network.Tangaroa.Types
 
-import System.Random
 
 sendEvent :: Event mt -> Raft nt et rt mt ()
 sendEvent event = do
@@ -101,20 +101,20 @@ setVotedFor mvote = do
 
 becomeFollower :: Raft nt et rt mt ()
 becomeFollower = do
+  debug "becoming follower"
   role .= Follower
   resetElectionTimer
 
-otherNodes :: Ord nt => Raft nt et rt mt (Set nt)
-otherNodes = do
-  nset <- view (cfg.nodeSet)
-  nid <- view (cfg.nodeId)
-  return (Set.delete nid nset)
-
 becomeLeader :: Ord nt => Raft nt et rt mt ()
 becomeLeader = do
+  debug "becoming leader"
   role .= Leader
   (currentLeader .=) . Just =<< view (cfg.nodeId)
-  mapM_ sendAppendEntries =<< otherNodes
+  ni    <- Seq.length <$> use logEntries
+  nlist <- Set.toList <$> view (cfg.otherNodes)
+  lNextIndex  .= Map.fromList (map (,ni)         nlist)
+  lMatchIndex .= Map.fromList (map (,startIndex) nlist)
+  traverse_ sendAppendEntries nlist
   resetHeartbeatTimer
 
 bumpTerm :: Raft nt et rt mt ()
@@ -124,16 +124,20 @@ bumpTerm = do
 
 becomeCandidate :: Ord nt => Raft nt et rt mt ()
 becomeCandidate = do
+  debug "becoming candidate"
   role .= Candidate
   nid <- view (cfg.nodeId)
-  nset <- view (cfg.nodeSet)
   bumpTerm
   setVotedFor $ Just nid
-  cYesVotes  .= Set.singleton nid -- vote for yourself
-  cUndecided .= Set.delete nid nset
-  cNoVotes   .= Set.empty
-  mapM_ sendRequestVote =<< use cUndecided
-  resetHeartbeatTimer
+  cYesVotes .= Set.singleton nid -- vote for yourself
+  (cUndecided .=) =<< view (cfg.otherNodes)
+  cNoVotes .= Set.empty
+  -- this is necessary for a single-node cluster
+  checkElection
+  r <- use role
+  when (r == Candidate) $ do
+    traverse_ sendRequestVote =<< use cUndecided
+    resetHeartbeatTimer
 
 applyCommand :: Command nt et -> Raft nt et rt mt (rt,nt)
 applyCommand Command{..} = do
@@ -143,7 +147,7 @@ applyCommand Command{..} = do
 
 sendResults :: Seq (rt,nt) -> Raft nt et rt mt ()
 sendResults results =
-  mapM (\(result,target) -> sendRPC target $ CMDR result) results >> return ()
+  traverse_ (\(result,target) -> sendRPC target $ CMDR result) results
 
 -- apply the un-applied log entries up through commitIndex
 -- and send results to the client if you are the leader
@@ -186,6 +190,7 @@ sendAppendEntries target = do
   ct <- use term
   nid <- view (cfg.nodeId)
   ci <- use commitIndex
+  debug $ "sendAppendEntries: term " ++ show ct
   sendRPC target $ AE $
     AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci
 
@@ -193,6 +198,7 @@ sendAppendEntriesResponse :: nt -> Bool -> Index -> Raft nt et rt mt ()
 sendAppendEntriesResponse target success lindex = do
   ct <- use term
   nid <- view (cfg.nodeId)
+  debug $ "sendAppendEntriesResponse: term " ++ show ct
   sendRPC target $ AER $ AppendEntriesResponse ct nid success lindex
 
 sendRequestVote :: nt -> Raft nt et rt mt ()
@@ -201,12 +207,14 @@ sendRequestVote target = do
   nid <- view (cfg.nodeId)
   es <- use logEntries
   let (lli, llt) = lastLogInfo es
+  debug $ "sendRequestVote: term " ++ show ct
   sendRPC target $ RV $ RequestVote ct nid lli llt
 
 sendRequestVoteResponse :: nt -> Bool -> Raft nt et rt mt ()
 sendRequestVoteResponse target vote = do
   ct <- use term
   nid <- view (cfg.nodeId)
+  debug $ "sendRequestVoteResponse: term " ++ show ct
   sendRPC target $ RVR $ RequestVoteResponse ct nid vote
 
 getNewElectionTimeout :: Raft nt et rt mt Int
@@ -257,10 +265,10 @@ handleHeartbeatTimeout s = do
   r <- use role
   case r of
     Leader -> do
-      mapM_ sendAppendEntries =<< otherNodes
+      traverse_ sendAppendEntries =<< view (cfg.otherNodes)
       resetHeartbeatTimer
     Candidate -> do
-      mapM_ sendRequestVote =<< use cUndecided
+      traverse_ sendRequestVote =<< use cUndecided
       resetHeartbeatTimer
     Follower ->
       -- this shouldn't happen as becomeFollower already calls this
@@ -278,8 +286,6 @@ handleMessage m = do
     Just (CMDR _)    -> lift $ putStrLn "got a command response RPC"
     Just (DBG s)     -> lift $ putStrLn $ "got a debug RPC: " ++ s
     Nothing          -> lift $ putStrLn "failed to deserialize RPC"
-
-
 
 -- TODO: check this
 appendLogEntries :: Index -> Seq (Term, Command nt et) -> Raft nt et rt mt ()
@@ -409,6 +415,14 @@ handleRequestVote RequestVote{..} = do
 debug :: String -> Raft nt et rt mt ()
 debug s = view (rs.debugPrint) >>= ($ s)
 
+-- count the yes votes and become leader if you have reached a quorum
+checkElection :: Ord nt => Raft nt et rt mt ()
+checkElection = do
+  nyes <- Set.size <$> use cYesVotes
+  qsize <- view quorumSize
+  debug $ "yes votes: " ++ show nyes ++ " quorum size: " ++ show qsize
+  when (nyes >= qsize) $ becomeLeader
+
 handleRequestVoteResponse :: Ord nt => RequestVoteResponse nt -> Raft nt et rt mt ()
 handleRequestVoteResponse RequestVoteResponse{..} = do
   debug "got a requestVoteResponse RPC"
@@ -418,9 +432,7 @@ handleRequestVoteResponse RequestVoteResponse{..} = do
   if _voteGranted
     then do
       cYesVotes %= Set.insert _rvrNodeId
-      nyes <- fmap Set.size (use cYesVotes)
-      qsize <- view quorumSize
-      when (nyes >= qsize) $ becomeLeader
+      checkElection
     else
       cNoVotes %= Set.insert _rvrNodeId
 
