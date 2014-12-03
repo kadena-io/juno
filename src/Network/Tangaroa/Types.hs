@@ -151,12 +151,6 @@ data RaftSpec nt et rt mt = RaftSpec
   , __debugPrint       :: String -> IO ()
   }
 
-data LeaderState nt = LeaderState
-  {
-  }
-  deriving (Show, Generic)
-makeLenses ''LeaderState
-
 data Role = Follower
           | Candidate
           | Leader
