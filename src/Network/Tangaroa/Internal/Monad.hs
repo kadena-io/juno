@@ -115,7 +115,7 @@ becomeLeader = do
   nlist <- Set.toList <$> view (cfg.otherNodes)
   lNextIndex  .= Map.fromList (map (,ni)         nlist)
   lMatchIndex .= Map.fromList (map (,startIndex) nlist)
-  traverse_ sendAppendEntries nlist
+  fork_ $ traverse_ sendAppendEntries nlist
   resetHeartbeatTimer
 
 bumpTerm :: Raft nt et rt mt ()
@@ -137,7 +137,7 @@ becomeCandidate = do
   checkElection
   r <- use role
   when (r == Candidate) $ do
-    traverse_ sendRequestVote =<< use cUndecided
+    fork_ $ traverse_ sendRequestVote =<< use cUndecided
     resetHeartbeatTimer
 
 applyCommand :: Command nt et -> Raft nt et rt mt (rt,nt)
@@ -272,7 +272,7 @@ handleHeartbeatTimeout s = do
       resetHeartbeatTimer
     Candidate -> do
       traverse_ sendRequestVote =<< use cUndecided
-      -- have to do this to prevent your voters from timing out
+      -- TODO: have to do this to prevent your voters from timing out
       traverse_ sendRequestVote =<< use cYesVotes
       resetHeartbeatTimer
     Follower ->
