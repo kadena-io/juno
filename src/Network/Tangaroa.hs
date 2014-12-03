@@ -42,4 +42,4 @@ raft = do
 messageReceiver :: Raft nt et rt mt ()
 messageReceiver = do
   gm <- view (rs.getMessage)
-  forever $ gm >>= sendEvent . Message
+  forever $ gm >>= enqueueEvent . Message

@@ -8,7 +8,7 @@ module Network.Tangaroa.Internal.Monad
   ( initialRaftState
   , fork
   , fork_
-  , sendEvent
+  , enqueueEvent
   , handleEvents
   , wait
   , becomeFollower
@@ -57,8 +57,8 @@ import qualified Data.Set as Set
 import Network.Tangaroa.Types
 
 
-sendEvent :: Event mt -> Raft nt et rt mt ()
-sendEvent event = do
+enqueueEvent :: Event mt -> Raft nt et rt mt ()
+enqueueEvent event = do
   ein <- view eventIn
   lift $ writeChan ein event
 
@@ -76,7 +76,7 @@ cancelTimer = do
 setTimedEvent :: Event mt -> Int -> Raft nt et rt mt ()
 setTimedEvent e t = do
   cancelTimer
-  tmr <- fork $ wait t >> sendEvent e
+  tmr <- fork $ wait t >> enqueueEvent e
   timerThread .= Just tmr
 
 initialRaftState :: RaftState nt et
@@ -90,8 +90,7 @@ initialRaftState = RaftState
   startIndex -- lastApplied
   Nothing    -- timerThread
   Set.empty  -- cYesVotes
-  Set.empty  -- cNoVotes
-  Set.empty  -- cUndecided
+  Set.empty  -- cPotentialVotes
   Map.empty  -- lNextIndex
   Map.empty  -- lMatchIndex
 
@@ -115,29 +114,28 @@ becomeLeader = do
   nlist <- Set.toList <$> view (cfg.otherNodes)
   lNextIndex  .= Map.fromList (map (,ni)         nlist)
   lMatchIndex .= Map.fromList (map (,startIndex) nlist)
-  fork_ $ traverse_ sendAppendEntries nlist
+  fork_ sendAllAppendEntries
   resetHeartbeatTimer
 
-bumpTerm :: Raft nt et rt mt ()
-bumpTerm = do
-  term %= succTerm
-  term .>>=^ rs.writeTermNumber
+sendAllRequestVotes :: Raft nt et rt mt ()
+sendAllRequestVotes = traverse_ sendRequestVote =<< use cPotentialVotes
 
 becomeCandidate :: Ord nt => Raft nt et rt mt ()
 becomeCandidate = do
   debug "becoming candidate"
   role .= Candidate
+  term %= succTerm
+  term .>>=^ rs.writeTermNumber
   nid <- view (cfg.nodeId)
-  bumpTerm
   setVotedFor $ Just nid
   cYesVotes .= Set.singleton nid -- vote for yourself
-  (cUndecided .=) =<< view (cfg.otherNodes)
-  cNoVotes .= Set.empty
-  -- this is necessary for a single-node cluster
+  (cPotentialVotes .=) =<< view (cfg.otherNodes)
+  -- this is necessary for a single-node cluster, as we have already won the
+  -- election in that case. otherwise we will wait for more votes to check again
   checkElection
   r <- use role
   when (r == Candidate) $ do
-    fork_ $ traverse_ sendRequestVote =<< use cUndecided
+    fork_ sendAllRequestVotes
     resetHeartbeatTimer
 
 applyCommand :: Command nt et -> Raft nt et rt mt (rt,nt)
@@ -161,7 +159,7 @@ applyLogEntries = do
   let leToApply = fmap (^. _2) . Seq.drop (la + 1) . Seq.take (ci + 1) $ le
   results <- mapM applyCommand leToApply
   r <- use role
-  when (r == Leader) $ sendResults results
+  when (r == Leader) $ fork_ $ sendResults results
   lastApplied .= ci
 
 -- TODO: check this
@@ -240,12 +238,6 @@ prevLogEntryMatches pli plt = do
     -- if we do have the entry, return true if the terms match
     Just (t,_) -> return (t == plt)
 
-updateTerm :: Term -> Raft nt et rt mt ()
-updateTerm t = do
-  rs.writeTermNumber ^$ t
-  setVotedFor Nothing
-  term .= t
-
 getEvent :: Raft nt et rt mt (Event mt)
 getEvent = lift . readChan =<< view eventOut
 
@@ -260,20 +252,24 @@ handleEvents = forever $ do
 handleElectionTimeout :: Ord nt => String -> Raft nt et rt mt ()
 handleElectionTimeout s = do
   debug $ "election timeout: " ++ s
-  becomeCandidate
+  r <- use role
+  when (r == Follower) becomeCandidate
+
+sendAllAppendEntries :: Ord nt => Raft nt et rt mt ()
+sendAllAppendEntries = traverse_ sendAppendEntries =<< view (cfg.otherNodes)
 
 handleHeartbeatTimeout :: Ord nt => String -> Raft nt et rt mt ()
 handleHeartbeatTimeout s = do
   debug $ "heartbeat timeout: " ++ s
   r <- use role
   case r of
+    -- heartbeat timeouts are used to control appendEntries heartbeats and
+    -- requestVote retransmissions
     Leader -> do
-      traverse_ sendAppendEntries =<< view (cfg.otherNodes)
+      fork_ sendAllAppendEntries
       resetHeartbeatTimer
     Candidate -> do
-      traverse_ sendRequestVote =<< use cUndecided
-      -- TODO: have to do this to prevent your voters from timing out
-      traverse_ sendRequestVote =<< use cYesVotes
+      fork_ sendAllRequestVotes
       resetHeartbeatTimer
     Follower ->
       -- This will rarely happen because followers don't get heartbeat timeouts
@@ -304,27 +300,38 @@ appendLogEntries pli es =
 fork_ :: (Monad m, MonadFork m) => m () -> m ()
 fork_ a = fork a >>= return . const ()
 
+handleTermNumber :: Term -> Raft nt et rt mt ()
+handleTermNumber rpcTerm = do
+  ct <- use term
+  when (rpcTerm > ct) $ do
+    rs.writeTermNumber ^$ rpcTerm
+    setVotedFor Nothing
+    term .= rpcTerm
+    becomeFollower
+
 handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ()
 handleAppendEntries AppendEntries{..} = do
   debug $ "got an appendEntries RPC: prev log entry: Index " ++ show _prevLogIndex ++ " " ++ show _prevLogTerm
-  ct <- use term
-  when (_aeTerm > ct) $ updateTerm _aeTerm >> becomeFollower
-  when (_aeTerm >= ct) $ do
-    resetElectionTimer
-    currentLeader .= Just _leaderId
-  plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
-  es <- use logEntries
-  let oldLastEntry = Seq.length es - 1
-  let newLastEntry = _prevLogIndex + Seq.length _aeEntries
-  if _aeTerm < ct || not plmatch
-    then sendAppendEntriesResponse _leaderId False oldLastEntry
-    else do
-      appendLogEntries _prevLogIndex _aeEntries
-      sendAppendEntriesResponse _leaderId True newLastEntry
-      nc <- use commitIndex
-      when (_leaderCommit > nc) $ do
-        commitIndex .= min _leaderCommit newLastEntry
-        applyLogEntries
+  handleTermNumber _aeTerm
+  r <- use role
+  when (r == Follower) $ do
+    ct <- use term
+    when (_aeTerm == ct) $ do
+      resetElectionTimer
+      currentLeader .= Just _leaderId
+    plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
+    es <- use logEntries
+    let oldLastEntry = Seq.length es - 1
+    let newLastEntry = _prevLogIndex + Seq.length _aeEntries
+    if _aeTerm < ct || not plmatch
+      then fork_ $ sendAppendEntriesResponse _leaderId False oldLastEntry
+      else do
+        appendLogEntries _prevLogIndex _aeEntries
+        fork_ $ sendAppendEntriesResponse _leaderId True newLastEntry
+        nc <- use commitIndex
+        when (_leaderCommit > nc) $ do
+          commitIndex .= min _leaderCommit newLastEntry
+          applyLogEntries
 
 seqIndex :: Seq a -> Int -> Maybe a
 seqIndex s i =
@@ -335,9 +342,9 @@ seqIndex s i =
 handleAppendEntriesResponse :: Ord nt => AppendEntriesResponse nt -> Raft nt et rt mt ()
 handleAppendEntriesResponse AppendEntriesResponse{..} = do
   debug "got an appendEntriesResponse RPC"
-  ct <- use term
-  when (_aerTerm > ct) $ updateTerm _aerTerm >> becomeFollower
+  handleTermNumber _aerTerm
   r <- use role
+  ct <- use term
   when (r == Leader && _aerTerm == ct) $
     if _aerSuccess
       then do
@@ -378,44 +385,40 @@ leaderUpdateCommitIndex = do
 -- the candidate's last log index, and then by log length
 candidateLogCompare :: Index -> Term -> Seq (Term,et) -> Bool
 candidateLogCompare llIndex llTerm es =
-  case seqIndex es llIndex of
+  case Seq.viewr es of
+    -- if the last entries have equal terms, return true if the candidate's last
+    -- log index is at least as large as this log's last index
+    _ Seq.:> (t,_) | t == llTerm -> llIndex >= Seq.length es - 1
 
-    -- we don't have the candidate's log entry
-    Nothing -> True
+    -- if the last entries have different terms, return true if the candidate's
+    -- term is higher
+    _ Seq.:> (t,_)               -> llTerm > t
 
-    -- we have an entry, but the candidate's entry has a higher term
-    Just (t,_) | t < llTerm -> True
-
-    -- we have an entry with matching term, so return true if the candidate's
-    -- last log entry is also the last log entry we have (it will never be
-    -- longer in this case, because we have an entry at this index)
-    Just (t,_) | t == llTerm -> llIndex == Seq.length es - 1
-
-    -- we have an entry with higher term than the candidate
-    _ -> False
+    -- our log is empty, so any log is at least as up to date as ours
+    Seq.EmptyR                   -> True
 
 handleRequestVote :: Eq nt => RequestVote nt -> Raft nt et rt mt ()
 handleRequestVote RequestVote{..} = do
   debug $ "got a requestVote RPC for " ++ show _rvTerm
-  ct <- use term
-  when (_rvTerm > ct) $ updateTerm _rvTerm >> becomeFollower
+  handleTermNumber _rvTerm
   mvote <- use votedFor
   es <- use logEntries
+  ct <- use term
   case mvote of
     _      | _rvTerm < ct -> do
       -- this is an old candidate
       debug "this is for an old term"
-      sendRequestVoteResponse _candidateId False
+      fork_ $ sendRequestVoteResponse _candidateId False
 
     Just c | c == _candidateId -> do
       -- already voted for this candidate
       debug "already voted for this candidate"
-      sendRequestVoteResponse _candidateId True
+      fork_ $ sendRequestVoteResponse _candidateId True
 
     Just _ -> do
       -- already voted for a different candidate this term
       debug "already voted for a different candidate"
-      sendRequestVoteResponse _candidateId False
+      fork_ $ sendRequestVoteResponse _candidateId False
 
     Nothing -> if candidateLogCompare _lastLogIndex _lastLogTerm es
       -- haven't voted yet, so vote for the candidate if it's log is at least as
@@ -423,10 +426,10 @@ handleRequestVote RequestVote{..} = do
       then do
         debug "haven't voted, voting for this candidate"
         setVotedFor (Just _candidateId)
-        sendRequestVoteResponse _candidateId True
+        fork_ $ sendRequestVoteResponse _candidateId True
       else do
         debug "haven't voted, but my log is better than this candidate's"
-        sendRequestVoteResponse _candidateId False
+        fork_ $ sendRequestVoteResponse _candidateId False
 
 debug :: String -> Raft nt et rt mt ()
 debug s = view (rs.debugPrint) >>= ($ s)
@@ -442,15 +445,15 @@ checkElection = do
 handleRequestVoteResponse :: Ord nt => RequestVoteResponse nt -> Raft nt et rt mt ()
 handleRequestVoteResponse RequestVoteResponse{..} = do
   debug $ "got a requestVoteResponse RPC for " ++ show _rvrTerm ++ ": " ++ show _voteGranted
-  ct <- use term
-  when (_rvrTerm > ct) $ updateTerm _rvrTerm >> becomeFollower
-  cUndecided %= Set.delete _rvrNodeId
-  if _voteGranted
-    then do
-      cYesVotes %= Set.insert _rvrNodeId
-      checkElection
-    else
-      cNoVotes %= Set.insert _rvrNodeId
+  handleTermNumber _rvrTerm
+  r <- use role
+  when (r == Candidate) $
+    if _voteGranted
+      then do
+        cYesVotes %= Set.insert _rvrNodeId
+        checkElection
+      else
+        cPotentialVotes %= Set.delete _rvrNodeId
 
 sendRPC :: nt -> RPC nt et rt -> Raft nt et rt mt ()
 sendRPC target rpc = do
@@ -458,20 +461,22 @@ sendRPC target rpc = do
   ser <- view (rs.serializeRPC)
   send target $ ser rpc
 
-handleCommand :: Command nt et -> Raft nt et rt mt ()
+handleCommand :: Ord nt => Command nt et -> Raft nt et rt mt ()
 handleCommand cmd = do
   debug "got a command RPC"
   r <- use role
   ct <- use term
   mlid <- use currentLeader
   case (r, mlid) of
-    (Leader, _) ->
+    (Leader, _) -> do
       -- we're the leader, so append this to our log with the current term
+      -- and propagate it to replicas
       logEntries %= (Seq.|> (ct, cmd))
-    (_, Just lid) -> do
+      fork_ sendAllAppendEntries
+    (_, Just lid) ->
       -- we're not the leader, but we know who the leader is, so forward this
       -- command
-      sendRPC lid $ CMD cmd
+      fork_ $ sendRPC lid $ CMD cmd
     (_, Nothing) ->
       -- we're not the leader, and we don't know who the leader is, so can't do
       -- anything (TODO)

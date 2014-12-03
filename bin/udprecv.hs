@@ -9,7 +9,7 @@ localhost :: HostAddress
 localhost = 0x0100007f
 
 port :: PortNumber
-port = PortNum 10000
+port = PortNum 10010
 
 maxlen :: Int
 maxlen = 8192
@@ -20,4 +20,4 @@ main = do
   bind sock (SockAddrInet port localhost)
   forever $ do
     msg <- recv sock maxlen
-    B.putStr msg
+    B.putStrLn msg

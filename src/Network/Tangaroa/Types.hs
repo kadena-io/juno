@@ -17,7 +17,7 @@ module Network.Tangaroa.Types
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
-  , cYesVotes, cNoVotes, cUndecided, lNextIndex, lMatchIndex
+  , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
   , AppendEntries(..)
   , AppendEntriesResponse(..)
   , RequestVote(..)
@@ -221,19 +221,18 @@ liftRaftSpec RaftSpec{..} =
     }
 
 data RaftState nt et = RaftState
-  { _role          :: Role
-  , _term          :: Term
-  , _votedFor      :: Maybe nt
-  , _currentLeader :: Maybe nt
-  , _logEntries    :: Seq (Term, Command nt et)
-  , _commitIndex   :: Index
-  , _lastApplied   :: Index
-  , _timerThread   :: Maybe ThreadId
-  , _cYesVotes     :: Set nt
-  , _cNoVotes      :: Set nt
-  , _cUndecided    :: Set nt
-  , _lNextIndex    :: Map nt Index
-  , _lMatchIndex   :: Map nt Index
+  { _role            :: Role
+  , _term            :: Term
+  , _votedFor        :: Maybe nt
+  , _currentLeader   :: Maybe nt
+  , _logEntries      :: Seq (Term, Command nt et)
+  , _commitIndex     :: Index
+  , _lastApplied     :: Index
+  , _timerThread     :: Maybe ThreadId
+  , _cYesVotes       :: Set nt
+  , _cPotentialVotes :: Set nt
+  , _lNextIndex      :: Map nt Index
+  , _lMatchIndex     :: Map nt Index
   }
   deriving (Show)
 makeLenses ''RaftState
