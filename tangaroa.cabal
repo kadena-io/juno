@@ -16,7 +16,6 @@ cabal-version:       >=1.20
 
 library
   exposed-modules:     Network.Tangaroa
-                     , Network.Tangaroa.Spec
                      , Network.Tangaroa.Types
                      , Network.Tangaroa.Internal.Monad
   build-depends:       base < 5
