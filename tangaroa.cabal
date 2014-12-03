@@ -17,16 +17,21 @@ cabal-version:       >=1.20
 library
   exposed-modules:     Network.Tangaroa
                      , Network.Tangaroa.Types
-                     , Network.Tangaroa.Internal.Monad
+                     , Network.Tangaroa.Role
+                     , Network.Tangaroa.Handler
+                     , Network.Tangaroa.Sender
+                     , Network.Tangaroa.Util
+                     , Network.Tangaroa.Combinator
+                     , Network.Tangaroa.Timer
   build-depends:       base < 5
                      , binary
                      , bytestring
                      , containers
                      , crypto-api
                      , lens
+                     , lifted-base
+                     , monad-control
                      , mtl
-                     , monad-fork
-                     , QuickCheck
                      , random
                      , RSA
                      , transformers

@@ -2,7 +2,9 @@
 
 module Network.Tangaroa
   ( runRaft
-  , module Network.Tangaroa.Types
+  , RaftSpec(..)
+  , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
+  , Term, startTerm
   ) where
 
 import Control.Concurrent.Chan.Unagi
@@ -10,9 +12,13 @@ import Control.Lens hiding (Index)
 import Control.Monad
 import Control.Monad.RWS
 import qualified Data.Set as Set
+import qualified Data.Sequence as Seq
+import qualified Data.Map as Map
 
+import Network.Tangaroa.Handler
 import Network.Tangaroa.Types
-import Network.Tangaroa.Internal.Monad
+import Network.Tangaroa.Util
+import Network.Tangaroa.Timer
 
 getQsize :: Int -> Int
 getQsize n =
@@ -28,6 +34,21 @@ runRaft rconf spec@RaftSpec{..} = do
     raft
     (RaftEnv rconf qsize ein eout (liftRaftSpec spec))
     initialRaftState
+
+initialRaftState :: RaftState nt et
+initialRaftState = RaftState
+  Follower   -- role
+  startTerm  -- term
+  Nothing    -- votedFor
+  Nothing    -- currentLeader
+  Seq.empty  -- log
+  startIndex -- commitIndex
+  startIndex -- lastApplied
+  Nothing    -- timerThread
+  Set.empty  -- cYesVotes
+  Set.empty  -- cPotentialVotes
+  Map.empty  -- lNextIndex
+  Map.empty  -- lMatchIndex
 
 runRWS_ :: Monad m => RWST r w s m a -> r -> s -> m ()
 runRWS_ ma r s = runRWST ma r s >> return ()
