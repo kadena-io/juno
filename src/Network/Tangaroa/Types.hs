@@ -156,9 +156,9 @@ data Role = Follower
           | Leader
   deriving (Show, Generic, Eq)
 
-data Event mt = Message mt
-              | ElectionTimeout String
-              | HeartbeatTimeout String
+data Event nt et rt = ERPC (RPC nt et rt)
+                    | ElectionTimeout String
+                    | HeartbeatTimeout String
   deriving (Show)
 
 -- | A version of RaftSpec where all IO functions are lifted
@@ -240,8 +240,8 @@ makeLenses ''RaftState
 data RaftEnv nt et rt mt = RaftEnv
   { _cfg        :: Config nt
   , _quorumSize :: Int
-  , _eventIn    :: InChan (Event mt)
-  , _eventOut   :: OutChan (Event mt)
+  , _eventIn    :: InChan (Event nt et rt)
+  , _eventOut   :: OutChan (Event nt et rt)
   , _rs         :: LiftedRaftSpec nt et rt mt (RWST (RaftEnv nt et rt mt) () (RaftState nt et))
   }
 makeLenses ''RaftEnv

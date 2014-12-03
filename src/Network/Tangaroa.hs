@@ -63,4 +63,9 @@ raft = do
 messageReceiver :: Raft nt et rt mt ()
 messageReceiver = do
   gm <- view (rs.getMessage)
-  forever $ gm >>= enqueueEvent . Message
+  deser <- view (rs.deserializeRPC)
+  forever $
+    gm >>= maybe
+      (debug "failed to deserialize RPC")
+      (enqueueEvent . ERPC)
+      . deser

@@ -35,7 +35,7 @@ cancelTimer = do
 
 -- | Cancels any pending timer and sets a new timer to trigger an event after t
 -- microseconds.
-setTimedEvent :: Event mt -> Int -> Raft nt et rt mt ()
+setTimedEvent :: Event nt et rt -> Int -> Raft nt et rt mt ()
 setTimedEvent e t = do
   cancelTimer
   tmr <- fork $ wait t >> enqueueEvent e

@@ -37,10 +37,10 @@ debug s = view (rs.debugPrint) >>= ($ s)
 fork_ :: MonadBaseControl IO m => m () -> m ()
 fork_ a = fork a >> return ()
 
-enqueueEvent :: Event mt -> Raft nt et rt mt ()
+enqueueEvent :: Event nt et rt -> Raft nt et rt mt ()
 enqueueEvent event = do
   ein <- view eventIn
   lift $ writeChan ein event
 
-dequeueEvent :: Raft nt et rt mt (Event mt)
+dequeueEvent :: Raft nt et rt mt (Event nt et rt)
 dequeueEvent = lift . readChan =<< view eventOut

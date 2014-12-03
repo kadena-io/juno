@@ -25,22 +25,20 @@ handleEvents :: Ord nt => Raft nt et rt mt ()
 handleEvents = forever $ do
   e <- dequeueEvent
   case e of
-    Message m          -> handleMessage m
+    ERPC rpc           -> handleRPC rpc
     ElectionTimeout s  -> handleElectionTimeout s
     HeartbeatTimeout s -> handleHeartbeatTimeout s
 
-handleMessage :: Ord nt => mt -> Raft nt et rt mt ()
-handleMessage m = do
-  dm <- rs.deserializeRPC ^$ m
-  case dm of
-    Just (AE ae)     -> handleAppendEntries ae
-    Just (AER aer)   -> handleAppendEntriesResponse aer
-    Just (RV rv)     -> handleRequestVote rv
-    Just (RVR rvr)   -> handleRequestVoteResponse rvr
-    Just (CMD cmd)   -> handleCommand cmd
-    Just (CMDR _)    -> debug "got a command response RPC"
-    Just (DBG s)     -> debug $ "got a debug RPC: " ++ s
-    Nothing          -> debug "failed to deserialize RPC"
+handleRPC :: Ord nt => RPC nt et rt -> Raft nt et rt mt ()
+handleRPC rpc = do
+  case rpc of
+    AE ae     -> handleAppendEntries ae
+    AER aer   -> handleAppendEntriesResponse aer
+    RV rv     -> handleRequestVote rv
+    RVR rvr   -> handleRequestVoteResponse rvr
+    CMD cmd   -> handleCommand cmd
+    CMDR _    -> debug "got a command response RPC"
+    DBG s     -> debug $ "got a debug RPC: " ++ s
 
 handleElectionTimeout :: Ord nt => String -> Raft nt et rt mt ()
 handleElectionTimeout s = do
