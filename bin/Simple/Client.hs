@@ -3,7 +3,6 @@ module Main
   ) where
 
 import Network.Tangaroa.Spec.Simple
-import System.Exit
 
 import Command
 
@@ -11,10 +10,10 @@ getCommand :: IO CommandType
 getCommand = do
   cmd <- getLine
   case words cmd of
-    ["add"]  -> return AddOne
-    ["sub"]  -> return SubtractOne
-    ["get"]  -> return GetValue
-    ["exit"] -> exitSuccess
+    ["insert", k, v] -> return (Insert k v)
+    ["delete", k]    -> return (Delete k)
+    ["set", k, v]    -> return (Set k v)
+    ["get", k]       -> return (Get k)
     _        -> do
       putStrLn "Not a recognized command."
       getCommand
@@ -22,9 +21,9 @@ getCommand = do
 showResult :: ResultType -> IO ()
 showResult r =
   case r of
-    Just v  -> print v
-    Nothing -> putStrLn "success"
+    Value v -> putStrLn v
+    _       -> print r
 
 main :: IO ()
 main = do
-  runClient (\_ -> return Nothing) getCommand showResult
+  runClient (\_ -> return Failure) getCommand showResult

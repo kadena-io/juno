@@ -47,7 +47,7 @@ library
 executable simpleserver
   main-is:             Server.hs
   build-depends:       base < 5
-                     , stm
+                     , containers
                      , tangaroa
   hs-source-dirs:      bin/Simple
   ghc-options:         -Wall -O2 -threaded
@@ -60,7 +60,6 @@ executable simpleclient
   hs-source-dirs:      bin/Simple
   ghc-options:         -Wall -O2 -threaded
   default-language:    Haskell2010
-
 
 executable udprecv
   main-is:             udprecv.hs

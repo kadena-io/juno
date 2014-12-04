@@ -1,9 +1,15 @@
 module Command
   ( CommandType(..)
-  , ResultType
+  , ResultType(..)
   ) where
 
-data CommandType = AddOne | SubtractOne | GetValue
+data CommandType = Insert String String
+                 | Delete String
+                 | Set    String String
+                 | Get    String
   deriving (Show, Read)
 
-type ResultType = Maybe Int
+data ResultType = Value String -- for successful Get
+                | Success      -- for successful Inserts, Delete, Set
+                | Failure
+  deriving (Show, Read)
