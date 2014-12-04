@@ -1,9 +1,10 @@
 module Network.Tangaroa.Timer
   ( resetElectionTimer
   , resetHeartbeatTimer
+  , cancelTimer
   ) where
 
-import Control.Lens
+import Control.Lens hiding (Index)
 import Control.Monad.Trans (lift)
 import System.Random
 import Control.Concurrent.Lifted

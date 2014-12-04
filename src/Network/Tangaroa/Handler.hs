@@ -125,8 +125,7 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
       then do
         lMatchIndex.at _aerNodeId .= Just _aerIndex
         lNextIndex .at _aerNodeId .= Just (_aerIndex + 1)
-        leaderUpdateCommitIndex
-        applyLogEntries
+        leaderDoCommit
       else do
         lNextIndex %= Map.adjust (subtract 1) _aerNodeId
         fork_ $ sendAppendEntries _aerNodeId
@@ -134,8 +133,13 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
 applyCommand :: Command nt et -> Raft nt et rt mt (rt,nt)
 applyCommand Command{..} = do
   apply <- view (rs.applyLogEntry)
-  result <- apply _entry
-  return (result, _clientId)
+  result <- apply _cmdEntry
+  return (result, _cmdClientId)
+
+leaderDoCommit :: Ord nt => Raft nt et rt mt ()
+leaderDoCommit = do
+  commitUpdate <- leaderUpdateCommitIndex
+  when commitUpdate applyLogEntries
 
 -- apply the un-applied log entries up through commitIndex
 -- and send results to the client if you are the leader
@@ -155,7 +159,7 @@ applyLogEntries = do
 -- called only as leader
 -- checks to see what the largest N where a majority of
 -- the lMatchIndex set is >= N
-leaderUpdateCommitIndex :: Ord nt => Raft nt et rt mt ()
+leaderUpdateCommitIndex :: Ord nt => Raft nt et rt mt Bool
 leaderUpdateCommitIndex = do
   ci <- use commitIndex
   lmi <- use lMatchIndex
@@ -169,12 +173,16 @@ leaderUpdateCommitIndex = do
                       [(ci + 1)..(Seq.length es - 1)]
 
   -- get the prefix of these indices where a quorum of nodes have matching
-  -- indices for that entry
-  let qcinds = takeWhile (\i -> Map.size (Map.filter (>= i) lmi) >= qsize) ctinds
+  -- indices for that entry. lMatchIndex doesn't include the leader, so add
+  -- one to the size
+  let qcinds = takeWhile (\i -> 1 + Map.size (Map.filter (>= i) lmi) >= qsize) ctinds
 
-  when (not $ null qcinds) $ do
-    commitIndex .= last qcinds
-    debug $ "commit index is now: " ++ show (last qcinds)
+  case qcinds of
+    [] -> return False
+    _  -> do
+      commitIndex .= last qcinds
+      debug $ "commit index is now: " ++ show (last qcinds)
+      return True
 
 handleRequestVote :: Eq nt => RequestVote nt -> Raft nt et rt mt ()
 handleRequestVote RequestVote{..} = do
@@ -236,6 +244,7 @@ handleCommand cmd = do
       -- and propagate it to replicas
       logEntries %= (Seq.|> (ct, cmd))
       fork_ sendAllAppendEntries
+      leaderDoCommit
     (_, Just lid) ->
       -- we're not the leader, but we know who the leader is, so forward this
       -- command

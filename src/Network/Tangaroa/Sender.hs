@@ -59,8 +59,14 @@ sendAllRequestVotes :: Raft nt et rt mt ()
 sendAllRequestVotes = traverse_ sendRequestVote =<< use cPotentialVotes
 
 sendResults :: Seq (rt,nt) -> Raft nt et rt mt ()
-sendResults results =
-  traverse_ (\(result,target) -> sendRPC target $ CMDR result) results
+sendResults results = do
+  mlid <- use currentLeader
+  nid <- view (cfg.nodeId)
+  traverse_
+    (\(result,target) ->
+      sendRPC target $ CMDR $
+        CommandResponse result (case mlid of { Just lid -> lid; Nothing -> nid}))
+    results
 
 -- TODO: check this
 -- called by leaders sending appendEntries.

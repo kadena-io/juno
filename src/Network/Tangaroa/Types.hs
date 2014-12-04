@@ -13,16 +13,18 @@ module Network.Tangaroa.Types
   , liftRaftSpec
   , Term, startTerm, succTerm
   , Index, startIndex
-  , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
+  , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout, enableDebug
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
+  , initialRaftState
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
   , AppendEntries(..)
   , AppendEntriesResponse(..)
   , RequestVote(..)
   , RequestVoteResponse(..)
   , Command(..)
+  , CommandResponse(..)
   , RPC(..)
   , term
   , Event(..)
@@ -34,8 +36,11 @@ import Control.Lens hiding (Index)
 import Control.Monad.RWS
 import Data.Binary
 import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Set (Set)
+import qualified Data.Set as Set
 
 import GHC.Generics
 
@@ -58,13 +63,20 @@ data Config nt = Config
   , _nodeId               :: nt
   , _electionTimeoutRange :: (Int,Int) -- in microseconds
   , _heartbeatTimeout     :: Int       -- in microseconds
+  , _enableDebug          :: Bool
   }
   deriving (Show, Generic)
 makeLenses ''Config
 
 data Command nt et = Command
-  { _entry    :: et
-  , _clientId :: nt
+  { _cmdEntry    :: et
+  , _cmdClientId :: nt
+  }
+  deriving (Show, Read, Generic)
+
+data CommandResponse nt rt = CommandResponse
+  { _cmdrResult   :: rt
+  , _cmdrLeaderId :: nt
   }
   deriving (Show, Read, Generic)
 
@@ -106,7 +118,7 @@ data RPC nt et rt = AE (AppendEntries nt et)
                   | RV (RequestVote nt)
                   | RVR (RequestVoteResponse nt)
                   | CMD (Command nt et)
-                  | CMDR rt
+                  | CMDR (CommandResponse nt rt)
                   | DBG String
   deriving (Show, Read, Generic)
 
@@ -115,7 +127,7 @@ data RPC nt et rt = AE (AppendEntries nt et)
 data RaftSpec nt et rt mt = RaftSpec
   {
     -- ^ Function to get a log entry from persistent storage.
-    __readLogEntry     :: Index -> IO et
+    __readLogEntry     :: Index -> IO (Maybe et)
 
     -- ^ Function to write a log entry to persistent storage.
   , __writeLogEntry    :: Index -> (Term,et) -> IO ()
@@ -148,7 +160,7 @@ data RaftSpec nt et rt mt = RaftSpec
   , __getMessage       :: IO mt
 
     -- ^ Function to log a debug message (no newline).
-  , __debugPrint       :: String -> IO ()
+  , __debugPrint       :: nt -> String -> IO ()
   }
 
 data Role = Follower
@@ -166,7 +178,7 @@ data Event nt et rt = ERPC (RPC nt et rt)
 data LiftedRaftSpec nt et rt mt t = LiftedRaftSpec
   {
     -- ^ Function to get a log entry from persistent storage.
-    _readLogEntry     :: MonadTrans t => Index -> t IO et
+    _readLogEntry     :: MonadTrans t => Index -> t IO (Maybe et)
 
     -- ^ Function to write a log entry to persistent storage.
   , _writeLogEntry    :: MonadTrans t => Index -> (Term,et) -> t IO ()
@@ -199,7 +211,7 @@ data LiftedRaftSpec nt et rt mt t = LiftedRaftSpec
   , _getMessage       :: MonadTrans t => t IO mt
 
     -- ^ Function to log a debug message (no newline).
-  , _debugPrint       :: String -> t IO ()
+  , _debugPrint       :: nt -> String -> t IO ()
   }
 makeLenses ''LiftedRaftSpec
 
@@ -217,7 +229,7 @@ liftRaftSpec RaftSpec{..} =
     , _deserializeRPC  = __deserializeRPC
     , _sendMessage     = \n m -> lift (__sendMessage n m)
     , _getMessage      = lift __getMessage
-    , _debugPrint      = lift . __debugPrint
+    , _debugPrint      = \n s -> lift (__debugPrint n s)
     }
 
 data RaftState nt et = RaftState
@@ -237,6 +249,21 @@ data RaftState nt et = RaftState
   deriving (Show)
 makeLenses ''RaftState
 
+initialRaftState :: RaftState nt et
+initialRaftState = RaftState
+  Follower   -- role
+  startTerm  -- term
+  Nothing    -- votedFor
+  Nothing    -- currentLeader
+  Seq.empty  -- log
+  startIndex -- commitIndex
+  startIndex -- lastApplied
+  Nothing    -- timerThread
+  Set.empty  -- cYesVotes
+  Set.empty  -- cPotentialVotes
+  Map.empty  -- lNextIndex
+  Map.empty  -- lMatchIndex
+
 data RaftEnv nt et rt mt = RaftEnv
   { _cfg        :: Config nt
   , _quorumSize :: Int
@@ -255,5 +282,6 @@ instance Binary nt              => Binary (AppendEntriesResponse nt)
 instance Binary nt              => Binary (RequestVote nt)
 instance Binary nt              => Binary (RequestVoteResponse nt)
 instance (Binary nt, Binary et) => Binary (Command nt et)
+instance (Binary nt, Binary rt) => Binary (CommandResponse nt rt)
 
 instance (Binary nt, Binary et, Binary rt) => Binary (RPC nt et rt)
