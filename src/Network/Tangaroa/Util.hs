@@ -6,6 +6,7 @@ module Network.Tangaroa.Util
   , getQuorumSize
   , debug
   , fork_
+  , wait
   , runRWS_
   , enqueueEvent
   , dequeueEvent
@@ -16,9 +17,9 @@ import Network.Tangaroa.Types
 import Control.Lens
 import Data.Sequence (Seq)
 import Control.Monad.RWS
-import Control.Concurrent.Lifted (fork)
+import Control.Concurrent.Lifted (fork, threadDelay)
 import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Concurrent.Chan.Unagi
+import Control.Concurrent.Chan.Unagi (readChan, writeChan)
 import qualified Data.Sequence as Seq
 
 seqIndex :: Seq a -> Int -> Maybe a
@@ -48,6 +49,9 @@ debug s = do
 
 fork_ :: MonadBaseControl IO m => m () -> m ()
 fork_ a = fork a >> return ()
+
+wait :: Int -> Raft nt et rt mt ()
+wait t = threadDelay t
 
 runRWS_ :: Monad m => RWST r w s m a -> r -> s -> m ()
 runRWS_ ma r s = runRWST ma r s >> return ()

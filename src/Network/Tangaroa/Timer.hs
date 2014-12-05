@@ -25,9 +25,6 @@ resetHeartbeatTimer = do
   timeout <- view (cfg.heartbeatTimeout)
   setTimedEvent (HeartbeatTimeout $ show (timeout `div` 1000) ++ "ms") timeout
 
-wait :: Int -> Raft nt et rt mt ()
-wait t = threadDelay t
-
 -- | Cancel any existing timer.
 cancelTimer :: Raft nt et rt mt ()
 cancelTimer = do
