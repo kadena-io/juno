@@ -8,7 +8,7 @@ module Network.Tangaroa
   ) where
 
 import Control.Concurrent.Chan.Unagi
-import Control.Lens hiding (Index)
+import Control.Lens
 import qualified Data.Set as Set
 
 import Network.Tangaroa.Handler
