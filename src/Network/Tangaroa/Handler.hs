@@ -12,7 +12,7 @@ import Network.Tangaroa.Role
 import Network.Tangaroa.Timer
 
 import Control.Monad hiding (mapM)
-import Control.Lens hiding (Index)
+import Control.Lens
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
@@ -100,7 +100,7 @@ handleAppendEntries AppendEntries{..} = do
           commitIndex .= min _leaderCommit newLastEntry
           applyLogEntries
 
-prevLogEntryMatches :: Index -> Term -> Raft nt et rt mt Bool
+prevLogEntryMatches :: LogIndex -> Term -> Raft nt et rt mt Bool
 prevLogEntryMatches pli plt = do
   es <- use logEntries
   case seqIndex es pli of
@@ -110,7 +110,7 @@ prevLogEntryMatches pli plt = do
     Just (t,_) -> return (t == plt)
 
 -- TODO: check this
-appendLogEntries :: Index -> Seq (Term, Command nt et) -> Raft nt et rt mt ()
+appendLogEntries :: LogIndex -> Seq (Term, Command nt et) -> Raft nt et rt mt ()
 appendLogEntries pli es =
   logEntries %= (Seq.>< es) . Seq.take (pli + 1)
 
@@ -130,11 +130,18 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
         lNextIndex %= Map.adjust (subtract 1) _aerNodeId
         fork_ $ sendAppendEntries _aerNodeId
 
-applyCommand :: Command nt et -> Raft nt et rt mt (rt,nt)
+applyCommand :: Command nt et -> Raft nt et rt mt (nt, CommandResponse nt rt)
 applyCommand Command{..} = do
   apply <- view (rs.applyLogEntry)
   result <- apply _cmdEntry
-  return (result, _cmdClientId)
+  mlid <- use currentLeader
+  nid <- view (cfg.nodeId)
+  return $
+    (_cmdClientId,
+      CommandResponse
+        result
+        (case mlid of Just lid -> lid; Nothing -> nid)
+        _cmdRequestId)
 
 leaderDoCommit :: Ord nt => Raft nt et rt mt ()
 leaderDoCommit = do

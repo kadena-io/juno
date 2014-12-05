@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -11,12 +12,14 @@ module Network.Tangaroa.Types
   , readVotedFor, writeVotedFor, applyLogEntry, serializeRPC
   , deserializeRPC, sendMessage, getMessage, debugPrint
   , liftRaftSpec
-  , Term, startTerm, succTerm
-  , Index, startIndex
+  , Term, startTerm
+  , LogIndex, startIndex
+  , RequestId, startRequestId
   , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout, enableDebug
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
+  , pendingRequests, nextRequestId
   , initialRaftState
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
   , AppendEntries(..)
@@ -45,18 +48,21 @@ import qualified Data.Set as Set
 import GHC.Generics
 
 newtype Term = Term Int
-  deriving (Show, Read, Eq, Ord, Generic)
+  deriving (Show, Read, Eq, Ord, Generic, Num)
 
 startTerm :: Term
 startTerm = Term (-1)
 
-succTerm :: Term -> Term
-succTerm (Term t) = Term (succ t)
+type LogIndex = Int
 
-type Index = Int
-
-startIndex :: Index
+startIndex :: LogIndex
 startIndex = (-1)
+
+newtype RequestId = RequestId Int
+  deriving (Show, Read, Eq, Ord, Generic, Num)
+
+startRequestId :: RequestId
+startRequestId = RequestId 0
 
 data Config nt = Config
   { _otherNodes           :: Set nt
@@ -69,24 +75,26 @@ data Config nt = Config
 makeLenses ''Config
 
 data Command nt et = Command
-  { _cmdEntry    :: et
-  , _cmdClientId :: nt
+  { _cmdEntry     :: et
+  , _cmdClientId  :: nt
+  , _cmdRequestId :: RequestId
   }
   deriving (Show, Read, Generic)
 
 data CommandResponse nt rt = CommandResponse
-  { _cmdrResult   :: rt
-  , _cmdrLeaderId :: nt
+  { _cmdrResult    :: rt
+  , _cmdrLeaderId  :: nt
+  , _cmdrRequestId :: RequestId
   }
   deriving (Show, Read, Generic)
 
 data AppendEntries nt et = AppendEntries
   { _aeTerm       :: Term
   , _leaderId     :: nt
-  , _prevLogIndex :: Index
+  , _prevLogIndex :: LogIndex
   , _prevLogTerm  :: Term
   , _aeEntries    :: Seq (Term, Command nt et)
-  , _leaderCommit :: Index
+  , _leaderCommit :: LogIndex
   }
   deriving (Show, Read, Generic)
 
@@ -94,14 +102,14 @@ data AppendEntriesResponse nt = AppendEntriesResponse
   { _aerTerm    :: Term
   , _aerNodeId  :: nt
   , _aerSuccess :: Bool
-  , _aerIndex   :: Index
+  , _aerIndex   :: LogIndex
   }
   deriving (Show, Read, Generic)
 
 data RequestVote nt = RequestVote
   { _rvTerm       :: Term
   , _candidateId  :: nt
-  , _lastLogIndex :: Index
+  , _lastLogIndex :: LogIndex
   , _lastLogTerm  :: Term
   }
   deriving (Show, Read, Generic)
@@ -127,10 +135,10 @@ data RPC nt et rt = AE (AppendEntries nt et)
 data RaftSpec nt et rt mt = RaftSpec
   {
     -- ^ Function to get a log entry from persistent storage.
-    __readLogEntry     :: Index -> IO (Maybe et)
+    __readLogEntry     :: LogIndex -> IO (Maybe et)
 
     -- ^ Function to write a log entry to persistent storage.
-  , __writeLogEntry    :: Index -> (Term,et) -> IO ()
+  , __writeLogEntry    :: LogIndex -> (Term,et) -> IO ()
 
     -- ^ Function to get the term number from persistent storage.
   , __readTermNumber   :: IO Term
@@ -178,10 +186,10 @@ data Event nt et rt = ERPC (RPC nt et rt)
 data LiftedRaftSpec nt et rt mt t = LiftedRaftSpec
   {
     -- ^ Function to get a log entry from persistent storage.
-    _readLogEntry     :: MonadTrans t => Index -> t IO (Maybe et)
+    _readLogEntry     :: MonadTrans t => LogIndex -> t IO (Maybe et)
 
     -- ^ Function to write a log entry to persistent storage.
-  , _writeLogEntry    :: MonadTrans t => Index -> (Term,et) -> t IO ()
+  , _writeLogEntry    :: MonadTrans t => LogIndex -> (Term,et) -> t IO ()
 
     -- ^ Function to get the term number from persistent storage.
   , _readTermNumber   :: MonadTrans t => t IO Term
@@ -238,15 +246,16 @@ data RaftState nt et = RaftState
   , _votedFor        :: Maybe nt
   , _currentLeader   :: Maybe nt
   , _logEntries      :: Seq (Term, Command nt et)
-  , _commitIndex     :: Index
-  , _lastApplied     :: Index
+  , _commitIndex     :: LogIndex
+  , _lastApplied     :: LogIndex
   , _timerThread     :: Maybe ThreadId
   , _cYesVotes       :: Set nt
   , _cPotentialVotes :: Set nt
-  , _lNextIndex      :: Map nt Index
-  , _lMatchIndex     :: Map nt Index
+  , _lNextIndex      :: Map nt LogIndex
+  , _lMatchIndex     :: Map nt LogIndex
+  , _pendingRequests :: Map RequestId (Command nt et) -- used by clients
+  , _nextRequestId   :: RequestId                     -- used by clients
   }
-  deriving (Show)
 makeLenses ''RaftState
 
 initialRaftState :: RaftState nt et
@@ -263,6 +272,8 @@ initialRaftState = RaftState
   Set.empty  -- cPotentialVotes
   Map.empty  -- lNextIndex
   Map.empty  -- lMatchIndex
+  Map.empty  -- pendingRequests
+  0          -- nextRequestId
 
 data RaftEnv nt et rt mt = RaftEnv
   { _cfg        :: Config nt
@@ -276,6 +287,7 @@ makeLenses ''RaftEnv
 type Raft nt et rt mt a = RWST (RaftEnv nt et rt mt) () (RaftState nt et) IO a
 
 instance Binary Term
+instance Binary RequestId
 
 instance (Binary nt, Binary et) => Binary (AppendEntries nt et)
 instance Binary nt              => Binary (AppendEntriesResponse nt)

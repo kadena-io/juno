@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Network.Tangaroa.Client
   ( runRaftClient
@@ -13,6 +14,8 @@ import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad.RWS
 import qualified Data.Set as Set
+import qualified Data.Map as Map
+import Data.Foldable (traverse_)
 
 runRaftClient :: Ord nt => IO et -> (rt -> IO ()) -> Config nt -> RaftSpec nt et rt mt -> IO ()
 runRaftClient getEntry useResult rconf spec@RaftSpec{..} = do
@@ -31,20 +34,18 @@ raftClient getEntry useResult = do
   fork_ messageReceiver
   fork_ $ commandGetter getEntry
   resetHeartbeatTimer -- use heartbeat events to trigger retransmissions
-  messageCount .= 0
+  pendingRequests .= Map.empty
   clientHandleEvents useResult
 
--- alias this lens for the client's purposes
-messageCount :: Lens' (RaftState nt et) Index
-messageCount = commitIndex
-
+-- get commands with getEntry and put them on the event queue to be sent
 commandGetter :: Raft nt et rt mt et -> Raft nt et rt mt ()
 commandGetter getEntry = do
   nid <- view (cfg.nodeId)
   forever $ do
     entry <- getEntry
-    let cmd = Command entry nid
-    enqueueEvent $ ERPC $ CMD cmd
+    rid <- use nextRequestId
+    nextRequestId += 1
+    enqueueEvent $ ERPC $ CMD $ Command entry nid rid
 
 clientHandleEvents :: Ord nt => (rt -> Raft nt et rt mt ()) -> Raft nt et rt mt ()
 clientHandleEvents useResult = forever $ do
@@ -53,8 +54,9 @@ clientHandleEvents useResult = forever $ do
     ERPC (CMD cmd)     -> clientSendCommand cmd -- these are commands coming from the commandGetter thread
     ERPC (CMDR cmdr)   -> clientHandleCommandResponse useResult cmdr
     HeartbeatTimeout _ -> do
-      debug "choosing a new leader, try resending commands"
+      debug "choosing a new leader and resending commands"
       setLeaderToNext
+      traverse_ clientSendCommand =<< use pendingRequests
     _                  -> return ()
 
 setLeaderToFirst :: Raft nt et rt mt ()
@@ -74,13 +76,16 @@ setLeaderToNext = do
     Nothing -> setLeaderToFirst
 
 clientSendCommand :: Command nt et -> Raft nt et rt mt ()
-clientSendCommand cmd = do
+clientSendCommand cmd@Command{..} = do
   mlid <- use currentLeader
   case mlid of
     Just lid -> do
       sendRPC lid $ CMD cmd
-      messageCount += 1
-      resetHeartbeatTimer
+      prcount <- fmap Map.size (use pendingRequests)
+      -- if this will be our only pending request, start the timer
+      -- otherwise, it should already be running
+      when (prcount == 0) resetHeartbeatTimer
+      pendingRequests %= Map.insert _cmdRequestId cmd
     Nothing  -> do
       setLeaderToFirst
       clientSendCommand cmd
@@ -89,9 +94,13 @@ clientHandleCommandResponse :: (rt -> Raft nt et rt mt ())
                             -> CommandResponse nt rt
                             -> Raft nt et rt mt ()
 clientHandleCommandResponse useResult CommandResponse{..} = do
-  messageCount -= 1
-  mcnt <- use messageCount
-  if mcnt > 0
-    then resetHeartbeatTimer
-    else cancelTimer
-  useResult _cmdrResult
+  prs <- use pendingRequests
+  when (Map.member _cmdrRequestId prs) $ do
+    useResult _cmdrResult
+    pendingRequests %= Map.delete _cmdrRequestId
+    prcount <- fmap Map.size (use pendingRequests)
+    -- if we still have pending requests, reset the timer
+    -- otherwise cancel it
+    if (prcount > 0)
+      then resetHeartbeatTimer
+      else cancelTimer

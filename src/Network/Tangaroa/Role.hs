@@ -44,7 +44,7 @@ becomeCandidate :: Ord nt => Raft nt et rt mt ()
 becomeCandidate = do
   debug "becoming candidate"
   role .= Candidate
-  term %= succTerm
+  term += 1
   rs.writeTermNumber ^=<<. term
   nid <- view (cfg.nodeId)
   setVotedFor $ Just nid

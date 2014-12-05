@@ -9,7 +9,7 @@ module Network.Tangaroa.Sender
   , sendRPC
   ) where
 
-import Control.Lens hiding (Index)
+import Control.Lens
 import Data.Foldable (traverse_)
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
@@ -29,7 +29,7 @@ sendAppendEntries target = do
   sendRPC target $ AE $
     AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci
 
-sendAppendEntriesResponse :: nt -> Bool -> Index -> Raft nt et rt mt ()
+sendAppendEntriesResponse :: nt -> Bool -> LogIndex -> Raft nt et rt mt ()
 sendAppendEntriesResponse target success lindex = do
   ct <- use term
   nid <- view (cfg.nodeId)
@@ -58,21 +58,15 @@ sendAllAppendEntries = traverse_ sendAppendEntries =<< view (cfg.otherNodes)
 sendAllRequestVotes :: Raft nt et rt mt ()
 sendAllRequestVotes = traverse_ sendRequestVote =<< use cPotentialVotes
 
-sendResults :: Seq (rt,nt) -> Raft nt et rt mt ()
+sendResults :: Seq (nt, CommandResponse nt rt) -> Raft nt et rt mt ()
 sendResults results = do
-  mlid <- use currentLeader
-  nid <- view (cfg.nodeId)
-  traverse_
-    (\(result,target) ->
-      sendRPC target $ CMDR $
-        CommandResponse result (case mlid of { Just lid -> lid; Nothing -> nid}))
-    results
+  traverse_ (\(target,cmdr) -> sendRPC target $ CMDR cmdr) results
 
 -- TODO: check this
 -- called by leaders sending appendEntries.
 -- given a replica's nextIndex, get the index and term to send as
 -- prevLog(Index/Term)
-logInfoForNextIndex :: Maybe Index -> Seq (Term,et) -> (Index,Term)
+logInfoForNextIndex :: Maybe LogIndex -> Seq (Term,et) -> (LogIndex,Term)
 logInfoForNextIndex mni es =
   case mni of
     Just ni -> let pli = ni - 1 in

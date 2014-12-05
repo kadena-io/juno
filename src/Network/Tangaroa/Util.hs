@@ -13,7 +13,7 @@ module Network.Tangaroa.Util
   ) where
 
 import Network.Tangaroa.Types
-import Control.Lens hiding (Index)
+import Control.Lens
 import Data.Sequence (Seq)
 import Control.Monad.RWS
 import Control.Concurrent.Lifted (fork)
@@ -34,7 +34,7 @@ getQuorumSize n =
     else (n - 1) `div` 2 + 1
 
 -- get the last term and index of a log
-lastLogInfo :: Seq (Term, et) -> (Term, Index)
+lastLogInfo :: Seq (Term, et) -> (Term, LogIndex)
 lastLogInfo es =
   case Seq.viewr es of
     _ Seq.:> (t,_) -> (t, Seq.length es - 1)
