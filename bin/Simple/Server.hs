@@ -25,15 +25,14 @@ member :: IORef (Map String String)
        -> (IORef (Map String String) -> IO ResultType)
        -> IO ResultType
 member ref k memberFn notMemberFn = do
-  isMember <- fmap (Map.member k) (readIORef ref)
+  isMember <- Map.member k <$> readIORef ref
   if isMember
     then memberFn ref
     else notMemberFn ref
 
 -- adds a new mapping, and fails if a mapping already exists
 runInsert :: IORef (Map String String) -> String -> String -> IO ResultType
-runInsert ref k v =
-  member ref k doFail (doInsert k v)
+runInsert ref k v = member ref k doFail (doInsert k v)
 
 -- like insert, but instead fails if a mapping doesn't exist
 runSet :: IORef (Map String String) -> String -> String -> IO ResultType

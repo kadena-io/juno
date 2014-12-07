@@ -10,6 +10,6 @@ data CommandType = Insert String String
   deriving (Show, Read)
 
 data ResultType = Value String -- for successful Get
-                | Success      -- for successful Inserts, Delete, Set
+                | Success      -- for successful Insert, Delete, Set
                 | Failure
   deriving (Show, Read)
