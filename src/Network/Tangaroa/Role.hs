@@ -1,5 +1,3 @@
-{-# LANGUAGE TupleSections #-}
-
 module Network.Tangaroa.Role
   ( becomeFollower
   , becomeLeader
@@ -63,9 +61,8 @@ becomeLeader = do
   debug "becoming leader"
   role .= Leader
   (currentLeader .=) . Just =<< view (cfg.nodeId)
-  ni    <- Seq.length <$> use logEntries
-  nlist <- Set.toList <$> view (cfg.otherNodes)
-  lNextIndex  .= Map.fromList (map (,ni)         nlist)
-  lMatchIndex .= Map.fromList (map (,startIndex) nlist)
+  ni <- Seq.length <$> use logEntries
+  (lNextIndex  .=) =<< Map.fromSet (const ni)         <$> view (cfg.otherNodes)
+  (lMatchIndex .=) =<< Map.fromSet (const startIndex) <$> view (cfg.otherNodes)
   fork_ sendAllAppendEntries
   resetHeartbeatTimer
