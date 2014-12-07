@@ -42,11 +42,11 @@ defaultPortNum = 10000
 defaultConfig :: Config NodeType
 defaultConfig =
   Config
-    Set.empty          -- other nodes
-    (localhost,defaultPortNum)  -- self address
-    (6000000,12000000) -- election timeout range
-    3000000            -- heartbeat timeout
-    False              -- no debug
+    Set.empty                  -- other nodes
+    (localhost,defaultPortNum) -- self address
+    (3000000,6000000)          -- election timeout range
+    1500000                    -- heartbeat timeout
+    False                      -- no debug
 
 nodeSockAddr :: NodeType -> SockAddr
 nodeSockAddr (host,port) = SockAddrInet (PortNum port) host
