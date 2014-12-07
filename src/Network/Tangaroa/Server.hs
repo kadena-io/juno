@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Network.Tangaroa
+module Network.Tangaroa.Server
   ( runRaft
   , RaftSpec(..)
   , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout, enableDebug

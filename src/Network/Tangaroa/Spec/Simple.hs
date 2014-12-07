@@ -3,7 +3,7 @@ module Network.Tangaroa.Spec.Simple
   , runClient
   ) where
 
-import Network.Tangaroa
+import Network.Tangaroa.Server
 import Network.Tangaroa.Client
 
 import Control.Lens
