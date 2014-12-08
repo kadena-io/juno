@@ -75,6 +75,7 @@ executable bftserver
   build-depends:       base < 5
                      , containers
                      , tangaroa
+                     , binary
   hs-source-dirs:      bin/Byzantine
   ghc-options:         -Wall -O2 -threaded -rtsopts
   default-language:    Haskell2010
@@ -83,6 +84,7 @@ executable bftclient
   main-is:             Client.hs
   build-depends:       base < 5
                      , tangaroa
+                     , binary
   hs-source-dirs:      bin/Byzantine
   ghc-options:         -Wall -O2 -threaded -rtsopts
   default-language:    Haskell2010

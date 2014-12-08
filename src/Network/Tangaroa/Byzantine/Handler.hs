@@ -4,6 +4,17 @@ module Network.Tangaroa.Byzantine.Handler
   ( handleEvents
   ) where
 
+import Control.Lens
+import Control.Monad hiding (mapM)
+import Data.Binary
+import Data.Sequence (Seq)
+import Data.Traversable (mapM)
+import Prelude hiding (mapM)
+import qualified Data.ByteString.Lazy as B
+import qualified Data.Map as Map
+import qualified Data.Sequence as Seq
+import qualified Data.Set as Set
+
 import Network.Tangaroa.Byzantine.Types
 import Network.Tangaroa.Byzantine.Sender
 import Network.Tangaroa.Byzantine.Util
@@ -11,17 +22,7 @@ import Network.Tangaroa.Combinator
 import Network.Tangaroa.Byzantine.Role
 import Network.Tangaroa.Byzantine.Timer
 
-import Control.Monad hiding (mapM)
-import Control.Lens
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
-import qualified Data.Map as Map
-import qualified Data.Set as Set
-
-import Prelude hiding (mapM)
-import Data.Traversable (mapM)
-
-handleEvents :: Ord nt => Raft nt et rt mt ()
+handleEvents :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 handleEvents = forever $ do
   e <- dequeueEvent
   case e of
@@ -29,24 +30,27 @@ handleEvents = forever $ do
     ElectionTimeout s  -> handleElectionTimeout s
     HeartbeatTimeout s -> handleHeartbeatTimeout s
 
-handleRPC :: Ord nt => RPC nt et rt -> Raft nt et rt mt ()
+handleRPC :: (Binary nt, Binary et, Binary rt, Ord nt) => RPC nt et rt -> Raft nt et rt mt ()
 handleRPC rpc = do
-  case rpc of
-    AE ae     -> handleAppendEntries ae
-    AER aer   -> handleAppendEntriesResponse aer
-    RV rv     -> handleRequestVote rv
-    RVR rvr   -> handleRequestVoteResponse rvr
-    CMD cmd   -> handleCommand cmd
-    CMDR _    -> debug "got a command response RPC"
-    DBG s     -> debug $ "got a debug RPC: " ++ s
+  valid <- verifyRPCWithKey rpc
+  if valid
+    then case rpc of
+      AE ae     -> handleAppendEntries ae
+      AER aer   -> handleAppendEntriesResponse aer
+      RV rv     -> handleRequestVote rv
+      RVR rvr   -> handleRequestVoteResponse rvr
+      CMD cmd   -> handleCommand cmd
+      CMDR _    -> debug "got a command response RPC"
+      DBG s     -> debug $ "got a debug RPC: " ++ s
+    else debug "RPC has invalid signature"
 
-handleElectionTimeout :: Ord nt => String -> Raft nt et rt mt ()
+handleElectionTimeout :: (Binary nt, Binary et, Binary rt, Ord nt) => String -> Raft nt et rt mt ()
 handleElectionTimeout s = do
   debug $ "election timeout: " ++ s
   r <- use role
   when (r == Follower) becomeCandidate
 
-handleHeartbeatTimeout :: Ord nt => String -> Raft nt et rt mt ()
+handleHeartbeatTimeout :: (Binary nt, Binary et, Binary rt, Ord nt) => String -> Raft nt et rt mt ()
 handleHeartbeatTimeout s = do
   debug $ "heartbeat timeout: " ++ s
   r <- use role
@@ -76,7 +80,7 @@ handleTermNumber rpcTerm = do
     term .= rpcTerm
     becomeFollower
 
-handleAppendEntries :: AppendEntries nt et -> Raft nt et rt mt ()
+handleAppendEntries :: (Binary nt, Binary et, Binary rt) => AppendEntries nt et -> Raft nt et rt mt ()
 handleAppendEntries AppendEntries{..} = do
   debug $ "got an appendEntries RPC: prev log entry: Index " ++ show _prevLogIndex ++ " " ++ show _prevLogTerm
   handleTermNumber _aeTerm
@@ -114,7 +118,7 @@ appendLogEntries :: LogIndex -> Seq (Term, Command nt et) -> Raft nt et rt mt ()
 appendLogEntries pli es =
   logEntries %= (Seq.>< es) . Seq.take (pli + 1)
 
-handleAppendEntriesResponse :: Ord nt => AppendEntriesResponse nt -> Raft nt et rt mt ()
+handleAppendEntriesResponse :: (Binary nt, Binary et, Binary rt, Ord nt) => AppendEntriesResponse nt -> Raft nt et rt mt ()
 handleAppendEntriesResponse AppendEntriesResponse{..} = do
   debug "got an appendEntriesResponse RPC"
   handleTermNumber _aerTerm
@@ -140,10 +144,12 @@ applyCommand Command{..} = do
     (_cmdClientId,
       CommandResponse
         result
-        (case mlid of Just lid -> lid; Nothing -> nid)
-        _cmdRequestId)
+        (maybe nid id mlid) -- leader id if we know it, otherwise us
+        nid
+        _cmdRequestId
+        B.empty)
 
-leaderDoCommit :: Ord nt => Raft nt et rt mt ()
+leaderDoCommit :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 leaderDoCommit = do
   commitUpdate <- leaderUpdateCommitIndex
   when commitUpdate applyLogEntries
@@ -151,7 +157,7 @@ leaderDoCommit = do
 -- apply the un-applied log entries up through commitIndex
 -- and send results to the client if you are the leader
 -- TODO: have this done on a separate thread via event passing
-applyLogEntries :: Raft nt et rt mt ()
+applyLogEntries :: (Binary nt, Binary et, Binary rt) => Raft nt et rt mt ()
 applyLogEntries = do
   la <- use lastApplied
   ci <- use commitIndex
@@ -191,7 +197,7 @@ leaderUpdateCommitIndex = do
       debug $ "commit index is now: " ++ show (last qcinds)
       return True
 
-handleRequestVote :: Eq nt => RequestVote nt -> Raft nt et rt mt ()
+handleRequestVote :: (Binary nt, Binary et, Binary rt, Eq nt) => RequestVote nt -> Raft nt et rt mt ()
 handleRequestVote RequestVote{..} = do
   debug $ "got a requestVote RPC for " ++ show _rvTerm
   handleTermNumber _rvTerm
@@ -202,17 +208,17 @@ handleRequestVote RequestVote{..} = do
     _      | _rvTerm < ct -> do
       -- this is an old candidate
       debug "this is for an old term"
-      fork_ $ sendRequestVoteResponse _candidateId False
+      fork_ $ sendRequestVoteResponse _rvCandidateId False
 
-    Just c | c == _candidateId -> do
+    Just c | c == _rvCandidateId -> do
       -- already voted for this candidate
       debug "already voted for this candidate"
-      fork_ $ sendRequestVoteResponse _candidateId True
+      fork_ $ sendRequestVoteResponse _rvCandidateId True
 
     Just _ -> do
       -- already voted for a different candidate this term
       debug "already voted for a different candidate"
-      fork_ $ sendRequestVoteResponse _candidateId False
+      fork_ $ sendRequestVoteResponse _rvCandidateId False
 
     Nothing -> if (_lastLogTerm, _lastLogIndex) >= lastLogInfo es
       -- haven't voted yet, so vote for the candidate if its log is at least as
@@ -220,13 +226,13 @@ handleRequestVote RequestVote{..} = do
       -- higher terms, and then higher last indices for equal terms
       then do
         debug "haven't voted, voting for this candidate"
-        setVotedFor (Just _candidateId)
-        fork_ $ sendRequestVoteResponse _candidateId True
+        setVotedFor (Just _rvCandidateId)
+        fork_ $ sendRequestVoteResponse _rvCandidateId True
       else do
         debug "haven't voted, but my log is better than this candidate's"
-        fork_ $ sendRequestVoteResponse _candidateId False
+        fork_ $ sendRequestVoteResponse _rvCandidateId False
 
-handleRequestVoteResponse :: Ord nt => RequestVoteResponse nt -> Raft nt et rt mt ()
+handleRequestVoteResponse :: (Binary nt, Binary et, Binary rt, Ord nt) => RequestVoteResponse nt -> Raft nt et rt mt ()
 handleRequestVoteResponse RequestVoteResponse{..} = do
   debug $ "got a requestVoteResponse RPC for " ++ show _rvrTerm ++ ": " ++ show _voteGranted
   handleTermNumber _rvrTerm
@@ -239,7 +245,7 @@ handleRequestVoteResponse RequestVoteResponse{..} = do
       else
         cPotentialVotes %= Set.delete _rvrNodeId
 
-handleCommand :: Ord nt => Command nt et -> Raft nt et rt mt ()
+handleCommand :: (Binary nt, Binary et, Binary rt, Ord nt) => Command nt et -> Raft nt et rt mt ()
 handleCommand cmd = do
   debug "got a command RPC"
   r <- use role
@@ -254,7 +260,7 @@ handleCommand cmd = do
       leaderDoCommit
     (_, Just lid) ->
       -- we're not the leader, but we know who the leader is, so forward this
-      -- command
+      -- command (don't sign it ourselves, as it comes from the client)
       fork_ $ sendRPC lid $ CMD cmd
     (_, Nothing) ->
       -- we're not the leader, and we don't know who the leader is, so can't do

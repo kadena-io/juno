@@ -11,17 +11,21 @@ module Network.Tangaroa.Byzantine.Util
   , enqueueEvent
   , dequeueEvent
   , messageReceiver
+  , verifyRPCWithKey
   ) where
 
 import Network.Tangaroa.Byzantine.Types
 
 import Control.Lens
+import Data.Binary
+import Codec.Crypto.RSA
 import Data.Sequence (Seq)
 import Control.Monad.RWS
 import Control.Concurrent.Lifted (fork, threadDelay)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Concurrent.Chan.Unagi (readChan, writeChan)
 import qualified Data.Sequence as Seq
+import qualified Data.Map as Map
 
 seqIndex :: Seq a -> Int -> Maybe a
 seqIndex s i =
@@ -75,3 +79,29 @@ messageReceiver = do
       (debug "failed to deserialize RPC")
       (enqueueEvent . ERPC)
       . deser
+
+verifyWrappedRPC :: (Binary nt, Binary et, Binary rt) => PublicKey -> RPC nt et rt -> Bool
+verifyWrappedRPC k rpc = case rpc of
+  AE ae     -> verifyRPC k ae
+  AER aer   -> verifyRPC k aer
+  RV rv     -> verifyRPC k rv
+  RVR rvr   -> verifyRPC k rvr
+  CMD cmd   -> verifyRPC k cmd
+  CMDR cmdr -> verifyRPC k cmdr
+  DBG _     -> True
+
+senderId :: RPC nt et rt -> Maybe nt
+senderId rpc = case rpc of
+    AE ae     -> Just (_leaderId ae)
+    AER aer   -> Just (_aerNodeId aer)
+    RV rv     -> Just (_rvCandidateId rv)
+    RVR rvr   -> Just (_rvrNodeId rvr)
+    CMD cmd   -> Just (_cmdClientId cmd)
+    CMDR cmdr -> Just (_cmdrNodeId cmdr)
+    DBG _     -> Nothing
+
+verifyRPCWithKey :: (Binary nt, Binary et, Binary rt, Ord nt) => RPC nt et rt -> Raft nt et rt mt Bool
+verifyRPCWithKey rpc = do
+  pks <- view (cfg.publicKeys)
+  let mk = (\k -> Map.lookup k pks) =<< senderId rpc
+  return $ maybe False (\k -> verifyWrappedRPC k rpc) mk

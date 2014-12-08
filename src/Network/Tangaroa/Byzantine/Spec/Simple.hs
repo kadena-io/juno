@@ -9,6 +9,7 @@ import Network.Tangaroa.Byzantine.Types
 
 import Control.Lens
 import Data.Word
+import Data.Binary
 import Network.Socket
 import System.Console.GetOpt
 import System.Environment
@@ -136,21 +137,19 @@ simpleRaftSpec sock applyFn debugFn = RaftSpec
     , __debugPrint      = debugFn
     }
 
-runServer :: (Show et, Read et, Show rt, Read rt) =>
+runServer :: (Binary et, Binary rt, Show et, Read et, Show rt, Read rt) =>
   (et -> IO rt) -> IO ()
 runServer applyFn = do
   rconf <- getConfig
-  print rconf
   sock <- socket AF_INET Datagram defaultProtocol
   bind sock $ nodeSockAddr $ rconf ^. nodeId
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
   runRaftServer rconf $ simpleRaftSpec sock applyFn debugFn
 
-runClient :: (Show et, Read et, Show rt, Read rt) =>
+runClient :: (Binary et, Binary rt, Show et, Read et, Show rt, Read rt) =>
   (et -> IO rt) -> IO et -> (rt -> IO ()) -> IO ()
 runClient applyFn getEntry useResult = do
   rconf <- getConfig
-  print rconf
   sock <- socket AF_INET Datagram defaultProtocol
   bind sock $ nodeSockAddr $ rconf ^. nodeId
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug

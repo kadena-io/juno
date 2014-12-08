@@ -5,19 +5,21 @@ module Network.Tangaroa.Byzantine.Client
   ( runRaftClient
   ) where
 
-import Network.Tangaroa.Byzantine.Timer
-import Network.Tangaroa.Byzantine.Types
-import Network.Tangaroa.Byzantine.Util
-import Network.Tangaroa.Byzantine.Sender (sendRPC)
-
 import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad.RWS
-import qualified Data.Set as Set
-import qualified Data.Map as Map
+import Data.Binary
 import Data.Foldable (traverse_)
+import qualified Data.ByteString.Lazy as B
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 
-runRaftClient :: Ord nt => IO et -> (rt -> IO ()) -> Config nt -> RaftSpec nt et rt mt -> IO ()
+import Network.Tangaroa.Byzantine.Timer
+import Network.Tangaroa.Byzantine.Types
+import Network.Tangaroa.Byzantine.Util
+import Network.Tangaroa.Byzantine.Sender (sendSignedRPC)
+
+runRaftClient :: (Binary nt, Binary et, Binary rt, Ord nt) => IO et -> (rt -> IO ()) -> Config nt -> RaftSpec nt et rt mt -> IO ()
 runRaftClient getEntry useResult rconf spec@RaftSpec{..} = do
   let qsize = getQuorumSize $ Set.size $ rconf ^. otherNodes
   (ein, eout) <- newChan
@@ -26,14 +28,13 @@ runRaftClient getEntry useResult rconf spec@RaftSpec{..} = do
     (RaftEnv rconf qsize ein eout (liftRaftSpec spec))
     initialRaftState -- only use currentLeader and logEntries
 
-raftClient :: Ord nt => Raft nt et rt mt et -> (rt -> Raft nt et rt mt ()) -> Raft nt et rt mt ()
+raftClient :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt et -> (rt -> Raft nt et rt mt ()) -> Raft nt et rt mt ()
 raftClient getEntry useResult = do
   nodes <- view (cfg.otherNodes)
   when (Set.null nodes) $ error "The client has no nodes to send requests to."
   currentLeader .= (Just $ Set.findMin nodes)
   fork_ messageReceiver
   fork_ $ commandGetter getEntry
-  resetHeartbeatTimer -- use heartbeat events to trigger retransmissions
   pendingRequests .= Map.empty
   clientHandleEvents useResult
 
@@ -45,9 +46,9 @@ commandGetter getEntry = do
     entry <- getEntry
     rid <- use nextRequestId
     nextRequestId += 1
-    enqueueEvent $ ERPC $ CMD $ Command entry nid rid
+    enqueueEvent $ ERPC $ CMD $ Command entry nid rid B.empty
 
-clientHandleEvents :: Ord nt => (rt -> Raft nt et rt mt ()) -> Raft nt et rt mt ()
+clientHandleEvents :: (Binary nt, Binary et, Binary rt, Ord nt) => (rt -> Raft nt et rt mt ()) -> Raft nt et rt mt ()
 clientHandleEvents useResult = forever $ do
   e <- dequeueEvent
   case e of
@@ -75,12 +76,12 @@ setLeaderToNext = do
       Nothing   -> setLeaderToFirst
     Nothing -> setLeaderToFirst
 
-clientSendCommand :: Command nt et -> Raft nt et rt mt ()
+clientSendCommand :: (Binary nt, Binary et, Binary rt) => Command nt et -> Raft nt et rt mt ()
 clientSendCommand cmd@Command{..} = do
   mlid <- use currentLeader
   case mlid of
     Just lid -> do
-      sendRPC lid $ CMD cmd
+      sendSignedRPC lid $ CMD cmd
       prcount <- fmap Map.size (use pendingRequests)
       -- if this will be our only pending request, start the timer
       -- otherwise, it should already be running
@@ -90,12 +91,14 @@ clientSendCommand cmd@Command{..} = do
       setLeaderToFirst
       clientSendCommand cmd
 
-clientHandleCommandResponse :: (rt -> Raft nt et rt mt ())
+clientHandleCommandResponse :: (Binary nt, Binary et, Binary rt, Ord nt)
+                            => (rt -> Raft nt et rt mt ())
                             -> CommandResponse nt rt
                             -> Raft nt et rt mt ()
-clientHandleCommandResponse useResult CommandResponse{..} = do
+clientHandleCommandResponse useResult cmdr@CommandResponse{..} = do
   prs <- use pendingRequests
-  when (Map.member _cmdrRequestId prs) $ do
+  valid <- verifyRPCWithKey (CMDR cmdr)
+  when (valid && Map.member _cmdrRequestId prs) $ do
     useResult _cmdrResult
     pendingRequests %= Map.delete _cmdrRequestId
     prcount <- fmap Map.size (use pendingRequests)
@@ -104,3 +107,4 @@ clientHandleCommandResponse useResult CommandResponse{..} = do
     if (prcount > 0)
       then resetHeartbeatTimer
       else cancelTimer
+  when (not valid) $ debug "RPC has invalid signature"

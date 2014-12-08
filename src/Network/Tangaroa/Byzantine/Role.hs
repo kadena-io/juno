@@ -6,21 +6,22 @@ module Network.Tangaroa.Byzantine.Role
   , setVotedFor
   ) where
 
+import Control.Lens hiding (Index)
+import Control.Monad
+import Data.Functor
+import Data.Binary
+import qualified Data.Map as Map
+import qualified Data.Sequence as Seq
+import qualified Data.Set as Set
+
 import Network.Tangaroa.Byzantine.Timer
 import Network.Tangaroa.Byzantine.Types
 import Network.Tangaroa.Byzantine.Util
 import Network.Tangaroa.Byzantine.Sender
 import Network.Tangaroa.Combinator
 
-import Control.Lens hiding (Index)
-import Control.Monad
-import Data.Functor
-import qualified Data.Map as Map
-import qualified Data.Sequence as Seq
-import qualified Data.Set as Set
-
 -- count the yes votes and become leader if you have reached a quorum
-checkElection :: Ord nt => Raft nt et rt mt ()
+checkElection :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 checkElection = do
   nyes <- Set.size <$> use cYesVotes
   qsize <- view quorumSize
@@ -38,7 +39,7 @@ becomeFollower = do
   role .= Follower
   resetElectionTimer
 
-becomeCandidate :: Ord nt => Raft nt et rt mt ()
+becomeCandidate :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 becomeCandidate = do
   debug "becoming candidate"
   role .= Candidate
@@ -56,7 +57,7 @@ becomeCandidate = do
     fork_ sendAllRequestVotes
     resetHeartbeatTimer
 
-becomeLeader :: Ord nt => Raft nt et rt mt ()
+becomeLeader :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 becomeLeader = do
   debug "becoming leader"
   role .= Leader

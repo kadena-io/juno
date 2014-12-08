@@ -32,6 +32,8 @@ module Network.Tangaroa.Byzantine.Types
   , RPC(..)
   , term
   , Event(..)
+  , signRPC
+  , verifyRPC
   ) where
 
 import Control.Concurrent (ThreadId)
@@ -46,6 +48,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as B
 
 import GHC.Generics
 
@@ -82,13 +86,16 @@ data Command nt et = Command
   { _cmdEntry     :: et
   , _cmdClientId  :: nt
   , _cmdRequestId :: RequestId
+  , _cmdSig       :: ByteString
   }
   deriving (Show, Read, Generic)
 
 data CommandResponse nt rt = CommandResponse
   { _cmdrResult    :: rt
   , _cmdrLeaderId  :: nt
+  , _cmdrNodeId    :: nt
   , _cmdrRequestId :: RequestId
+  , _cmdrSig       :: ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -99,6 +106,7 @@ data AppendEntries nt et = AppendEntries
   , _prevLogTerm  :: Term
   , _aeEntries    :: Seq (Term, Command nt et)
   , _leaderCommit :: LogIndex
+  , _aeSig        :: ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -107,21 +115,25 @@ data AppendEntriesResponse nt = AppendEntriesResponse
   , _aerNodeId  :: nt
   , _aerSuccess :: Bool
   , _aerIndex   :: LogIndex
+  , _aerSig     :: ByteString
   }
   deriving (Show, Read, Generic)
 
 data RequestVote nt = RequestVote
-  { _rvTerm       :: Term
-  , _candidateId  :: nt
-  , _lastLogIndex :: LogIndex
-  , _lastLogTerm  :: Term
+  { _rvTerm        :: Term
+  , _rvCandidateId :: nt
+  , _lastLogIndex  :: LogIndex
+  , _lastLogTerm   :: Term
+  , _rvSig         :: ByteString
   }
   deriving (Show, Read, Generic)
 
 data RequestVoteResponse nt = RequestVoteResponse
-  { _rvrTerm     :: Term
-  , _rvrNodeId   :: nt
-  , _voteGranted :: Bool
+  { _rvrTerm        :: Term
+  , _rvrNodeId      :: nt
+  , _voteGranted    :: Bool
+  , _rvrCandidateId :: nt
+  , _rvrSig         :: ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -133,6 +145,34 @@ data RPC nt et rt = AE (AppendEntries nt et)
                   | CMDR (CommandResponse nt rt)
                   | DBG String
   deriving (Show, Read, Generic)
+
+class SigRPC rpc where
+  signRPC   :: PrivateKey -> rpc -> rpc
+  verifyRPC :: PublicKey -> rpc -> Bool
+
+instance (Binary nt, Binary et) => SigRPC (Command nt et) where
+  signRPC k rpc   = rpc { _cmdSig = sign k (encode (rpc { _cmdSig = B.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _cmdSig = B.empty })) (_cmdSig rpc)
+
+instance (Binary nt, Binary rt) => SigRPC (CommandResponse nt rt) where
+  signRPC k rpc   = rpc { _cmdrSig = sign k (encode (rpc { _cmdrSig = B.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _cmdrSig = B.empty })) (_cmdrSig rpc)
+
+instance (Binary nt, Binary et) => SigRPC (AppendEntries nt et) where
+  signRPC k rpc   = rpc { _aeSig = sign k (encode (rpc { _aeSig = B.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _aeSig = B.empty })) (_aeSig rpc)
+
+instance Binary nt => SigRPC (AppendEntriesResponse nt) where
+  signRPC k rpc   = rpc { _aerSig = sign k (encode (rpc { _aerSig = B.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _aerSig = B.empty })) (_aerSig rpc)
+
+instance Binary nt => SigRPC (RequestVote nt) where
+  signRPC k rpc   = rpc { _rvSig = sign k (encode (rpc { _rvSig = B.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _rvSig = B.empty })) (_rvSig rpc)
+
+instance Binary nt => SigRPC (RequestVoteResponse nt) where
+  signRPC k rpc   = rpc { _rvrSig = sign k (encode (rpc { _rvrSig = B.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _rvrSig = B.empty })) (_rvrSig rpc)
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
