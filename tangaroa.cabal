@@ -25,6 +25,15 @@ library
                      , Network.Tangaroa.Timer
                      , Network.Tangaroa.Types
                      , Network.Tangaroa.Util
+                     , Network.Tangaroa.Byzantine.Client
+                     , Network.Tangaroa.Byzantine.Handler
+                     , Network.Tangaroa.Byzantine.Role
+                     , Network.Tangaroa.Byzantine.Sender
+                     , Network.Tangaroa.Byzantine.Server
+                     , Network.Tangaroa.Byzantine.Spec.Simple
+                     , Network.Tangaroa.Byzantine.Timer
+                     , Network.Tangaroa.Byzantine.Types
+                     , Network.Tangaroa.Byzantine.Util
   build-depends:       base < 5
                      , binary
                      , bytestring
@@ -58,6 +67,23 @@ executable simpleclient
   build-depends:       base < 5
                      , tangaroa
   hs-source-dirs:      bin/Simple
+  ghc-options:         -Wall -O2 -threaded -rtsopts
+  default-language:    Haskell2010
+
+executable bftserver
+  main-is:             Server.hs
+  build-depends:       base < 5
+                     , containers
+                     , tangaroa
+  hs-source-dirs:      bin/Byzantine
+  ghc-options:         -Wall -O2 -threaded -rtsopts
+  default-language:    Haskell2010
+
+executable bftclient
+  main-is:             Client.hs
+  build-depends:       base < 5
+                     , tangaroa
+  hs-source-dirs:      bin/Byzantine
   ghc-options:         -Wall -O2 -threaded -rtsopts
   default-language:    Haskell2010
 
