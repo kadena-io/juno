@@ -1,10 +1,5 @@
-{-# LANGUAGE RecordWildCards #-}
-
 module Network.Tangaroa.Byzantine.Server
-  ( runRaft
-  , RaftSpec(..)
-  , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout, enableDebug
-  , Term, startTerm
+  ( runRaftServer
   ) where
 
 import Control.Concurrent.Chan.Unagi
@@ -16,8 +11,8 @@ import Network.Tangaroa.Byzantine.Types
 import Network.Tangaroa.Byzantine.Util
 import Network.Tangaroa.Byzantine.Timer
 
-runRaft :: Ord nt => Config nt -> RaftSpec nt et rt mt -> IO ()
-runRaft rconf spec@RaftSpec{..} = do
+runRaftServer :: Ord nt => Config nt -> RaftSpec nt et rt mt -> IO ()
+runRaftServer rconf spec = do
   let qsize = getQuorumSize $ 1 + (Set.size $ rconf ^. otherNodes)
   (ein, eout) <- newChan
   runRWS_

@@ -16,6 +16,7 @@ module Network.Tangaroa.Byzantine.Types
   , LogIndex, startIndex
   , RequestId, startRequestId
   , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout, enableDebug
+  , publicKeys, privateKey
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
@@ -37,6 +38,7 @@ import Control.Concurrent (ThreadId)
 import Control.Concurrent.Chan.Unagi
 import Control.Lens hiding (Index)
 import Control.Monad.RWS
+import Codec.Crypto.RSA
 import Data.Binary
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
@@ -67,6 +69,8 @@ startRequestId = RequestId 0
 data Config nt = Config
   { _otherNodes           :: Set nt
   , _nodeId               :: nt
+  , _publicKeys           :: Map nt PublicKey
+  , _privateKey           :: PrivateKey
   , _electionTimeoutRange :: (Int,Int) -- in microseconds
   , _heartbeatTimeout     :: Int       -- in microseconds
   , _enableDebug          :: Bool

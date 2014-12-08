@@ -5,6 +5,7 @@ module Network.Tangaroa.Byzantine.Spec.Simple
 
 import Network.Tangaroa.Byzantine.Server
 import Network.Tangaroa.Byzantine.Client
+import Network.Tangaroa.Byzantine.Types
 
 import Control.Lens
 import Data.Word
@@ -14,23 +15,37 @@ import System.Environment
 import System.Exit
 import Text.Read
 import qualified Data.Set as Set
+import qualified Data.Map as Map
+import Codec.Crypto.RSA
 
-options :: [OptDescr (Config NodeType -> Config NodeType)]
+options :: [OptDescr (Config NodeType -> IO (Config NodeType))]
 options =
   [ Option ['s'] ["self"]
     (ReqArg setThisNode "SELF_PORT_NUMBER")
     "The port number of this node."
   , Option ['d'] ["debug"]
-    (NoArg (enableDebug .~ True))
+    (NoArg (return . (enableDebug .~ True)))
     "Enable debugging info (show RPCs and timeouts)."
+  , Option ['p'] ["public-keys"]
+    (ReqArg getPublicKeys "PUBLIC_KEY_FILE")
+    "A file containing a map of nodes to their public key."
+  , Option ['k'] ["private-key"]
+    (ReqArg getPrivateKey "PRIVATE_KEY_FILE")
+    "A file containing the node's private key."
   ]
+
+cfgFold :: [a -> IO a] -> a -> IO a
+cfgFold [] x = return x
+cfgFold (f:fs) x = do
+  fx <- f x
+  cfgFold fs fx
 
 getConfig :: IO (Config NodeType)
 getConfig = do
   argv <- getArgs
   case getOpt Permute options argv of
-    (opts,args,[]) -> return $ foldr addOtherNode (foldr ($) defaultConfig opts) args
-    (_,_,_)        -> exitFailure -- TODO, print errors
+    (opts,args,[]) -> cfgFold (opts ++ map addOtherNode args) defaultConfig
+    (_,_,errs)     -> mapM_ putStrLn errs >> exitFailure
 
 type NodeType = (HostAddress, Word16)
 localhost :: HostAddress
@@ -44,6 +59,8 @@ defaultConfig =
   Config
     Set.empty                  -- other nodes
     (localhost,defaultPortNum) -- self address
+    Map.empty                  -- publicKeys
+    (PrivateKey (PublicKey 0 0 0) 0 0 0 0 0 0) -- empty public key
     (3000000,6000000)          -- election timeout range
     1500000                    -- heartbeat timeout
     False                      -- no debug
@@ -51,13 +68,27 @@ defaultConfig =
 nodeSockAddr :: NodeType -> SockAddr
 nodeSockAddr (host,port) = SockAddrInet (PortNum port) host
 
-setThisNode :: String -> Config NodeType -> Config NodeType
-setThisNode =
-  maybe id (\p -> nodeId .~ (localhost, p)) . readMaybe
+setThisNode :: String -> Config NodeType -> IO (Config NodeType)
+setThisNode s =
+  return . maybe id (\p -> nodeId .~ (localhost, p)) (readMaybe s)
 
-addOtherNode :: String -> Config NodeType -> Config NodeType
-addOtherNode =
-  maybe id (\p -> otherNodes %~ Set.insert (localhost, p)) . readMaybe
+addOtherNode :: String -> Config NodeType -> IO (Config NodeType)
+addOtherNode s =
+  return . maybe id (\p -> otherNodes %~ Set.insert (localhost, p)) (readMaybe s)
+
+getPublicKeys :: FilePath -> Config NodeType -> IO (Config NodeType)
+getPublicKeys filename conf = do
+  contents <- readFile filename
+  return $ case readMaybe contents of
+    Just pkm -> conf & publicKeys .~ pkm
+    Nothing  -> conf
+
+getPrivateKey :: FilePath -> Config NodeType -> IO (Config NodeType)
+getPrivateKey filename conf = do
+  contents <- readFile filename
+  return $ case readMaybe contents of
+    Just pk -> conf & privateKey .~ pk
+    Nothing -> conf
 
 getMsg :: Socket -> IO String
 getMsg sock = recv sock 8192
@@ -109,15 +140,17 @@ runServer :: (Show et, Read et, Show rt, Read rt) =>
   (et -> IO rt) -> IO ()
 runServer applyFn = do
   rconf <- getConfig
+  print rconf
   sock <- socket AF_INET Datagram defaultProtocol
   bind sock $ nodeSockAddr $ rconf ^. nodeId
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  runRaft rconf $ simpleRaftSpec sock applyFn debugFn
+  runRaftServer rconf $ simpleRaftSpec sock applyFn debugFn
 
 runClient :: (Show et, Read et, Show rt, Read rt) =>
   (et -> IO rt) -> IO et -> (rt -> IO ()) -> IO ()
 runClient applyFn getEntry useResult = do
   rconf <- getConfig
+  print rconf
   sock <- socket AF_INET Datagram defaultProtocol
   bind sock $ nodeSockAddr $ rconf ^. nodeId
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
