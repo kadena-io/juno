@@ -57,6 +57,7 @@ handleElectionTimeout s = do
         setVotedFor (Just c)
         lazyVote .= Nothing
         fork_ $ sendRequestVoteResponse c True
+        resetElectionTimer
       Nothing -> becomeCandidate
 
 handleHeartbeatTimeout :: (Binary nt, Binary et, Binary rt, Ord nt) => String -> Raft nt et rt mt ()
