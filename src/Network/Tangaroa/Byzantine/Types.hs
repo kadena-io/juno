@@ -113,11 +113,12 @@ data AppendEntries nt et = AppendEntries
   deriving (Show, Read, Generic)
 
 data AppendEntriesResponse nt = AppendEntriesResponse
-  { _aerTerm    :: Term
-  , _aerNodeId  :: nt
-  , _aerSuccess :: Bool
-  , _aerIndex   :: LogIndex
-  , _aerSig     :: ByteString
+  { _aerTerm      :: Term
+  , _aerNodeId    :: nt
+  , _aerSuccess   :: Bool
+  , _aerConvinced :: Bool
+  , _aerIndex     :: LogIndex
+  , _aerSig       :: ByteString
   }
   deriving (Show, Read, Generic)
 

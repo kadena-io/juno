@@ -110,23 +110,26 @@ handleAppendEntries ae@AppendEntries{..} = do
   checkForNewLeader ae
   cl <- use currentLeader
   ct <- use term
+  es <- use logEntries
+  let oldLastEntry = Seq.length es - 1
   case cl of
     Just l | l == _leaderId && _aeTerm == ct -> do
       resetElectionTimer
       lazyVote .= Nothing
       plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
-      es <- use logEntries
-      let oldLastEntry = Seq.length es - 1
       let newLastEntry = _prevLogIndex + Seq.length _aeEntries
       if _aeTerm < ct || not plmatch
-        then fork_ $ sendAppendEntriesResponse _leaderId False oldLastEntry
+        then fork_ $ sendAppendEntriesResponse _leaderId False True oldLastEntry
         else do
           appendLogEntries _prevLogIndex _aeEntries
-          fork_ $ sendAppendEntriesResponse _leaderId True newLastEntry
+          fork_ $ sendAppendEntriesResponse _leaderId True True newLastEntry
           nc <- use commitIndex
           when (_leaderCommit > nc) $ do
             commitIndex .= min _leaderCommit newLastEntry
             applyLogEntries
+    _ | _aeTerm >= ct -> do
+      debug "sending unconvinced response"
+      fork_ $ sendAppendEntriesResponse _leaderId False False oldLastEntry
     _ -> return ()
 
 prevLogEntryMatches :: LogIndex -> Term -> Raft nt et rt mt Bool
@@ -148,16 +151,19 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
   debug "got an appendEntriesResponse RPC"
   r <- use role
   ct <- use term
-  when (r == Leader && _aerTerm == ct) $
-    if _aerSuccess
-      then do
+  when (r == Leader) $ do
+    when (not _aerConvinced && _aerTerm <= ct) $ -- implies not _aerSuccess
+      lConvinced %= Set.delete _aerNodeId
+    when (_aerTerm == ct) $ do
+      when (_aerConvinced && not _aerSuccess) $
+        lNextIndex %= Map.adjust (subtract 1) _aerNodeId
+      when (_aerConvinced && _aerSuccess) $ do
         lMatchIndex.at _aerNodeId .= Just _aerIndex
         lNextIndex .at _aerNodeId .= Just (_aerIndex + 1)
         lConvinced %= Set.insert _aerNodeId
         leaderDoCommit
-      else do
-        lNextIndex %= Map.adjust (subtract 1) _aerNodeId
-        fork_ $ sendAppendEntries _aerNodeId
+    when (not _aerConvinced || not _aerSuccess) $
+      fork_ $ sendAppendEntries _aerNodeId
 
 applyCommand :: Command nt et -> Raft nt et rt mt (nt, CommandResponse nt rt)
 applyCommand Command{..} = do

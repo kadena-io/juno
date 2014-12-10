@@ -43,12 +43,12 @@ getVotesForNode target = do
     then return Set.empty
     else use cYesVotes
 
-sendAppendEntriesResponse :: (Binary nt, Binary et, Binary rt) => nt -> Bool -> LogIndex -> Raft nt et rt mt ()
-sendAppendEntriesResponse target success lindex = do
+sendAppendEntriesResponse :: (Binary nt, Binary et, Binary rt) => nt -> Bool -> Bool -> LogIndex -> Raft nt et rt mt ()
+sendAppendEntriesResponse target success convinced lindex = do
   ct <- use term
   nid <- view (cfg.nodeId)
   debug $ "sendAppendEntriesResponse: " ++ show ct
-  sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success lindex B.empty
+  sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success convinced lindex B.empty
 
 sendRequestVote :: (Binary nt, Binary et, Binary rt) => nt -> Raft nt et rt mt ()
 sendRequestVote target = do
