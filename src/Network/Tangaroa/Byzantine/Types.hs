@@ -20,7 +20,7 @@ module Network.Tangaroa.Byzantine.Types
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
-  , pendingRequests, nextRequestId
+  , pendingRequests, nextRequestId, term
   , initialRaftState
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
   , AppendEntries(..)
@@ -30,7 +30,6 @@ module Network.Tangaroa.Byzantine.Types
   , Command(..)
   , CommandResponse(..)
   , RPC(..)
-  , term
   , Event(..)
   , signRPC
   , verifyRPC
