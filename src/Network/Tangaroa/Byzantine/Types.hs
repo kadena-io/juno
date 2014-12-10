@@ -15,14 +15,15 @@ module Network.Tangaroa.Byzantine.Types
   , Term, startTerm
   , LogIndex, startIndex
   , RequestId, startRequestId
-  , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout, enableDebug
+  , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
+  , enableDebug
   , publicKeys, privateKey
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
-  , RaftState(..), role, votedFor, currentLeader, logEntries, commitIndex, lastApplied, timerThread
-  , pendingRequests, nextRequestId, term
+  , RaftState(..), role, term, votedFor, lazyVote, currentLeader, logEntries
+  , commitIndex, lastApplied, timerThread, pendingRequests, nextRequestId
+  , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
   , initialRaftState
-  , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
   , AppendEntries(..)
   , AppendEntriesResponse(..)
   , RequestVote(..)
@@ -31,6 +32,7 @@ module Network.Tangaroa.Byzantine.Types
   , CommandResponse(..)
   , RPC(..)
   , Event(..)
+  , SigRPC
   , signRPC
   , verifyRPC
   ) where
@@ -99,13 +101,14 @@ data CommandResponse nt rt = CommandResponse
   deriving (Show, Read, Generic)
 
 data AppendEntries nt et = AppendEntries
-  { _aeTerm       :: Term
-  , _leaderId     :: nt
-  , _prevLogIndex :: LogIndex
-  , _prevLogTerm  :: Term
-  , _aeEntries    :: Seq (Term, Command nt et)
-  , _leaderCommit :: LogIndex
-  , _aeSig        :: ByteString
+  { _aeTerm        :: Term
+  , _leaderId      :: nt
+  , _prevLogIndex  :: LogIndex
+  , _prevLogTerm   :: Term
+  , _aeEntries     :: Seq (Term, Command nt et)
+  , _leaderCommit  :: LogIndex
+  , _aeQuorumVotes :: Set (RequestVoteResponse nt)
+  , _aeSig         :: ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -134,7 +137,7 @@ data RequestVoteResponse nt = RequestVoteResponse
   , _rvrCandidateId :: nt
   , _rvrSig         :: ByteString
   }
-  deriving (Show, Read, Generic)
+  deriving (Show, Read, Generic, Eq, Ord)
 
 data RPC nt et rt = AE (AppendEntries nt et)
                   | AER (AppendEntriesResponse nt)
@@ -287,15 +290,17 @@ data RaftState nt et = RaftState
   { _role            :: Role
   , _term            :: Term
   , _votedFor        :: Maybe nt
+  , _lazyVote        :: Maybe (Term, nt)
   , _currentLeader   :: Maybe nt
   , _logEntries      :: Seq (Term, Command nt et)
   , _commitIndex     :: LogIndex
   , _lastApplied     :: LogIndex
   , _timerThread     :: Maybe ThreadId
-  , _cYesVotes       :: Set nt
+  , _cYesVotes       :: Set (RequestVoteResponse nt)
   , _cPotentialVotes :: Set nt
   , _lNextIndex      :: Map nt LogIndex
   , _lMatchIndex     :: Map nt LogIndex
+  , _lConvinced      :: Set nt
   , _pendingRequests :: Map RequestId (Command nt et) -- used by clients
   , _nextRequestId   :: RequestId                     -- used by clients
   }
@@ -306,6 +311,7 @@ initialRaftState = RaftState
   Follower   -- role
   startTerm  -- term
   Nothing    -- votedFor
+  Nothing    -- lazyVote
   Nothing    -- currentLeader
   Seq.empty  -- log
   startIndex -- commitIndex
@@ -315,6 +321,7 @@ initialRaftState = RaftState
   Set.empty  -- cPotentialVotes
   Map.empty  -- lNextIndex
   Map.empty  -- lMatchIndex
+  Set.empty  -- lConvinced
   Map.empty  -- pendingRequests
   0          -- nextRequestId
 

@@ -42,6 +42,7 @@ library
                      , lens
                      , lifted-base
                      , monad-control
+                     , monad-loops
                      , mtl
                      , network
                      , random

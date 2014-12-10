@@ -33,7 +33,6 @@ raftClient getEntry useResult = do
   currentLeader .= (Just $ Set.findMin nodes)
   fork_ messageReceiver
   fork_ $ commandGetter getEntry
-  resetHeartbeatTimer -- use heartbeat events to trigger retransmissions
   pendingRequests .= Map.empty
   clientHandleEvents useResult
 
@@ -97,6 +96,7 @@ clientHandleCommandResponse useResult CommandResponse{..} = do
   prs <- use pendingRequests
   when (Map.member _cmdrRequestId prs) $ do
     useResult _cmdrResult
+    currentLeader .= Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
     prcount <- fmap Map.size (use pendingRequests)
     -- if we still have pending requests, reset the timer

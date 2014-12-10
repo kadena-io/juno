@@ -10,6 +10,7 @@ import Control.Lens hiding (Index)
 import Control.Monad
 import Data.Functor
 import Data.Binary
+import qualified Data.ByteString.Lazy as B
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
@@ -43,11 +44,12 @@ becomeCandidate :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt
 becomeCandidate = do
   debug "becoming candidate"
   role .= Candidate
-  term += 1
-  rs.writeTermNumber ^=<<. term
+  use term >>= updateTerm . (+ 1)
   nid <- view (cfg.nodeId)
-  setVotedFor $ Just nid
-  cYesVotes .= Set.singleton nid -- vote for yourself
+  setVotedFor (Just nid)
+  ct <- use term
+  selfVote <- signRPCWithKey $ RequestVoteResponse ct nid True nid B.empty
+  cYesVotes .= Set.singleton selfVote
   (cPotentialVotes .=) =<< view (cfg.otherNodes)
   -- this is necessary for a single-node cluster, as we have already won the
   -- election in that case. otherwise we will wait for more votes to check again
@@ -55,6 +57,7 @@ becomeCandidate = do
   r <- use role
   when (r == Candidate) $ do
     fork_ sendAllRequestVotes
+    -- TODO: also start election timer, to bump term again after split vote
     resetHeartbeatTimer
 
 becomeLeader :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
@@ -65,5 +68,6 @@ becomeLeader = do
   ni <- Seq.length <$> use logEntries
   (lNextIndex  .=) =<< Map.fromSet (const ni)         <$> view (cfg.otherNodes)
   (lMatchIndex .=) =<< Map.fromSet (const startIndex) <$> view (cfg.otherNodes)
+  lConvinced .= Set.empty
   fork_ sendAllAppendEntries
   resetHeartbeatTimer

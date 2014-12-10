@@ -57,7 +57,9 @@ clientHandleEvents useResult = forever $ do
     HeartbeatTimeout _ -> do
       debug "choosing a new leader and resending commands"
       setLeaderToNext
-      traverse_ clientSendCommand =<< use pendingRequests
+      reqs <- use pendingRequests
+      pendingRequests .= Map.empty
+      traverse_ clientSendCommand reqs
     _                  -> return ()
 
 setLeaderToFirst :: Raft nt et rt mt ()
@@ -100,6 +102,7 @@ clientHandleCommandResponse useResult cmdr@CommandResponse{..} = do
   valid <- verifyRPCWithKey (CMDR cmdr)
   when (valid && Map.member _cmdrRequestId prs) $ do
     useResult _cmdrResult
+    currentLeader .= Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
     prcount <- fmap Map.size (use pendingRequests)
     -- if we still have pending requests, reset the timer

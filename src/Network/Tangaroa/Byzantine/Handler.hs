@@ -6,8 +6,10 @@ module Network.Tangaroa.Byzantine.Handler
 
 import Control.Lens
 import Control.Monad hiding (mapM)
+import Control.Monad.Loops
 import Data.Binary
 import Data.Sequence (Seq)
+import Data.Set (Set)
 import Data.Traversable (mapM)
 import Prelude hiding (mapM)
 import qualified Data.ByteString.Lazy as B
@@ -18,7 +20,6 @@ import qualified Data.Set as Set
 import Network.Tangaroa.Byzantine.Types
 import Network.Tangaroa.Byzantine.Sender
 import Network.Tangaroa.Byzantine.Util
-import Network.Tangaroa.Combinator
 import Network.Tangaroa.Byzantine.Role
 import Network.Tangaroa.Byzantine.Timer
 
@@ -48,7 +49,15 @@ handleElectionTimeout :: (Binary nt, Binary et, Binary rt, Ord nt) => String -> 
 handleElectionTimeout s = do
   debug $ "election timeout: " ++ s
   r <- use role
-  when (r == Follower) becomeCandidate
+  when (r /= Leader) $ do
+    lv <- use lazyVote
+    case lv of
+      Just (t, c) -> do
+        updateTerm t
+        setVotedFor (Just c)
+        lazyVote .= Nothing
+        fork_ $ sendRequestVoteResponse c True
+      Nothing -> becomeCandidate
 
 handleHeartbeatTimeout :: (Binary nt, Binary et, Binary rt, Ord nt) => String -> Raft nt et rt mt ()
 handleHeartbeatTimeout s = do
@@ -71,38 +80,54 @@ handleHeartbeatTimeout s = do
       -- set the election timer.
       resetElectionTimer
 
-handleTermNumber :: Term -> Raft nt et rt mt ()
-handleTermNumber rpcTerm = do
+checkForNewLeader :: (Binary nt, Binary et, Binary rt, Ord nt) => AppendEntries nt et -> Raft nt et rt mt ()
+checkForNewLeader AppendEntries{..} = do
   ct <- use term
-  when (rpcTerm > ct) $ do
-    rs.writeTermNumber ^$ rpcTerm
-    setVotedFor Nothing
-    term .= rpcTerm
-    becomeFollower
+  if _aeTerm < ct || Set.size _aeQuorumVotes == 0
+    then return ()
+    else do
+      votesValid <- confirmElection _leaderId _aeTerm _aeQuorumVotes
+      when votesValid $ do
+        updateTerm _aeTerm
+        currentLeader .= Just _leaderId
 
-handleAppendEntries :: (Binary nt, Binary et, Binary rt) => AppendEntries nt et -> Raft nt et rt mt ()
-handleAppendEntries AppendEntries{..} = do
+confirmElection :: (Binary nt, Binary et, Binary rt, Ord nt) => nt -> Term -> Set (RequestVoteResponse nt) -> Raft nt et rt mt Bool
+confirmElection l t votes = do
+  debug "confirming election of a new leader"
+  qsize <- view quorumSize
+  if Set.size votes >= qsize
+    then allM (validateVote l t) (Set.toList votes)
+    else return False
+
+validateVote :: (Binary nt, Binary et, Binary rt, Ord nt) => nt -> Term -> RequestVoteResponse nt -> Raft nt et rt mt Bool
+validateVote l t vote@RequestVoteResponse{..} = do
+  sigOkay <- verifyRPCWithKey (RVR vote)
+  return (sigOkay && _rvrCandidateId == l && _rvrTerm == t)
+
+handleAppendEntries :: (Binary nt, Binary et, Binary rt, Ord nt) => AppendEntries nt et -> Raft nt et rt mt ()
+handleAppendEntries ae@AppendEntries{..} = do
   debug $ "got an appendEntries RPC: prev log entry: Index " ++ show _prevLogIndex ++ " " ++ show _prevLogTerm
-  handleTermNumber _aeTerm
-  r <- use role
-  when (r == Follower) $ do
-    ct <- use term
-    when (_aeTerm == ct) $ do
+  checkForNewLeader ae
+  cl <- use currentLeader
+  ct <- use term
+  case cl of
+    Just l | l == _leaderId && _aeTerm == ct -> do
       resetElectionTimer
-      currentLeader .= Just _leaderId
-    plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
-    es <- use logEntries
-    let oldLastEntry = Seq.length es - 1
-    let newLastEntry = _prevLogIndex + Seq.length _aeEntries
-    if _aeTerm < ct || not plmatch
-      then fork_ $ sendAppendEntriesResponse _leaderId False oldLastEntry
-      else do
-        appendLogEntries _prevLogIndex _aeEntries
-        fork_ $ sendAppendEntriesResponse _leaderId True newLastEntry
-        nc <- use commitIndex
-        when (_leaderCommit > nc) $ do
-          commitIndex .= min _leaderCommit newLastEntry
-          applyLogEntries
+      lazyVote .= Nothing
+      plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
+      es <- use logEntries
+      let oldLastEntry = Seq.length es - 1
+      let newLastEntry = _prevLogIndex + Seq.length _aeEntries
+      if _aeTerm < ct || not plmatch
+        then fork_ $ sendAppendEntriesResponse _leaderId False oldLastEntry
+        else do
+          appendLogEntries _prevLogIndex _aeEntries
+          fork_ $ sendAppendEntriesResponse _leaderId True newLastEntry
+          nc <- use commitIndex
+          when (_leaderCommit > nc) $ do
+            commitIndex .= min _leaderCommit newLastEntry
+            applyLogEntries
+    _ -> return ()
 
 prevLogEntryMatches :: LogIndex -> Term -> Raft nt et rt mt Bool
 prevLogEntryMatches pli plt = do
@@ -121,7 +146,6 @@ appendLogEntries pli es =
 handleAppendEntriesResponse :: (Binary nt, Binary et, Binary rt, Ord nt) => AppendEntriesResponse nt -> Raft nt et rt mt ()
 handleAppendEntriesResponse AppendEntriesResponse{..} = do
   debug "got an appendEntriesResponse RPC"
-  handleTermNumber _aerTerm
   r <- use role
   ct <- use term
   when (r == Leader && _aerTerm == ct) $
@@ -129,6 +153,7 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
       then do
         lMatchIndex.at _aerNodeId .= Just _aerIndex
         lNextIndex .at _aerNodeId .= Just (_aerIndex + 1)
+        lConvinced %= Set.insert _aerNodeId
         leaderDoCommit
       else do
         lNextIndex %= Map.adjust (subtract 1) _aerNodeId
@@ -200,7 +225,6 @@ leaderUpdateCommitIndex = do
 handleRequestVote :: (Binary nt, Binary et, Binary rt, Eq nt) => RequestVote nt -> Raft nt et rt mt ()
 handleRequestVote RequestVote{..} = do
   debug $ "got a requestVote RPC for " ++ show _rvTerm
-  handleTermNumber _rvTerm
   mvote <- use votedFor
   es <- use logEntries
   ct <- use term
@@ -210,37 +234,47 @@ handleRequestVote RequestVote{..} = do
       debug "this is for an old term"
       fork_ $ sendRequestVoteResponse _rvCandidateId False
 
-    Just c | c == _rvCandidateId -> do
-      -- already voted for this candidate
+    Just c | c == _rvCandidateId && _rvTerm == ct -> do
+      -- already voted for this candidate in this term
       debug "already voted for this candidate"
       fork_ $ sendRequestVoteResponse _rvCandidateId True
 
-    Just _ -> do
-      -- already voted for a different candidate this term
+    Just _ | _rvTerm == ct -> do
+      -- already voted for a different candidate in this term
       debug "already voted for a different candidate"
       fork_ $ sendRequestVoteResponse _rvCandidateId False
 
-    Nothing -> if (_lastLogTerm, _lastLogIndex) >= lastLogInfo es
-      -- haven't voted yet, so vote for the candidate if its log is at least as
+    _ -> if (_lastLogTerm, _lastLogIndex) >= lastLogInfo es
+      -- we have no recorded vote, or this request is for a higher term
+      -- (we don't externalize votes without updating our own term, so we
+      -- haven't voted in the higher term before)
+      -- lazily vote for the candidate if its log is at least as
       -- up to date as ours, use the Ord instance of (Term, Index) to prefer
       -- higher terms, and then higher last indices for equal terms
       then do
-        debug "haven't voted, voting for this candidate"
-        setVotedFor (Just _rvCandidateId)
-        fork_ $ sendRequestVoteResponse _rvCandidateId True
+        lv <- use lazyVote
+        case lv of
+          Just (t, _) | t >= _rvTerm ->
+            debug "would vote lazily, but already voted lazily for candidate in same or higher term"
+          Just _ -> do
+            debug "replacing lazy vote"
+            lazyVote .= Just (_rvTerm, _rvCandidateId)
+          Nothing -> do
+            debug "haven't voted, (lazily) voting for this candidate"
+            lazyVote .= Just (_rvTerm, _rvCandidateId)
       else do
         debug "haven't voted, but my log is better than this candidate's"
         fork_ $ sendRequestVoteResponse _rvCandidateId False
 
 handleRequestVoteResponse :: (Binary nt, Binary et, Binary rt, Ord nt) => RequestVoteResponse nt -> Raft nt et rt mt ()
-handleRequestVoteResponse RequestVoteResponse{..} = do
+handleRequestVoteResponse rvr@RequestVoteResponse{..} = do
   debug $ "got a requestVoteResponse RPC for " ++ show _rvrTerm ++ ": " ++ show _voteGranted
-  handleTermNumber _rvrTerm
   r <- use role
-  when (r == Candidate) $
+  ct <- use term
+  when (r == Candidate && ct == _rvrTerm) $
     if _voteGranted
       then do
-        cYesVotes %= Set.insert _rvrNodeId
+        cYesVotes %= Set.insert rvr
         checkElection
       else
         cPotentialVotes %= Set.delete _rvrNodeId

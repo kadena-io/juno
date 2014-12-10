@@ -44,7 +44,7 @@ handleElectionTimeout :: Ord nt => String -> Raft nt et rt mt ()
 handleElectionTimeout s = do
   debug $ "election timeout: " ++ s
   r <- use role
-  when (r == Follower) becomeCandidate
+  when (r /= Leader) becomeCandidate
 
 handleHeartbeatTimeout :: Ord nt => String -> Raft nt et rt mt ()
 handleHeartbeatTimeout s = do

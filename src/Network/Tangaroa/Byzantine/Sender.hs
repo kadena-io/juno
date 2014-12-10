@@ -13,9 +13,12 @@ module Network.Tangaroa.Byzantine.Sender
 import Control.Lens
 import Data.Binary
 import Data.Foldable (traverse_)
+import Data.Functor
 import Data.Sequence (Seq)
+import Data.Set (Set)
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Sequence as Seq
+import qualified Data.Set as Set
 
 import Network.Tangaroa.Byzantine.Util
 import Network.Tangaroa.Byzantine.Types
@@ -29,8 +32,16 @@ sendAppendEntries target = do
   nid <- view (cfg.nodeId)
   ci <- use commitIndex
   debug $ "sendAppendEntries: " ++ show ct
+  qVoteList <- getVotesForNode target
   sendSignedRPC target $ AE $
-    AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci B.empty
+    AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci qVoteList B.empty
+
+getVotesForNode :: Ord nt => nt -> Raft nt et rt mt (Set (RequestVoteResponse nt))
+getVotesForNode target = do
+  convinced <- Set.member target <$> use lConvinced
+  if convinced
+    then return Set.empty
+    else use cYesVotes
 
 sendAppendEntriesResponse :: (Binary nt, Binary et, Binary rt) => nt -> Bool -> LogIndex -> Raft nt et rt mt ()
 sendAppendEntriesResponse target success lindex = do

@@ -12,9 +12,12 @@ module Network.Tangaroa.Byzantine.Util
   , dequeueEvent
   , messageReceiver
   , verifyRPCWithKey
+  , signRPCWithKey
+  , updateTerm
   ) where
 
 import Network.Tangaroa.Byzantine.Types
+import Network.Tangaroa.Combinator
 
 import Control.Lens
 import Data.Binary
@@ -105,3 +108,14 @@ verifyRPCWithKey rpc = do
   pks <- view (cfg.publicKeys)
   let mk = (\k -> Map.lookup k pks) =<< senderId rpc
   return $ maybe False (\k -> verifyWrappedRPC k rpc) mk
+
+signRPCWithKey :: SigRPC rpc => rpc -> Raft nt et rt mt rpc
+signRPCWithKey rpc = do
+  pk <- view (cfg.privateKey)
+  return (signRPC pk rpc)
+
+updateTerm :: Term -> Raft nt et rt mt ()
+updateTerm t = do
+  rs.writeTermNumber ^$ t
+  term .= t
+

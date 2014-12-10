@@ -54,6 +54,7 @@ becomeCandidate = do
   r <- use role
   when (r == Candidate) $ do
     fork_ sendAllRequestVotes
+    -- TODO: also start election timer
     resetHeartbeatTimer
 
 becomeLeader :: Ord nt => Raft nt et rt mt ()
