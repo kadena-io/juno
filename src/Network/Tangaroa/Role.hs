@@ -48,14 +48,12 @@ becomeCandidate = do
   setVotedFor $ Just nid
   cYesVotes .= Set.singleton nid -- vote for yourself
   (cPotentialVotes .=) =<< view (cfg.otherNodes)
+  resetElectionTimer
   -- this is necessary for a single-node cluster, as we have already won the
   -- election in that case. otherwise we will wait for more votes to check again
-  checkElection
+  checkElection -- can possibly transition to leader
   r <- use role
-  when (r == Candidate) $ do
-    fork_ sendAllRequestVotes
-    -- TODO: also start election timer
-    resetHeartbeatTimer
+  when (r == Candidate) $ fork_ sendAllRequestVotes
 
 becomeLeader :: Ord nt => Raft nt et rt mt ()
 becomeLeader = do

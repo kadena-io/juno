@@ -51,14 +51,12 @@ becomeCandidate = do
   selfVote <- signRPCWithKey $ RequestVoteResponse ct nid True nid B.empty
   cYesVotes .= Set.singleton selfVote
   (cPotentialVotes .=) =<< view (cfg.otherNodes)
+  resetElectionTimer
   -- this is necessary for a single-node cluster, as we have already won the
   -- election in that case. otherwise we will wait for more votes to check again
-  checkElection
+  checkElection -- can possibly transition to leader
   r <- use role
-  when (r == Candidate) $ do
-    fork_ sendAllRequestVotes
-    -- TODO: also start election timer, to bump term again after split vote
-    resetHeartbeatTimer
+  when (r == Candidate) $ fork_ sendAllRequestVotes
 
 becomeLeader :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 becomeLeader = do

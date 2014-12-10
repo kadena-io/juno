@@ -63,22 +63,9 @@ handleHeartbeatTimeout :: (Binary nt, Binary et, Binary rt, Ord nt) => String ->
 handleHeartbeatTimeout s = do
   debug $ "heartbeat timeout: " ++ s
   r <- use role
-  case r of
-    -- heartbeat timeouts are used to control appendEntries heartbeats and
-    -- requestVote retransmissions
-    Leader -> do
-      fork_ sendAllAppendEntries
-      resetHeartbeatTimer
-    Candidate -> do
-      fork_ sendAllRequestVotes
-      resetHeartbeatTimer
-    Follower ->
-      -- This will rarely happen because followers don't get heartbeat timeouts
-      -- (becomeFollower cancels it). If we became a follower after the
-      -- heartbeat timer places its event on the queue, but before we handle
-      -- that event, then we will hit this case, and there's nothing to do but
-      -- set the election timer.
-      resetElectionTimer
+  when (r == Leader) $ do
+    fork_ sendAllAppendEntries
+    resetHeartbeatTimer
 
 checkForNewLeader :: (Binary nt, Binary et, Binary rt, Ord nt) => AppendEntries nt et -> Raft nt et rt mt ()
 checkForNewLeader AppendEntries{..} = do
