@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Network.Tangaroa.Byzantine.Sender
   ( sendAppendEntries
   , sendAppendEntriesResponse
@@ -43,19 +45,19 @@ getVotesForNode target = do
     then return Set.empty
     else use cYesVotes
 
-sendAppendEntriesResponse :: (Binary nt, Binary et, Binary rt) => nt -> Bool -> Bool -> LogIndex -> Raft nt et rt mt ()
-sendAppendEntriesResponse target success convinced lindex = do
+sendAppendEntriesResponse :: (Binary nt, Binary et, Binary rt) => nt -> Bool -> Bool -> Raft nt et rt mt ()
+sendAppendEntriesResponse target success convinced = do
   ct <- use term
   nid <- view (cfg.nodeId)
   debug $ "sendAppendEntriesResponse: " ++ show ct
-  sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success convinced lindex B.empty
+  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
+  sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success convinced lindex lhash B.empty
 
 sendRequestVote :: (Binary nt, Binary et, Binary rt) => nt -> Raft nt et rt mt ()
 sendRequestVote target = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  es <- use logEntries
-  let (llt, lli) = lastLogInfo es
+  (llt, lli, _) <- lastLogInfo <$> use logEntries
   debug $ "sendRequestVote: " ++ show ct
   sendSignedRPC target $ RV $ RequestVote ct nid lli llt B.empty
 
@@ -79,12 +81,12 @@ sendResults results = do
 -- called by leaders sending appendEntries.
 -- given a replica's nextIndex, get the index and term to send as
 -- prevLog(Index/Term)
-logInfoForNextIndex :: Maybe LogIndex -> Seq (Term,et) -> (LogIndex,Term)
+logInfoForNextIndex :: Maybe LogIndex -> Seq (LogEntry nt et) -> (LogIndex,Term)
 logInfoForNextIndex mni es =
   case mni of
     Just ni -> let pli = ni - 1 in
       case seqIndex es pli of
-        Just (t,_) -> (pli, t)
+        Just LogEntry{..} -> (pli, _leTerm)
          -- this shouldn't happen, because nextIndex - 1 should always be at
          -- most our last entry
         Nothing -> (startIndex, startTerm)

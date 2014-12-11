@@ -7,13 +7,15 @@ module Network.Tangaroa.Byzantine.Handler
 import Control.Lens
 import Control.Monad hiding (mapM)
 import Control.Monad.Loops
+import Codec.Digest.SHA
 import Data.Binary
 import Data.Functor
 import Data.Sequence (Seq)
 import Data.Set (Set)
 import Data.Traversable (mapM)
 import Prelude hiding (mapM)
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy as LB
+import qualified Data.ByteString as B
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
@@ -108,26 +110,24 @@ handleAppendEntries ae@AppendEntries{..} = do
   cl <- use currentLeader
   ig <- use ignoreLeader
   ct <- use term
-  es <- use logEntries
-  let oldLastEntry = Seq.length es - 1
   case cl of
     Just l | not ig && l == _leaderId && _aeTerm == ct -> do
       resetElectionTimer
       lazyVote .= Nothing
       plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
-      let newLastEntry = _prevLogIndex + Seq.length _aeEntries
-      if _aeTerm < ct || not plmatch
-        then fork_ $ sendAppendEntriesResponse _leaderId False True oldLastEntry
+      if not plmatch
+        then fork_ $ sendAppendEntriesResponse _leaderId False True
         else do
           appendLogEntries _prevLogIndex _aeEntries
-          fork_ $ sendAppendEntriesResponse _leaderId True True newLastEntry
+          fork_ $ sendAppendEntriesResponse _leaderId True True
           nc <- use commitIndex
           when (_leaderCommit > nc) $ do
+            let newLastEntry = _prevLogIndex + Seq.length _aeEntries
             commitIndex .= min _leaderCommit newLastEntry
             applyLogEntries
     _ | not ig && _aeTerm >= ct -> do
       debug "sending unconvinced response"
-      fork_ $ sendAppendEntriesResponse _leaderId False False oldLastEntry
+      fork_ $ sendAppendEntriesResponse _leaderId False False
     _ -> return ()
 
 prevLogEntryMatches :: LogIndex -> Term -> Raft nt et rt mt Bool
@@ -137,12 +137,35 @@ prevLogEntryMatches pli plt = do
     -- if we don't have the entry, only return true if pli is startIndex
     Nothing    -> return (pli == startIndex)
     -- if we do have the entry, return true if the terms match
-    Just (t,_) -> return (t == plt)
+    Just LogEntry{..} -> return (_leTerm == plt)
 
--- TODO: check this
-appendLogEntries :: LogIndex -> Seq (Term, Command nt et) -> Raft nt et rt mt ()
-appendLogEntries pli es =
+appendLogEntries :: (Binary nt, Binary et) => LogIndex -> Seq (LogEntry nt et) -> Raft nt et rt mt ()
+appendLogEntries pli es = do
   logEntries %= (Seq.>< es) . Seq.take (pli + 1)
+  updateLogHashesFromIndex (pli + 1)
+  (_,_,lhash) <- lastLogInfo <$> use logEntries
+  debug (show lhash)
+
+hashLogEntry :: (Binary nt, Binary et) => Maybe (LogEntry nt et) -> LogEntry nt et -> LogEntry nt et
+hashLogEntry (Just LogEntry{ _leHash = prevHash}) le =
+  le { _leHash = hash SHA256 (encode (le { _leHash = prevHash }))}
+hashLogEntry Nothing le =
+  le { _leHash = hash SHA256 (encode (le { _leHash = B.empty }))}
+
+updateLogHashesFromIndex :: (Binary nt, Binary et) => LogIndex -> Raft nt et rt mt ()
+updateLogHashesFromIndex i = do
+  es <- use logEntries
+  case seqIndex es i of
+    Just _  -> do
+      logEntries %= Seq.adjust (hashLogEntry (seqIndex es (i - 1))) i
+      updateLogHashesFromIndex (i + 1)
+    Nothing -> return ()
+
+addLogEntryAndHash :: (Binary nt, Binary et) => LogEntry nt et -> Seq (LogEntry nt et) -> Seq (LogEntry nt et)
+addLogEntryAndHash le es =
+  case Seq.viewr es of
+    _ Seq.:> ple -> es Seq.|> hashLogEntry (Just ple) le
+    Seq.EmptyR   -> Seq.singleton (hashLogEntry Nothing le)
 
 handleAppendEntriesResponse :: (Binary nt, Binary et, Binary rt, Ord nt) => AppendEntriesResponse nt -> Raft nt et rt mt ()
 handleAppendEntriesResponse AppendEntriesResponse{..} = do
@@ -179,7 +202,7 @@ makeCommandResponse Command{..} result = do
              (maybe nid id mlid)
              nid
              _cmdRequestId
-             B.empty
+             LB.empty
 
 leaderDoCommit :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 leaderDoCommit = do
@@ -194,8 +217,8 @@ applyLogEntries = do
   la <- use lastApplied
   ci <- use commitIndex
   le <- use logEntries
-  let leToApply = fmap (^. _2) . Seq.drop (la + 1) . Seq.take (ci + 1) $ le
-  results <- mapM applyCommand leToApply
+  let leToApply = Seq.drop (la + 1) . Seq.take (ci + 1) $ le
+  results <- mapM (applyCommand . _leCommand) leToApply
   r <- use role
   when (r == Leader) $ fork_ $ sendResults results
   lastApplied .= ci
@@ -214,7 +237,7 @@ leaderUpdateCommitIndex = do
 
   -- get all indices in the log past commitIndex and take the ones where the entry's
   -- term is equal to the current term
-  let ctinds = filter (\i -> maybe False ((== ct) . fst) (seqIndex es i))
+  let ctinds = filter (\i -> maybe False ((== ct) . _leTerm) (seqIndex es i))
                       [(ci + 1)..(Seq.length es - 1)]
 
   -- get the prefix of these indices where a quorum of nodes have matching
@@ -251,7 +274,7 @@ handleRequestVote RequestVote{..} = do
       debug "already voted for a different candidate"
       fork_ $ sendRequestVoteResponse _rvCandidateId False
 
-    _ -> if (_lastLogTerm, _lastLogIndex) >= lastLogInfo es
+    _ -> if (_lastLogTerm, _lastLogIndex) >= let (llt, lli, _) = lastLogInfo es in (llt, lli)
       -- we have no recorded vote, or this request is for a higher term
       -- (we don't externalize votes without updating our own term, so we
       -- haven't voted in the higher term before)
@@ -301,7 +324,7 @@ handleCommand cmd@Command{..} = do
     (_, Leader, _) -> do
       -- we're the leader, so append this to our log with the current term
       -- and propagate it to replicas
-      logEntries %= (Seq.|> (ct, cmd))
+      logEntries %= addLogEntryAndHash (LogEntry ct cmd B.empty)
       fork_ sendAllAppendEntries
       leaderDoCommit
     (_, _, Just lid) ->

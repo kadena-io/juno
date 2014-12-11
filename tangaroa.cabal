@@ -48,6 +48,7 @@ library
                      , random
                      , stm
                      , RSA
+                     , SHA2
                      , transformers
                      , unagi-chan
   hs-source-dirs:      src

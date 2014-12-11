@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Network.Tangaroa.Byzantine.Util
   ( seqIndex
@@ -28,6 +29,7 @@ import Control.Monad.RWS
 import Control.Concurrent.Lifted (fork, threadDelay)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Concurrent.Chan.Unagi (readChan, writeChan)
+import qualified Data.ByteString as B
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
 
@@ -44,11 +46,11 @@ getQuorumSize n =
     else (n - 1) `div` 2 + 1
 
 -- get the last term and index of a log
-lastLogInfo :: Seq (Term, et) -> (Term, LogIndex)
+lastLogInfo :: Seq (LogEntry nt et) -> (Term, LogIndex, B.ByteString)
 lastLogInfo es =
   case Seq.viewr es of
-    _ Seq.:> (t,_) -> (t, Seq.length es - 1)
-    Seq.EmptyR     -> (startTerm, startIndex)
+    _ Seq.:> LogEntry{..} -> (_leTerm, Seq.length es - 1, _leHash)
+    Seq.EmptyR            -> (startTerm, startIndex, B.empty)
 
 debug :: String -> Raft nt et rt mt ()
 debug s = do

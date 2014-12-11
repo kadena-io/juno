@@ -19,6 +19,7 @@ module Network.Tangaroa.Byzantine.Types
   , enableDebug, publicKeys, clientPublicKeys, privateKey, clientTimeoutLimit
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
+  , LogEntry(..)
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, lastApplied, timerThread, replayMap, pendingRequests
   , currentRequestId, cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
@@ -50,8 +51,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.ByteString.Lazy (ByteString)
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy as LB
+import qualified Data.ByteString as B
 
 import GHC.Generics
 
@@ -90,7 +91,7 @@ data Command nt et = Command
   { _cmdEntry     :: et
   , _cmdClientId  :: nt
   , _cmdRequestId :: RequestId
-  , _cmdSig       :: ByteString
+  , _cmdSig       :: LB.ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -99,7 +100,14 @@ data CommandResponse nt rt = CommandResponse
   , _cmdrLeaderId  :: nt
   , _cmdrNodeId    :: nt
   , _cmdrRequestId :: RequestId
-  , _cmdrSig       :: ByteString
+  , _cmdrSig       :: LB.ByteString
+  }
+  deriving (Show, Read, Generic)
+
+data LogEntry nt et = LogEntry
+  { _leTerm    :: Term
+  , _leCommand :: Command nt et
+  , _leHash    :: B.ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -108,10 +116,10 @@ data AppendEntries nt et = AppendEntries
   , _leaderId      :: nt
   , _prevLogIndex  :: LogIndex
   , _prevLogTerm   :: Term
-  , _aeEntries     :: Seq (Term, Command nt et)
+  , _aeEntries     :: Seq (LogEntry nt et)
   , _leaderCommit  :: LogIndex
   , _aeQuorumVotes :: Set (RequestVoteResponse nt)
-  , _aeSig         :: ByteString
+  , _aeSig         :: LB.ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -121,7 +129,8 @@ data AppendEntriesResponse nt = AppendEntriesResponse
   , _aerSuccess   :: Bool
   , _aerConvinced :: Bool
   , _aerIndex     :: LogIndex
-  , _aerSig       :: ByteString
+  , _aerHash      :: B.ByteString
+  , _aerSig       :: LB.ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -130,7 +139,7 @@ data RequestVote nt = RequestVote
   , _rvCandidateId :: nt
   , _lastLogIndex  :: LogIndex
   , _lastLogTerm   :: Term
-  , _rvSig         :: ByteString
+  , _rvSig         :: LB.ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -139,7 +148,7 @@ data RequestVoteResponse nt = RequestVoteResponse
   , _rvrNodeId      :: nt
   , _voteGranted    :: Bool
   , _rvrCandidateId :: nt
-  , _rvrSig         :: ByteString
+  , _rvrSig         :: LB.ByteString
   }
   deriving (Show, Read, Generic, Eq, Ord)
 
@@ -147,7 +156,7 @@ data Revolution nt = Revolution
   { _revClientId  :: nt
   , _revLeaderId  :: nt
   , _revRequestId :: RequestId
-  , _revSig       :: ByteString
+  , _revSig       :: LB.ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -166,32 +175,32 @@ class SigRPC rpc where
   verifyRPC :: PublicKey -> rpc -> Bool
 
 instance (Binary nt, Binary et) => SigRPC (Command nt et) where
-  signRPC k rpc   = rpc { _cmdSig = sign k (encode (rpc { _cmdSig = B.empty })) }
-  verifyRPC k rpc = verify k (encode (rpc { _cmdSig = B.empty })) (_cmdSig rpc)
+  signRPC k rpc   = rpc { _cmdSig = sign k (encode (rpc { _cmdSig = LB.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _cmdSig = LB.empty })) (_cmdSig rpc)
 
 instance (Binary nt, Binary rt) => SigRPC (CommandResponse nt rt) where
-  signRPC k rpc   = rpc { _cmdrSig = sign k (encode (rpc { _cmdrSig = B.empty })) }
-  verifyRPC k rpc = verify k (encode (rpc { _cmdrSig = B.empty })) (_cmdrSig rpc)
+  signRPC k rpc   = rpc { _cmdrSig = sign k (encode (rpc { _cmdrSig = LB.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _cmdrSig = LB.empty })) (_cmdrSig rpc)
 
 instance (Binary nt, Binary et) => SigRPC (AppendEntries nt et) where
-  signRPC k rpc   = rpc { _aeSig = sign k (encode (rpc { _aeSig = B.empty })) }
-  verifyRPC k rpc = verify k (encode (rpc { _aeSig = B.empty })) (_aeSig rpc)
+  signRPC k rpc   = rpc { _aeSig = sign k (encode (rpc { _aeSig = LB.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _aeSig = LB.empty })) (_aeSig rpc)
 
 instance Binary nt => SigRPC (AppendEntriesResponse nt) where
-  signRPC k rpc   = rpc { _aerSig = sign k (encode (rpc { _aerSig = B.empty })) }
-  verifyRPC k rpc = verify k (encode (rpc { _aerSig = B.empty })) (_aerSig rpc)
+  signRPC k rpc   = rpc { _aerSig = sign k (encode (rpc { _aerSig = LB.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _aerSig = LB.empty })) (_aerSig rpc)
 
 instance Binary nt => SigRPC (RequestVote nt) where
-  signRPC k rpc   = rpc { _rvSig = sign k (encode (rpc { _rvSig = B.empty })) }
-  verifyRPC k rpc = verify k (encode (rpc { _rvSig = B.empty })) (_rvSig rpc)
+  signRPC k rpc   = rpc { _rvSig = sign k (encode (rpc { _rvSig = LB.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _rvSig = LB.empty })) (_rvSig rpc)
 
 instance Binary nt => SigRPC (RequestVoteResponse nt) where
-  signRPC k rpc   = rpc { _rvrSig = sign k (encode (rpc { _rvrSig = B.empty })) }
-  verifyRPC k rpc = verify k (encode (rpc { _rvrSig = B.empty })) (_rvrSig rpc)
+  signRPC k rpc   = rpc { _rvrSig = sign k (encode (rpc { _rvrSig = LB.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _rvrSig = LB.empty })) (_rvrSig rpc)
 
 instance Binary nt => SigRPC (Revolution nt) where
-  signRPC k rpc   = rpc { _revSig = sign k (encode (rpc { _revSig = B.empty })) }
-  verifyRPC k rpc = verify k (encode (rpc { _revSig = B.empty })) (_revSig rpc)
+  signRPC k rpc   = rpc { _revSig = sign k (encode (rpc { _revSig = LB.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _revSig = LB.empty })) (_revSig rpc)
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
@@ -310,11 +319,11 @@ data RaftState nt et rt = RaftState
   , _lazyVote         :: Maybe (Term, nt)
   , _currentLeader    :: Maybe nt
   , _ignoreLeader     :: Bool
-  , _logEntries       :: Seq (Term, Command nt et)
+  , _logEntries       :: Seq (LogEntry nt et)
   , _commitIndex      :: LogIndex
   , _lastApplied      :: LogIndex
   , _timerThread      :: Maybe ThreadId
-  , _replayMap        :: Map (nt, ByteString) (Maybe rt)
+  , _replayMap        :: Map (nt, LB.ByteString) (Maybe rt)
   , _cYesVotes        :: Set (RequestVoteResponse nt)
   , _cPotentialVotes  :: Set nt
   , _lNextIndex       :: Map nt LogIndex
@@ -364,6 +373,7 @@ type Raft nt et rt mt a = RWST (RaftEnv nt et rt mt) () (RaftState nt et rt) IO 
 instance Binary Term
 instance Binary RequestId
 
+instance (Binary nt, Binary et) => Binary (LogEntry nt et)
 instance (Binary nt, Binary et) => Binary (AppendEntries nt et)
 instance Binary nt              => Binary (AppendEntriesResponse nt)
 instance Binary nt              => Binary (RequestVote nt)
