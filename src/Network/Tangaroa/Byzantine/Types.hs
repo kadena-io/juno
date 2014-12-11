@@ -16,13 +16,13 @@ module Network.Tangaroa.Byzantine.Types
   , LogIndex, startIndex
   , RequestId, startRequestId
   , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
-  , enableDebug , publicKeys, clientPublicKeys, privateKey
+  , enableDebug, publicKeys, clientPublicKeys, privateKey, clientTimeoutLimit
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, lastApplied, timerThread, pendingRequests
-  , nextRequestId, cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
-  , lConvinced
+  , currentRequestId, cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
+  , lConvinced, numTimeouts
   , initialRaftState
   , AppendEntries(..)
   , AppendEntriesResponse(..)
@@ -81,6 +81,7 @@ data Config nt = Config
   , _electionTimeoutRange :: (Int,Int) -- in microseconds
   , _heartbeatTimeout     :: Int       -- in microseconds
   , _enableDebug          :: Bool
+  , _clientTimeoutLimit   :: Int
   }
   deriving (Show, Generic)
 makeLenses ''Config
@@ -143,9 +144,10 @@ data RequestVoteResponse nt = RequestVoteResponse
   deriving (Show, Read, Generic, Eq, Ord)
 
 data Revolution nt = Revolution
-  { _revClientId :: nt
-  , _revLeaderId :: nt
-  , _revSig      :: ByteString
+  { _revClientId  :: nt
+  , _revLeaderId  :: nt
+  , _revRequestId :: RequestId
+  , _revSig       :: ByteString
   }
   deriving (Show, Read, Generic)
 
@@ -302,23 +304,26 @@ liftRaftSpec RaftSpec{..} =
     }
 
 data RaftState nt et = RaftState
-  { _role            :: Role
-  , _term            :: Term
-  , _votedFor        :: Maybe nt
-  , _lazyVote        :: Maybe (Term, nt)
-  , _currentLeader   :: Maybe nt
-  , _ignoreLeader    :: Bool
-  , _logEntries      :: Seq (Term, Command nt et)
-  , _commitIndex     :: LogIndex
-  , _lastApplied     :: LogIndex
-  , _timerThread     :: Maybe ThreadId
-  , _cYesVotes       :: Set (RequestVoteResponse nt)
-  , _cPotentialVotes :: Set nt
-  , _lNextIndex      :: Map nt LogIndex
-  , _lMatchIndex     :: Map nt LogIndex
-  , _lConvinced      :: Set nt
-  , _pendingRequests :: Map RequestId (Command nt et) -- used by clients
-  , _nextRequestId   :: RequestId                     -- used by clients
+  { _role             :: Role
+  , _term             :: Term
+  , _votedFor         :: Maybe nt
+  , _lazyVote         :: Maybe (Term, nt)
+  , _currentLeader    :: Maybe nt
+  , _ignoreLeader     :: Bool
+  , _logEntries       :: Seq (Term, Command nt et)
+  , _commitIndex      :: LogIndex
+  , _lastApplied      :: LogIndex
+  , _timerThread      :: Maybe ThreadId
+  , _cYesVotes        :: Set (RequestVoteResponse nt)
+  , _cPotentialVotes  :: Set nt
+  , _lNextIndex       :: Map nt LogIndex
+  , _lMatchIndex      :: Map nt LogIndex
+  , _lConvinced       :: Set nt
+
+  -- used by clients
+  , _pendingRequests  :: Map RequestId (Command nt et)
+  , _currentRequestId :: RequestId
+  , _numTimeouts      :: Int
   }
 makeLenses ''RaftState
 
@@ -341,6 +346,7 @@ initialRaftState = RaftState
   Set.empty  -- lConvinced
   Map.empty  -- pendingRequests
   0          -- nextRequestId
+  0          -- numTimeouts
 
 data RaftEnv nt et rt mt = RaftEnv
   { _cfg        :: Config nt

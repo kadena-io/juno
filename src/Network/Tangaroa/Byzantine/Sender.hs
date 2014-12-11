@@ -101,10 +101,11 @@ sendSignedRPC :: (Binary nt, Binary et, Binary rt) => nt -> RPC nt et rt -> Raft
 sendSignedRPC target rpc = do
   pk <- view (cfg.privateKey)
   sendRPC target $ case rpc of
-    AE ae     -> AE   $ signRPC pk ae
-    AER aer   -> AER  $ signRPC pk aer
-    RV rv     -> RV   $ signRPC pk rv
-    RVR rvr   -> RVR  $ signRPC pk rvr
-    CMD cmd   -> CMD  $ signRPC pk cmd
-    CMDR cmdr -> CMDR $ signRPC pk cmdr
+    AE ae          -> AE   $ signRPC pk ae
+    AER aer        -> AER  $ signRPC pk aer
+    RV rv          -> RV   $ signRPC pk rv
+    RVR rvr        -> RVR  $ signRPC pk rvr
+    CMD cmd        -> CMD  $ signRPC pk cmd
+    CMDR cmdr      -> CMDR $ signRPC pk cmdr
+    REVOLUTION rev -> REVOLUTION $ signRPC pk rev
     _         -> rpc

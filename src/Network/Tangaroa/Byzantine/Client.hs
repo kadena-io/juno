@@ -44,9 +44,13 @@ commandGetter getEntry = do
   nid <- view (cfg.nodeId)
   forever $ do
     entry <- getEntry
-    rid <- use nextRequestId
-    nextRequestId += 1
+    rid <- nextRequestId
     enqueueEvent $ ERPC $ CMD $ Command entry nid rid B.empty
+
+nextRequestId :: Raft nt et rt mt RequestId
+nextRequestId = do
+  currentRequestId += 1
+  use currentRequestId
 
 clientHandleEvents :: (Binary nt, Binary et, Binary rt, Ord nt) => (rt -> Raft nt et rt mt ()) -> Raft nt et rt mt ()
 clientHandleEvents useResult = forever $ do
@@ -55,11 +59,30 @@ clientHandleEvents useResult = forever $ do
     ERPC (CMD cmd)     -> clientSendCommand cmd -- these are commands coming from the commandGetter thread
     ERPC (CMDR cmdr)   -> clientHandleCommandResponse useResult cmdr
     HeartbeatTimeout _ -> do
-      debug "choosing a new leader and resending commands"
-      setLeaderToNext
-      reqs <- use pendingRequests
-      pendingRequests .= Map.empty
-      traverse_ clientSendCommand reqs
+      timeouts <- use numTimeouts
+      limit <- view (cfg.clientTimeoutLimit)
+      if timeouts < limit
+        then do
+          debug "choosing a new leader and resending commands"
+          setLeaderToNext
+          reqs <- use pendingRequests
+          pendingRequests .= Map.empty -- this will reset the timer on resend
+          traverse_ clientSendCommand reqs
+          numTimeouts += 1
+        else do
+          debug "starting a revolution"
+          nid <- view (cfg.nodeId)
+          mlid <- use currentLeader
+          case mlid of
+            Just lid -> do
+              rid <- nextRequestId
+              view (cfg.otherNodes) >>=
+                traverse_ (\n -> sendSignedRPC n (REVOLUTION (Revolution nid lid rid B.empty)))
+              numTimeouts .= 0
+              resetHeartbeatTimer
+            _ -> do
+              setLeaderToFirst
+              resetHeartbeatTimer
     _                  -> return ()
 
 setLeaderToFirst :: Raft nt et rt mt ()
@@ -104,6 +127,7 @@ clientHandleCommandResponse useResult cmdr@CommandResponse{..} = do
     useResult _cmdrResult
     currentLeader .= Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
+    numTimeouts .= 0
     prcount <- fmap Map.size (use pendingRequests)
     -- if we still have pending requests, reset the timer
     -- otherwise cancel it

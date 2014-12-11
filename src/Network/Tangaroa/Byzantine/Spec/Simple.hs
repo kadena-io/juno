@@ -69,6 +69,7 @@ defaultConfig =
     (3000000,6000000)          -- election timeout range
     1500000                    -- heartbeat timeout
     False                      -- no debug
+    5                          -- client timeouts before revolution
 
 nodeSockAddr :: NodeType -> SockAddr
 nodeSockAddr (host,port) = SockAddrInet (PortNum port) host
