@@ -12,8 +12,9 @@ import Data.Binary
 import Data.Functor
 import Data.Sequence (Seq)
 import Data.Set (Set)
+import Data.Foldable (all)
 import Data.Traversable (mapM)
-import Prelude hiding (mapM)
+import Prelude hiding (mapM, all)
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString as B
 import qualified Data.Map as Map
@@ -119,16 +120,28 @@ handleAppendEntries ae@AppendEntries{..} = do
         then fork_ $ sendAppendEntriesResponse _leaderId False True
         else do
           appendLogEntries _prevLogIndex _aeEntries
-          fork_ $ sendAppendEntriesResponse _leaderId True True
-          nc <- use commitIndex
-          when (_leaderCommit > nc) $ do
-            let newLastEntry = _prevLogIndex + Seq.length _aeEntries
-            commitIndex .= min _leaderCommit newLastEntry
-            applyLogEntries
+          if (not (Seq.null _aeEntries))
+            -- only broadcast when there are new entries
+            -- this has the downside that recovering nodes won't update
+            -- their commit index until new entries come along
+            -- not sure if this is okay or not
+            -- committed entries by definition have already been externalized
+            -- so if a particular node missed it, there were already 2f+1 nodes
+            -- that didn't
+            then fork_ sendAllAppendEntriesResponse
+            else fork_ $ sendAppendEntriesResponse _leaderId True True
+          doCommit
     _ | not ig && _aeTerm >= ct -> do
       debug "sending unconvinced response"
       fork_ $ sendAppendEntriesResponse _leaderId False False
     _ -> return ()
+
+mergeCommitProof :: Ord nt => AppendEntriesResponse nt -> Raft nt et rt mt ()
+mergeCommitProof aer@AppendEntriesResponse{..} = do
+  ci <- use commitIndex
+  debug $ "merging commit proof for index: " ++ show _aerIndex
+  when (_aerIndex > ci) $
+    commitProof.at _aerIndex %= maybe (Just (Set.singleton aer)) (Just . Set.insert aer)
 
 prevLogEntryMatches :: LogIndex -> Term -> Raft nt et rt mt Bool
 prevLogEntryMatches pli plt = do
@@ -168,8 +181,10 @@ addLogEntryAndHash le es =
     Seq.EmptyR   -> Seq.singleton (hashLogEntry Nothing le)
 
 handleAppendEntriesResponse :: (Binary nt, Binary et, Binary rt, Ord nt) => AppendEntriesResponse nt -> Raft nt et rt mt ()
-handleAppendEntriesResponse AppendEntriesResponse{..} = do
+handleAppendEntriesResponse aer@AppendEntriesResponse{..} = do
   debug "got an appendEntriesResponse RPC"
+  mergeCommitProof aer
+  doCommit
   r <- use role
   ct <- use term
   when (r == Leader) $ do
@@ -179,10 +194,8 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
       when (_aerConvinced && not _aerSuccess) $
         lNextIndex %= Map.adjust (subtract 1) _aerNodeId
       when (_aerConvinced && _aerSuccess) $ do
-        lMatchIndex.at _aerNodeId .= Just _aerIndex
         lNextIndex .at _aerNodeId .= Just (_aerIndex + 1)
         lConvinced %= Set.insert _aerNodeId
-        leaderDoCommit
     when (not _aerConvinced || not _aerSuccess) $
       fork_ $ sendAppendEntries _aerNodeId
 
@@ -204,9 +217,9 @@ makeCommandResponse Command{..} result = do
              _cmdRequestId
              LB.empty
 
-leaderDoCommit :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
-leaderDoCommit = do
-  commitUpdate <- leaderUpdateCommitIndex
+doCommit :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
+doCommit = do
+  commitUpdate <- updateCommitIndex
   when commitUpdate applyLogEntries
 
 -- apply the un-applied log entries up through commitIndex
@@ -224,33 +237,45 @@ applyLogEntries = do
   lastApplied .= ci
 
 
--- called only as leader
--- checks to see what the largest N where a majority of
--- the lMatchIndex set is >= N
-leaderUpdateCommitIndex :: Ord nt => Raft nt et rt mt Bool
-leaderUpdateCommitIndex = do
+-- checks to see what the largest N where a quorum of nodes
+-- has sent us proof of a commit up to that index
+updateCommitIndex :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt Bool
+updateCommitIndex = do
   ci <- use commitIndex
-  lmi <- use lMatchIndex
+  proof <- use commitProof
   qsize <- view quorumSize
-  ct <- use term
   es <- use logEntries
 
-  -- get all indices in the log past commitIndex and take the ones where the entry's
-  -- term is equal to the current term
-  let ctinds = filter (\i -> maybe False ((== ct) . _leTerm) (seqIndex es i))
-                      [(ci + 1)..(Seq.length es - 1)]
+  -- get all indices in the log past commitIndex
+  let inds = [(ci + 1)..(Seq.length es - 1)]
 
   -- get the prefix of these indices where a quorum of nodes have matching
-  -- indices for that entry. lMatchIndex doesn't include the leader, so add
-  -- one to the size
-  let qcinds = takeWhile (\i -> 1 + Map.size (Map.filter (>= i) lmi) >= qsize) ctinds
+  -- indices for that entry
+  let qcinds = takeWhile (\i -> (not . Map.null) (Map.filterWithKey (\k s -> k >= i && Set.size s + 1 >= qsize) proof)) inds
 
   case qcinds of
     [] -> return False
     _  -> do
-      commitIndex .= last qcinds
-      debug $ "commit index is now: " ++ show (last qcinds)
-      return True
+      let qci = last qcinds
+      case Map.lookup qci proof of
+        Just s -> do
+          let lhash = _leHash (Seq.index es qci)
+          valid <- checkCommitProof qci lhash s
+          if valid
+            then do
+              commitIndex .= qci
+              commitProof %= Map.filterWithKey (\k _ -> k >= qci)
+              debug $ "commit index is now: " ++ show qci
+              return True
+            else
+              return False
+        Nothing -> return False
+
+checkCommitProof :: (Binary nt, Binary et, Binary rt, Ord nt)
+                 => LogIndex -> B.ByteString -> Set (AppendEntriesResponse nt) -> Raft nt et rt mt Bool
+checkCommitProof ci lhash aers = do
+  sigsOkay <- allM (verifyRPCWithKey . AER) (Set.toList aers)
+  return $ sigsOkay && all (\AppendEntriesResponse{..} -> _aerHash == lhash && _aerIndex == ci) aers
 
 handleRequestVote :: (Binary nt, Binary et, Binary rt, Eq nt) => RequestVote nt -> Raft nt et rt mt ()
 handleRequestVote RequestVote{..} = do
@@ -326,7 +351,8 @@ handleCommand cmd@Command{..} = do
       -- and propagate it to replicas
       logEntries %= addLogEntryAndHash (LogEntry ct cmd B.empty)
       fork_ sendAllAppendEntries
-      leaderDoCommit
+      fork_ sendAllAppendEntriesResponse
+      doCommit
     (_, _, Just lid) ->
       -- we're not the leader, but we know who the leader is, so forward this
       -- command (don't sign it ourselves, as it comes from the client)

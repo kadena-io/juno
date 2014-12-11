@@ -21,9 +21,9 @@ module Network.Tangaroa.Byzantine.Types
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , LogEntry(..)
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
-  , logEntries, commitIndex, lastApplied, timerThread, replayMap, pendingRequests
-  , currentRequestId, cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
-  , lConvinced, numTimeouts
+  , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
+  , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
+  , numTimeouts, pendingRequests, currentRequestId
   , initialRaftState
   , AppendEntries(..)
   , AppendEntriesResponse(..)
@@ -117,7 +117,6 @@ data AppendEntries nt et = AppendEntries
   , _prevLogIndex  :: LogIndex
   , _prevLogTerm   :: Term
   , _aeEntries     :: Seq (LogEntry nt et)
-  , _leaderCommit  :: LogIndex
   , _aeQuorumVotes :: Set (RequestVoteResponse nt)
   , _aeSig         :: LB.ByteString
   }
@@ -132,7 +131,7 @@ data AppendEntriesResponse nt = AppendEntriesResponse
   , _aerHash      :: B.ByteString
   , _aerSig       :: LB.ByteString
   }
-  deriving (Show, Read, Generic)
+  deriving (Show, Read, Generic, Eq, Ord)
 
 data RequestVote nt = RequestVote
   { _rvTerm        :: Term
@@ -322,6 +321,7 @@ data RaftState nt et rt = RaftState
   , _logEntries       :: Seq (LogEntry nt et)
   , _commitIndex      :: LogIndex
   , _lastApplied      :: LogIndex
+  , _commitProof      :: Map LogIndex (Set (AppendEntriesResponse nt))
   , _timerThread      :: Maybe ThreadId
   , _replayMap        :: Map (nt, LB.ByteString) (Maybe rt)
   , _cYesVotes        :: Set (RequestVoteResponse nt)
@@ -348,6 +348,7 @@ initialRaftState = RaftState
   Seq.empty  -- log
   startIndex -- commitIndex
   startIndex -- lastApplied
+  Map.empty  -- commitProof
   Nothing    -- timerThread
   Map.empty  -- replayMap
   Set.empty  -- cYesVotes

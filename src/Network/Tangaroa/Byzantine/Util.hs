@@ -40,10 +40,7 @@ seqIndex s i =
     else Nothing
 
 getQuorumSize :: Int -> Int
-getQuorumSize n =
-  if even n
-    then n `div` 2 + 1
-    else (n - 1) `div` 2 + 1
+getQuorumSize n = minimum [n - f | f <- [0..n], n >= 3*f + 1]
 
 -- get the last term and index of a log
 lastLogInfo :: Seq (LogEntry nt et) -> (Term, LogIndex, B.ByteString)

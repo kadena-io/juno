@@ -7,6 +7,7 @@ module Network.Tangaroa.Byzantine.Sender
   , sendRequestVoteResponse
   , sendAllAppendEntries
   , sendAllRequestVotes
+  , sendAllAppendEntriesResponse
   , sendResults
   , sendRPC
   , sendSignedRPC
@@ -32,11 +33,10 @@ sendAppendEntries target = do
   let (pli,plt) = logInfoForNextIndex mni es
   ct <- use term
   nid <- view (cfg.nodeId)
-  ci <- use commitIndex
   debug $ "sendAppendEntries: " ++ show ct
   qVoteList <- getVotesForNode target
   sendSignedRPC target $ AE $
-    AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) ci qVoteList B.empty
+    AppendEntries ct nid pli plt (Seq.drop (pli + 1) es) qVoteList B.empty
 
 getVotesForNode :: Ord nt => nt -> Raft nt et rt mt (Set (RequestVoteResponse nt))
 getVotesForNode target = do
@@ -52,6 +52,10 @@ sendAppendEntriesResponse target success convinced = do
   debug $ "sendAppendEntriesResponse: " ++ show ct
   (_, lindex, lhash) <- lastLogInfo <$> use logEntries
   sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success convinced lindex lhash B.empty
+
+sendAllAppendEntriesResponse :: (Binary nt, Binary et, Binary rt) => Raft nt et rt mt ()
+sendAllAppendEntriesResponse =
+  traverse_ (\n -> sendAppendEntriesResponse n True True) =<< view (cfg.otherNodes)
 
 sendRequestVote :: (Binary nt, Binary et, Binary rt) => nt -> Raft nt et rt mt ()
 sendRequestVote target = do
