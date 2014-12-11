@@ -62,7 +62,6 @@ sendResults :: Seq (nt, CommandResponse nt rt) -> Raft nt et rt mt ()
 sendResults results = do
   traverse_ (\(target,cmdr) -> sendRPC target $ CMDR cmdr) results
 
--- TODO: check this
 -- called by leaders sending appendEntries.
 -- given a replica's nextIndex, get the index and term to send as
 -- prevLog(Index/Term)

@@ -20,7 +20,7 @@ module Network.Tangaroa.Byzantine.Types
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
-  , logEntries, commitIndex, lastApplied, timerThread, pendingRequests
+  , logEntries, commitIndex, lastApplied, timerThread, replayMap, pendingRequests
   , currentRequestId, cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
   , lConvinced, numTimeouts
   , initialRaftState
@@ -303,7 +303,7 @@ liftRaftSpec RaftSpec{..} =
     , _debugPrint      = \n s -> lift (__debugPrint n s)
     }
 
-data RaftState nt et = RaftState
+data RaftState nt et rt = RaftState
   { _role             :: Role
   , _term             :: Term
   , _votedFor         :: Maybe nt
@@ -314,6 +314,7 @@ data RaftState nt et = RaftState
   , _commitIndex      :: LogIndex
   , _lastApplied      :: LogIndex
   , _timerThread      :: Maybe ThreadId
+  , _replayMap        :: Map (nt, ByteString) (Maybe rt)
   , _cYesVotes        :: Set (RequestVoteResponse nt)
   , _cPotentialVotes  :: Set nt
   , _lNextIndex       :: Map nt LogIndex
@@ -327,7 +328,7 @@ data RaftState nt et = RaftState
   }
 makeLenses ''RaftState
 
-initialRaftState :: RaftState nt et
+initialRaftState :: RaftState nt et rt
 initialRaftState = RaftState
   Follower   -- role
   startTerm  -- term
@@ -339,6 +340,7 @@ initialRaftState = RaftState
   startIndex -- commitIndex
   startIndex -- lastApplied
   Nothing    -- timerThread
+  Map.empty  -- replayMap
   Set.empty  -- cYesVotes
   Set.empty  -- cPotentialVotes
   Map.empty  -- lNextIndex
@@ -353,11 +355,11 @@ data RaftEnv nt et rt mt = RaftEnv
   , _quorumSize :: Int
   , _eventIn    :: InChan (Event nt et rt)
   , _eventOut   :: OutChan (Event nt et rt)
-  , _rs         :: LiftedRaftSpec nt et rt mt (RWST (RaftEnv nt et rt mt) () (RaftState nt et))
+  , _rs         :: LiftedRaftSpec nt et rt mt (RWST (RaftEnv nt et rt mt) () (RaftState nt et rt))
   }
 makeLenses ''RaftEnv
 
-type Raft nt et rt mt a = RWST (RaftEnv nt et rt mt) () (RaftState nt et) IO a
+type Raft nt et rt mt a = RWST (RaftEnv nt et rt mt) () (RaftState nt et rt) IO a
 
 instance Binary Term
 instance Binary RequestId

@@ -8,6 +8,7 @@ import Control.Lens
 import Control.Monad hiding (mapM)
 import Control.Monad.Loops
 import Data.Binary
+import Data.Functor
 import Data.Sequence (Seq)
 import Data.Set (Set)
 import Data.Traversable (mapM)
@@ -162,20 +163,23 @@ handleAppendEntriesResponse AppendEntriesResponse{..} = do
     when (not _aerConvinced || not _aerSuccess) $
       fork_ $ sendAppendEntries _aerNodeId
 
-applyCommand :: Command nt et -> Raft nt et rt mt (nt, CommandResponse nt rt)
-applyCommand Command{..} = do
+applyCommand :: Ord nt => Command nt et -> Raft nt et rt mt (nt, CommandResponse nt rt)
+applyCommand cmd@Command{..} = do
   apply <- view (rs.applyLogEntry)
   result <- apply _cmdEntry
-  mlid <- use currentLeader
+  replayMap %= Map.insert (_cmdClientId, _cmdSig) (Just result)
+  ((,) _cmdClientId) <$> makeCommandResponse cmd result
+
+makeCommandResponse :: Command nt et -> rt -> Raft nt et rt mt (CommandResponse nt rt)
+makeCommandResponse Command{..} result = do
   nid <- view (cfg.nodeId)
-  return $
-    (_cmdClientId,
-      CommandResponse
-        result
-        (maybe nid id mlid) -- leader id if we know it, otherwise us
-        nid
-        _cmdRequestId
-        B.empty)
+  mlid <- use currentLeader
+  return $ CommandResponse
+             result
+             (maybe nid id mlid)
+             nid
+             _cmdRequestId
+             B.empty
 
 leaderDoCommit :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 leaderDoCommit = do
@@ -185,7 +189,7 @@ leaderDoCommit = do
 -- apply the un-applied log entries up through commitIndex
 -- and send results to the client if you are the leader
 -- TODO: have this done on a separate thread via event passing
-applyLogEntries :: (Binary nt, Binary et, Binary rt) => Raft nt et rt mt ()
+applyLogEntries :: (Binary nt, Binary et, Binary rt, Ord nt) => Raft nt et rt mt ()
 applyLogEntries = do
   la <- use lastApplied
   ci <- use commitIndex
@@ -283,30 +287,38 @@ handleRequestVoteResponse rvr@RequestVoteResponse{..} = do
         cPotentialVotes %= Set.delete _rvrNodeId
 
 handleCommand :: (Binary nt, Binary et, Binary rt, Ord nt) => Command nt et -> Raft nt et rt mt ()
-handleCommand cmd = do
+handleCommand cmd@Command{..} = do
   debug "got a command RPC"
   r <- use role
   ct <- use term
   mlid <- use currentLeader
-  case (r, mlid) of
-    (Leader, _) -> do
+  replays <- use replayMap
+  case (Map.lookup (_cmdClientId, _cmdSig) replays, r, mlid) of
+    (Just (Just result), _, _) -> do
+      cmdr <- makeCommandResponse cmd result
+      sendSignedRPC _cmdClientId $ CMDR cmdr
+      -- we have already seen this request, so send the result to the client
+    (_, Leader, _) -> do
       -- we're the leader, so append this to our log with the current term
       -- and propagate it to replicas
       logEntries %= (Seq.|> (ct, cmd))
       fork_ sendAllAppendEntries
       leaderDoCommit
-    (_, Just lid) ->
+    (_, _, Just lid) ->
       -- we're not the leader, but we know who the leader is, so forward this
       -- command (don't sign it ourselves, as it comes from the client)
       fork_ $ sendRPC lid $ CMD cmd
-    (_, Nothing) ->
+    (_, _, Nothing) ->
       -- we're not the leader, and we don't know who the leader is, so can't do
       -- anything
       return ()
 
-handleRevolution :: Eq nt => Revolution nt -> Raft nt et rt mt ()
+handleRevolution :: Ord nt => Revolution nt -> Raft nt et rt mt ()
 handleRevolution Revolution{..} = do
   cl <- use currentLeader
-  case cl of
-    Just l | l == _revLeaderId -> ignoreLeader .= True
-    _ -> return ()
+  whenM (Map.notMember (_revClientId, _revSig) <$> use replayMap) $
+    case cl of
+      Just l | l == _revLeaderId -> do
+        replayMap %= Map.insert (_revClientId, _revSig) Nothing
+        ignoreLeader .= True
+      _ -> return ()
