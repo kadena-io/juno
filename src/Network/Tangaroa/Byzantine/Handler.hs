@@ -281,7 +281,13 @@ handleRequestVote RequestVote{..} = do
   mvote <- use votedFor
   es <- use logEntries
   ct <- use term
+  cl <- use currentLeader
+  ig <- use ignoreLeader
   case mvote of
+    _      | ig && cl == Just _rvCandidateId -> return ()
+      -- don't respond to a candidate if they were leader and a client
+      -- asked us to ignore them
+
     _      | _rvTerm < ct -> do
       -- this is an old candidate
       debug "this is for an old term"
@@ -367,5 +373,10 @@ handleRevolution Revolution{..} = do
     case cl of
       Just l | l == _revLeaderId -> do
         replayMap %= Map.insert (_revClientId, _revSig) Nothing
+        -- clear our lazy vote if it was for this leader
+        lv <- use lazyVote
+        case lv of
+          Just (_, lvid) | lvid == _revLeaderId -> lazyVote .= Nothing
+          _ -> return ()
         ignoreLeader .= True
       _ -> return ()
