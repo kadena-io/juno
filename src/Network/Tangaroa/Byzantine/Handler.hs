@@ -156,8 +156,6 @@ appendLogEntries :: (Binary nt, Binary et) => LogIndex -> Seq (LogEntry nt et) -
 appendLogEntries pli es = do
   logEntries %= (Seq.>< es) . Seq.take (pli + 1)
   updateLogHashesFromIndex (pli + 1)
-  (_,_,lhash) <- lastLogInfo <$> use logEntries
-  debug (show lhash)
 
 hashLogEntry :: (Binary nt, Binary et) => Maybe (LogEntry nt et) -> LogEntry nt et -> LogEntry nt et
 hashLogEntry (Just LogEntry{ _leHash = prevHash}) le =
