@@ -249,8 +249,8 @@ updateCommitIndex = do
   -- get all indices in the log past commitIndex
   let inds = [(ci + 1)..(Seq.length es - 1)]
 
-  -- get the prefix of these indices where a quorum of nodes have matching
-  -- indices for that entry
+  -- get the prefix of these indices where a quorum of nodes have
+  -- provided proof of having replicated that entry
   let qcinds = takeWhile (\i -> (not . Map.null) (Map.filterWithKey (\k s -> k >= i && Set.size s + 1 >= qsize) proof)) inds
 
   case qcinds of
