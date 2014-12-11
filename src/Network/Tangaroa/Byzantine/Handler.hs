@@ -31,19 +31,21 @@ handleEvents = forever $ do
     ElectionTimeout s  -> handleElectionTimeout s
     HeartbeatTimeout s -> handleHeartbeatTimeout s
 
+whenM :: Monad m => m Bool -> m () -> m ()
+whenM mb ma = do
+  b <- mb
+  when b ma
+
 handleRPC :: (Binary nt, Binary et, Binary rt, Ord nt) => RPC nt et rt -> Raft nt et rt mt ()
-handleRPC rpc = do
-  valid <- verifyRPCWithKey rpc
-  if valid
-    then case rpc of
-      AE ae     -> handleAppendEntries ae
-      AER aer   -> handleAppendEntriesResponse aer
-      RV rv     -> handleRequestVote rv
-      RVR rvr   -> handleRequestVoteResponse rvr
-      CMD cmd   -> handleCommand cmd
-      CMDR _    -> debug "got a command response RPC"
-      DBG s     -> debug $ "got a debug RPC: " ++ s
-    else debug "RPC has invalid signature"
+handleRPC rpc = case rpc of
+  AE ae          -> whenM (verifyRPCWithKey rpc) $ handleAppendEntries ae
+  AER aer        -> whenM (verifyRPCWithKey rpc) $ handleAppendEntriesResponse aer
+  RV rv          -> whenM (verifyRPCWithKey rpc) $ handleRequestVote rv
+  RVR rvr        -> whenM (verifyRPCWithKey rpc) $ handleRequestVoteResponse rvr
+  CMD cmd        -> whenM (verifyRPCWithClientKey rpc) $ handleCommand cmd
+  CMDR _         -> whenM (verifyRPCWithKey rpc) $ debug "got a command response RPC"
+  DBG s          -> debug $ "got a debug RPC: " ++ s
+  REVOLUTION rev -> whenM (verifyRPCWithClientKey rpc) $ handleRevolution rev
 
 handleElectionTimeout :: (Binary nt, Binary et, Binary rt, Ord nt) => String -> Raft nt et rt mt ()
 handleElectionTimeout s = do
@@ -56,6 +58,8 @@ handleElectionTimeout s = do
         updateTerm t
         setVotedFor (Just c)
         lazyVote .= Nothing
+        ignoreLeader .= False
+        currentLeader .= Nothing
         fork_ $ sendRequestVoteResponse c True
         resetElectionTimer
       Nothing -> becomeCandidate
@@ -71,12 +75,16 @@ handleHeartbeatTimeout s = do
 checkForNewLeader :: (Binary nt, Binary et, Binary rt, Ord nt) => AppendEntries nt et -> Raft nt et rt mt ()
 checkForNewLeader AppendEntries{..} = do
   ct <- use term
-  if _aeTerm < ct || Set.size _aeQuorumVotes == 0
+  cl <- use currentLeader
+  if (_aeTerm == ct && cl == Just _leaderId) ||
+      _aeTerm < ct ||
+      Set.size _aeQuorumVotes == 0
     then return ()
     else do
       votesValid <- confirmElection _leaderId _aeTerm _aeQuorumVotes
       when votesValid $ do
         updateTerm _aeTerm
+        ignoreLeader .= False
         currentLeader .= Just _leaderId
 
 confirmElection :: (Binary nt, Binary et, Binary rt, Ord nt) => nt -> Term -> Set (RequestVoteResponse nt) -> Raft nt et rt mt Bool
@@ -97,11 +105,12 @@ handleAppendEntries ae@AppendEntries{..} = do
   debug $ "got an appendEntries RPC: prev log entry: Index " ++ show _prevLogIndex ++ " " ++ show _prevLogTerm
   checkForNewLeader ae
   cl <- use currentLeader
+  ig <- use ignoreLeader
   ct <- use term
   es <- use logEntries
   let oldLastEntry = Seq.length es - 1
   case cl of
-    Just l | l == _leaderId && _aeTerm == ct -> do
+    Just l | not ig && l == _leaderId && _aeTerm == ct -> do
       resetElectionTimer
       lazyVote .= Nothing
       plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
@@ -115,7 +124,7 @@ handleAppendEntries ae@AppendEntries{..} = do
           when (_leaderCommit > nc) $ do
             commitIndex .= min _leaderCommit newLastEntry
             applyLogEntries
-    _ | _aeTerm >= ct -> do
+    _ | not ig && _aeTerm >= ct -> do
       debug "sending unconvinced response"
       fork_ $ sendAppendEntriesResponse _leaderId False False oldLastEntry
     _ -> return ()
@@ -292,5 +301,12 @@ handleCommand cmd = do
       fork_ $ sendRPC lid $ CMD cmd
     (_, Nothing) ->
       -- we're not the leader, and we don't know who the leader is, so can't do
-      -- anything (TODO)
+      -- anything
       return ()
+
+handleRevolution :: Eq nt => Revolution nt -> Raft nt et rt mt ()
+handleRevolution Revolution{..} = do
+  cl <- use currentLeader
+  case cl of
+    Just l | l == _revLeaderId -> ignoreLeader .= True
+    _ -> return ()

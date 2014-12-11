@@ -3,3 +3,4 @@ dist
 cabal.sandbox.config
 public_keys*
 private_keys*
+client_public_keys*

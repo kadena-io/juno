@@ -28,8 +28,11 @@ options =
     (NoArg (return . (enableDebug .~ True)))
     "Enable debugging info (show RPCs and timeouts)."
   , Option ['p'] ["public-keys"]
-    (ReqArg getPublicKeys "PUBLIC_KEY_FILE")
+    (ReqArg getPublicKeys "NODE_PUBLIC_KEY_FILE")
     "A file containing a map of nodes to their public key."
+  , Option ['c'] ["client-keys"]
+    (ReqArg getClientPublicKeys "CLIENT_PUBLIC_KEY_FILE")
+    "A file containing a map of clients to their public key."
   , Option ['k'] ["private-key"]
     (ReqArg getPrivateKey "PRIVATE_KEY_FILE")
     "A file containing the node's private key."
@@ -61,6 +64,7 @@ defaultConfig =
     Set.empty                  -- other nodes
     (localhost,defaultPortNum) -- self address
     Map.empty                  -- publicKeys
+    Map.empty                  -- clientPublicKeys
     (PrivateKey (PublicKey 0 0 0) 0 0 0 0 0 0) -- empty public key
     (3000000,6000000)          -- election timeout range
     1500000                    -- heartbeat timeout
@@ -82,6 +86,13 @@ getPublicKeys filename conf = do
   contents <- readFile filename
   return $ case readMaybe contents of
     Just pkm -> conf & publicKeys .~ pkm
+    Nothing  -> conf
+
+getClientPublicKeys :: FilePath -> Config NodeType -> IO (Config NodeType)
+getClientPublicKeys filename conf = do
+  contents <- readFile filename
+  return $ case readMaybe contents of
+    Just pkm -> conf & clientPublicKeys .~ pkm
     Nothing  -> conf
 
 getPrivateKey :: FilePath -> Config NodeType -> IO (Config NodeType)

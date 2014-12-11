@@ -16,13 +16,13 @@ module Network.Tangaroa.Byzantine.Types
   , LogIndex, startIndex
   , RequestId, startRequestId
   , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
-  , enableDebug
-  , publicKeys, privateKey
+  , enableDebug , publicKeys, clientPublicKeys, privateKey
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, eventIn, eventOut, rs
-  , RaftState(..), role, term, votedFor, lazyVote, currentLeader, logEntries
-  , commitIndex, lastApplied, timerThread, pendingRequests, nextRequestId
-  , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
+  , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
+  , logEntries, commitIndex, lastApplied, timerThread, pendingRequests
+  , nextRequestId, cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex
+  , lConvinced
   , initialRaftState
   , AppendEntries(..)
   , AppendEntriesResponse(..)
@@ -30,6 +30,7 @@ module Network.Tangaroa.Byzantine.Types
   , RequestVoteResponse(..)
   , Command(..)
   , CommandResponse(..)
+  , Revolution(..)
   , RPC(..)
   , Event(..)
   , SigRPC
@@ -75,6 +76,7 @@ data Config nt = Config
   { _otherNodes           :: Set nt
   , _nodeId               :: nt
   , _publicKeys           :: Map nt PublicKey
+  , _clientPublicKeys     :: Map nt PublicKey
   , _privateKey           :: PrivateKey
   , _electionTimeoutRange :: (Int,Int) -- in microseconds
   , _heartbeatTimeout     :: Int       -- in microseconds
@@ -140,12 +142,20 @@ data RequestVoteResponse nt = RequestVoteResponse
   }
   deriving (Show, Read, Generic, Eq, Ord)
 
+data Revolution nt = Revolution
+  { _revClientId :: nt
+  , _revLeaderId :: nt
+  , _revSig      :: ByteString
+  }
+  deriving (Show, Read, Generic)
+
 data RPC nt et rt = AE (AppendEntries nt et)
                   | AER (AppendEntriesResponse nt)
                   | RV (RequestVote nt)
                   | RVR (RequestVoteResponse nt)
                   | CMD (Command nt et)
                   | CMDR (CommandResponse nt rt)
+                  | REVOLUTION (Revolution nt)
                   | DBG String
   deriving (Show, Read, Generic)
 
@@ -176,6 +186,10 @@ instance Binary nt => SigRPC (RequestVote nt) where
 instance Binary nt => SigRPC (RequestVoteResponse nt) where
   signRPC k rpc   = rpc { _rvrSig = sign k (encode (rpc { _rvrSig = B.empty })) }
   verifyRPC k rpc = verify k (encode (rpc { _rvrSig = B.empty })) (_rvrSig rpc)
+
+instance Binary nt => SigRPC (Revolution nt) where
+  signRPC k rpc   = rpc { _revSig = sign k (encode (rpc { _revSig = B.empty })) }
+  verifyRPC k rpc = verify k (encode (rpc { _revSig = B.empty })) (_revSig rpc)
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
@@ -293,6 +307,7 @@ data RaftState nt et = RaftState
   , _votedFor        :: Maybe nt
   , _lazyVote        :: Maybe (Term, nt)
   , _currentLeader   :: Maybe nt
+  , _ignoreLeader    :: Bool
   , _logEntries      :: Seq (Term, Command nt et)
   , _commitIndex     :: LogIndex
   , _lastApplied     :: LogIndex
@@ -314,6 +329,7 @@ initialRaftState = RaftState
   Nothing    -- votedFor
   Nothing    -- lazyVote
   Nothing    -- currentLeader
+  False      -- ignoreLeader
   Seq.empty  -- log
   startIndex -- commitIndex
   startIndex -- lastApplied
@@ -346,5 +362,6 @@ instance Binary nt              => Binary (RequestVote nt)
 instance Binary nt              => Binary (RequestVoteResponse nt)
 instance (Binary nt, Binary et) => Binary (Command nt et)
 instance (Binary nt, Binary rt) => Binary (CommandResponse nt rt)
+instance Binary nt              => Binary (Revolution nt)
 
 instance (Binary nt, Binary et, Binary rt) => Binary (RPC nt et rt)

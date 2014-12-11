@@ -12,6 +12,7 @@ module Network.Tangaroa.Byzantine.Util
   , dequeueEvent
   , messageReceiver
   , verifyRPCWithKey
+  , verifyRPCWithClientKey
   , signRPCWithKey
   , updateTerm
   ) where
@@ -85,29 +86,58 @@ messageReceiver = do
 
 verifyWrappedRPC :: (Binary nt, Binary et, Binary rt) => PublicKey -> RPC nt et rt -> Bool
 verifyWrappedRPC k rpc = case rpc of
-  AE ae     -> verifyRPC k ae
-  AER aer   -> verifyRPC k aer
-  RV rv     -> verifyRPC k rv
-  RVR rvr   -> verifyRPC k rvr
-  CMD cmd   -> verifyRPC k cmd
-  CMDR cmdr -> verifyRPC k cmdr
-  DBG _     -> True
+  AE ae          -> verifyRPC k ae
+  AER aer        -> verifyRPC k aer
+  RV rv          -> verifyRPC k rv
+  RVR rvr        -> verifyRPC k rvr
+  CMD cmd        -> verifyRPC k cmd
+  CMDR cmdr      -> verifyRPC k cmdr
+  REVOLUTION rev -> verifyRPC k rev
+  DBG _          -> True
 
 senderId :: RPC nt et rt -> Maybe nt
 senderId rpc = case rpc of
-    AE ae     -> Just (_leaderId ae)
-    AER aer   -> Just (_aerNodeId aer)
-    RV rv     -> Just (_rvCandidateId rv)
-    RVR rvr   -> Just (_rvrNodeId rvr)
-    CMD cmd   -> Just (_cmdClientId cmd)
-    CMDR cmdr -> Just (_cmdrNodeId cmdr)
-    DBG _     -> Nothing
+    AE ae          -> Just (_leaderId ae)
+    AER aer        -> Just (_aerNodeId aer)
+    RV rv          -> Just (_rvCandidateId rv)
+    RVR rvr        -> Just (_rvrNodeId rvr)
+    CMD cmd        -> Just (_cmdClientId cmd)
+    CMDR cmdr      -> Just (_cmdrNodeId cmdr)
+    REVOLUTION rev -> Just (_revClientId rev)
+    DBG _          -> Nothing
 
 verifyRPCWithKey :: (Binary nt, Binary et, Binary rt, Ord nt) => RPC nt et rt -> Raft nt et rt mt Bool
-verifyRPCWithKey rpc = do
-  pks <- view (cfg.publicKeys)
-  let mk = (\k -> Map.lookup k pks) =<< senderId rpc
-  return $ maybe False (\k -> verifyWrappedRPC k rpc) mk
+verifyRPCWithKey rpc =
+  case rpc of
+    AE _   -> doVerify rpc
+    AER _  -> doVerify rpc
+    RV _   -> doVerify rpc
+    RVR _  -> doVerify rpc
+    CMDR _ -> doVerify rpc
+    _      -> return False
+  where
+    doVerify rpc' = do
+      pks <- view (cfg.publicKeys)
+      let mk = (\k -> Map.lookup k pks) =<< senderId rpc'
+      maybe
+        (debug "RPC has invalid signature" >> return False)
+        (\k -> return (verifyWrappedRPC k rpc'))
+        mk
+
+verifyRPCWithClientKey :: (Binary nt, Binary et, Binary rt, Ord nt) => RPC nt et rt -> Raft nt et rt mt Bool
+verifyRPCWithClientKey rpc =
+  case rpc of
+    CMD _        -> doVerify rpc
+    REVOLUTION _ -> doVerify rpc
+    _            -> return False
+  where
+    doVerify rpc' = do
+      pks <- view (cfg.clientPublicKeys)
+      let mk = (\k -> Map.lookup k pks) =<< senderId rpc'
+      maybe
+        (debug "RPC has invalid signature" >> return False)
+        (\k -> return (verifyWrappedRPC k rpc'))
+        mk
 
 signRPCWithKey :: SigRPC rpc => rpc -> Raft nt et rt mt rpc
 signRPCWithKey rpc = do
@@ -118,4 +148,3 @@ updateTerm :: Term -> Raft nt et rt mt ()
 updateTerm t = do
   rs.writeTermNumber ^$ t
   term .= t
-

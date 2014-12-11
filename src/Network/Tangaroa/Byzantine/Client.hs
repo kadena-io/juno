@@ -110,4 +110,3 @@ clientHandleCommandResponse useResult cmdr@CommandResponse{..} = do
     if (prcount > 0)
       then resetHeartbeatTimer
       else cancelTimer
-  when (not valid) $ debug "RPC has invalid signature"
