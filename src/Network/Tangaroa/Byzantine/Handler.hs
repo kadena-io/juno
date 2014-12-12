@@ -120,6 +120,7 @@ handleAppendEntries ae@AppendEntries{..} = do
         then fork_ $ sendAppendEntriesResponse _leaderId False True
         else do
           appendLogEntries _prevLogIndex _aeEntries
+          doCommit
           {-|
           if (not (Seq.null _aeEntries))
             -- only broadcast when there are new entries
@@ -132,7 +133,6 @@ handleAppendEntries ae@AppendEntries{..} = do
             then fork_ sendAllAppendEntriesResponse
             else fork_ $ sendAppendEntriesResponse _leaderId True True
           --}
-          doCommit
       fork_ sendAllAppendEntriesResponse
     _ | not ig && _aeTerm >= ct -> do
       debug "sending unconvinced response"
