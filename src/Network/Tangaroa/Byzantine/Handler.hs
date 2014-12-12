@@ -12,7 +12,7 @@ import Data.Binary
 import Data.Functor
 import Data.Sequence (Seq)
 import Data.Set (Set)
-import Data.Foldable (all)
+import Data.Foldable (all, traverse_)
 import Data.Traversable (mapM)
 import Prelude hiding (mapM, all)
 import qualified Data.ByteString.Lazy as LB
@@ -120,6 +120,7 @@ handleAppendEntries ae@AppendEntries{..} = do
         then fork_ $ sendAppendEntriesResponse _leaderId False True
         else do
           appendLogEntries _prevLogIndex _aeEntries
+          {-|
           if (not (Seq.null _aeEntries))
             -- only broadcast when there are new entries
             -- this has the downside that recovering nodes won't update
@@ -130,7 +131,9 @@ handleAppendEntries ae@AppendEntries{..} = do
             -- that didn't
             then fork_ sendAllAppendEntriesResponse
             else fork_ $ sendAppendEntriesResponse _leaderId True True
+          --}
           doCommit
+      fork_ sendAllAppendEntriesResponse
     _ | not ig && _aeTerm >= ct -> do
       debug "sending unconvinced response"
       fork_ $ sendAppendEntriesResponse _leaderId False False
@@ -152,9 +155,10 @@ prevLogEntryMatches pli plt = do
     -- if we do have the entry, return true if the terms match
     Just LogEntry{..} -> return (_leTerm == plt)
 
-appendLogEntries :: (Binary nt, Binary et) => LogIndex -> Seq (LogEntry nt et) -> Raft nt et rt mt ()
+appendLogEntries :: (Binary nt, Binary et, Ord nt) => LogIndex -> Seq (LogEntry nt et) -> Raft nt et rt mt ()
 appendLogEntries pli es = do
   logEntries %= (Seq.>< es) . Seq.take (pli + 1)
+  traverse_ (\LogEntry{_leCommand = Command{..}} -> replayMap %= Map.insert (_cmdClientId, _cmdSig) Nothing) es
   updateLogHashesFromIndex (pli + 1)
 
 hashLogEntry :: (Binary nt, Binary et) => Maybe (LogEntry nt et) -> LogEntry nt et -> LogEntry nt et
@@ -349,11 +353,16 @@ handleCommand cmd@Command{..} = do
     (Just (Just result), _, _) -> do
       cmdr <- makeCommandResponse cmd result
       sendSignedRPC _cmdClientId $ CMDR cmdr
-      -- we have already seen this request, so send the result to the client
+      -- we have already committed this request, so send the result to the client
+    (Just Nothing, _, _) ->
+      -- we have already seen this request, but have not yet committed it
+      -- nothing to do
+      return ()
     (_, Leader, _) -> do
       -- we're the leader, so append this to our log with the current term
       -- and propagate it to replicas
       logEntries %= addLogEntryAndHash (LogEntry ct cmd B.empty)
+      replayMap %= Map.insert (_cmdClientId, _cmdSig) Nothing
       fork_ sendAllAppendEntries
       fork_ sendAllAppendEntriesResponse
       doCommit
