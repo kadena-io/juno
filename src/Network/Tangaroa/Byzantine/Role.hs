@@ -8,7 +8,6 @@ module Network.Tangaroa.Byzantine.Role
 
 import Control.Lens hiding (Index)
 import Control.Monad
-import Data.Functor
 import Data.Binary
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Map as Map

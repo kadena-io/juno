@@ -9,7 +9,6 @@ import Control.Monad hiding (mapM)
 import Control.Monad.Loops
 import Codec.Digest.SHA
 import Data.Binary
-import Data.Functor
 import Data.Sequence (Seq)
 import Data.Set (Set)
 import Data.Foldable (all, traverse_)

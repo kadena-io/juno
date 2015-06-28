@@ -16,7 +16,6 @@ module Network.Tangaroa.Byzantine.Sender
 import Control.Lens
 import Data.Binary
 import Data.Foldable (traverse_)
-import Data.Functor
 import Data.Sequence (Seq)
 import Data.Set (Set)
 import qualified Data.ByteString.Lazy as B

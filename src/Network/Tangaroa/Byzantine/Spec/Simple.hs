@@ -55,14 +55,14 @@ type NodeType = (HostAddress, Word16)
 localhost :: HostAddress
 localhost = 0x0100007f
 
-defaultPortNum :: Word16
+defaultPortNum :: PortNumber
 defaultPortNum = 10000
 
 defaultConfig :: Config NodeType
 defaultConfig =
   Config
     Set.empty                  -- other nodes
-    (localhost,defaultPortNum) -- self address
+    (localhost,fromIntegral defaultPortNum) -- self address
     Map.empty                  -- publicKeys
     Map.empty                  -- clientPublicKeys
     (PrivateKey (PublicKey 0 0 0) 0 0 0 0 0 0) -- empty public key
@@ -72,7 +72,7 @@ defaultConfig =
     5                          -- client timeouts before revolution
 
 nodeSockAddr :: NodeType -> SockAddr
-nodeSockAddr (host,port) = SockAddrInet (PortNum port) host
+nodeSockAddr (host,port) = SockAddrInet (fromIntegral port) host
 
 setThisNode :: String -> Config NodeType -> IO (Config NodeType)
 setThisNode s =

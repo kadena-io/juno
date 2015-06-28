@@ -2,10 +2,10 @@ name:                tangaroa
 version:             0.0.0.1
 synopsis:            Bynzantine Fault Tolerant Raft
 description:         An implementation of a Byzantine Fault Tolerant Raft protocol.
---homepage:            TODO
-
+homepage:            https://github.com/chrisnc/tangaroa
 author:              Chris Copeland
-copyright:           (c) 2014, Chris Copeland
+maintainer:          chrisnc@cs.stanford.edu
+copyright:           Copyright (C) 2014-2015, Chris Copeland
 
 license:             BSD3
 license-file:        LICENSE
@@ -13,6 +13,10 @@ license-file:        LICENSE
 category:            Network
 build-type:          Simple
 cabal-version:       >=1.20
+
+source-repository head
+  type:     git
+  location: git@github.com:chrisnc/tangaroa.git
 
 library
   exposed-modules:     Network.Tangaroa.Client
@@ -52,7 +56,7 @@ library
                      , transformers
                      , unagi-chan
   hs-source-dirs:      src
-  ghc-options:         -Wall -O2 -threaded -fno-warn-unused-do-bind
+  ghc-options:         -Wall -fno-warn-unused-do-bind
   default-language:    Haskell2010
 
 executable simpleserver
@@ -61,7 +65,7 @@ executable simpleserver
                      , containers
                      , tangaroa
   hs-source-dirs:      bin/Simple
-  ghc-options:         -Wall -O2 -threaded -rtsopts
+  ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010
 
 executable simpleclient
@@ -69,7 +73,7 @@ executable simpleclient
   build-depends:       base < 5
                      , tangaroa
   hs-source-dirs:      bin/Simple
-  ghc-options:         -Wall -O2 -threaded -rtsopts
+  ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010
 
 executable bftserver
@@ -79,7 +83,7 @@ executable bftserver
                      , tangaroa
                      , binary
   hs-source-dirs:      bin/Byzantine
-  ghc-options:         -Wall -O2 -threaded -rtsopts
+  ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010
 
 executable bftclient
@@ -88,7 +92,7 @@ executable bftclient
                      , tangaroa
                      , binary
   hs-source-dirs:      bin/Byzantine
-  ghc-options:         -Wall -O2 -threaded -rtsopts
+  ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010
 
 executable genkeys
@@ -101,7 +105,7 @@ executable genkeys
                      , directory
                      , filepath
   hs-source-dirs:      bin
-  ghc-options:         -Wall -O2 -threaded -rtsopts
+  ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010
 
 executable udprecv
@@ -110,7 +114,7 @@ executable udprecv
                      , bytestring
                      , network
   hs-source-dirs:      bin
-  ghc-options:         -Wall -O2 -threaded -rtsopts
+  ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010
 
 executable udpsend
@@ -119,5 +123,5 @@ executable udpsend
                      , bytestring
                      , network
   hs-source-dirs:      bin
-  ghc-options:         -Wall -O2 -threaded -rtsopts
+  ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010

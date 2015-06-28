@@ -9,7 +9,7 @@ localhost :: HostAddress
 localhost = 0x0100007f
 
 port :: PortNumber
-port = PortNum 10000
+port = 10000
 
 main :: IO ()
 main = do

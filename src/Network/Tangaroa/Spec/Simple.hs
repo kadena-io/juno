@@ -49,7 +49,7 @@ defaultConfig =
     False                      -- no debug
 
 nodeSockAddr :: NodeType -> SockAddr
-nodeSockAddr (host,port) = SockAddrInet (PortNum port) host
+nodeSockAddr (host,port) = SockAddrInet (fromIntegral port) host
 
 setThisNode :: String -> Config NodeType -> Config NodeType
 setThisNode =

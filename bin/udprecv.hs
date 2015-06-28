@@ -9,7 +9,7 @@ localhost :: HostAddress
 localhost = 0x0100007f
 
 port :: PortNumber
-port = PortNum 10010
+port = 10000
 
 maxlen :: Int
 maxlen = 8192

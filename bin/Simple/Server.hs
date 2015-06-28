@@ -5,7 +5,6 @@ module Main
 import Network.Tangaroa.Spec.Simple
 
 import Data.IORef
-import Data.Functor
 import Data.Map (Map)
 import qualified Data.Map as Map
 
