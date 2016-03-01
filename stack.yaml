@@ -1,0 +1,34 @@
+resolver: lts-3.13
+
+# Local packages, usually specified by relative directory name
+packages:
+- '.'
+- location:
+    git: git@github.com:hopper-lang/hopper.git
+    commit: 48bd36e7169f1b6f6763aa7d6cb946983e748e7d
+  extra-dep: true
+- location:
+    git: https://github.com/slpopejoy/snap-cors.git
+    commit: cc88bab1fd3f62dc4d9f9ad81a231877a639c812
+  extra-dep: true
+
+# Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
+extra-deps:
+- SHA2-0.2.5
+- unagi-chan-0.4.0.0
+- AES-0.2.9
+- megaparsec-4.2.0
+# Are these required because a dependency of this project is using data-dword, or because masala is using data-dword and extra-deps aren't propagated?
+- data-dword-0.3
+- data-bword-0.1 # for data-dword
+- vector-0.11.0.0
+
+# Override default flag values for local packages and extra-deps
+flags: {}
+
+# Extra package databases containing global packages
+extra-package-dbs: []
+
+# Extra directories used by stack for building
+# extra-include-dirs: [/path/to/dir]
+# extra-lib-dirs: [/path/to/dir]
