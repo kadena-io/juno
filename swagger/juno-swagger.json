@@ -1,0 +1,355 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Juno API",
+    "description": "Juno Distributed Cryptoledger API",
+    "version": "1.0.0"
+  },
+  "schemes": [
+    "https"
+  ],
+  "basePath": "/api/juno/v1/",
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "transact": {
+      "post": {
+        "summary": "Send transaction",
+        "description": "Run asynchronous transaction on ledger.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "Transaction request",
+            "required": true,
+            "schema": { "$ref": "#/definitions/TransactionRequest" }
+          }
+        ],
+        "tags": [
+          "Transact"
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction result",
+            "schema": {
+              "$ref": "#/definitions/AsyncResponse"
+            }
+          }
+        }
+      }
+    },
+    "poll": {
+      "post": {
+        "summary": "Poll for API action results",
+        "description": "Poll for results on a pending transaction or admin request",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "Poll request",
+            "required": true,
+            "schema": { "$ref": "#/definitions/PollRequest" }
+          }
+        ],
+        "tags": [
+          "Async"
+        ],
+        "responses": {
+          "200": {
+            "description": "Poll result",
+            "schema": {
+              "$ref": "#/definitions/PollResponse"
+            }
+          }
+        }
+      }
+    },
+    "accounts/create": {
+      "post": {
+        "summary": "Create account",
+        "description": "Create account on ledger",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "Create account request",
+            "required": true,
+            "schema": { "$ref": "#/definitions/CreateAccountRequest" }
+          }
+        ],
+        "tags": [
+          "Accounts Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Create account result",
+            "schema": {
+              "$ref": "#/definitions/AsyncResponse"
+            }
+          }
+        }
+      }
+    },
+    "accounts/adjust": {
+      "post": {
+        "summary": "Adjust account balance",
+        "description": "Adjust account on ledger",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "Adjust account request",
+            "required": true,
+            "schema": { "$ref": "#/definitions/AdjustAccountRequest" }
+          }
+        ],
+        "tags": [
+          "Accounts Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Adjust account result",
+            "schema": {
+              "$ref": "#/definitions/AsyncResponse"
+            }
+          }
+        }
+      }
+    },
+    "query": {
+      "post": {
+        "summary": "Query ledger",
+        "description": "Run ledger query",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "Ledger query request",
+            "required": true,
+            "schema": { "$ref": "#/definitions/QueryLedgerRequest" }
+          }
+        ],
+        "tags": [
+          "Query"
+        ],
+        "responses": {
+          "200": {
+            "description": "Ledger query result",
+            "schema": {
+              "$ref": "#/definitions/AsyncResponse"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "AsyncResponse": {
+      "required": [
+        "status",
+        "cmdid"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Status of request submission",
+          "enum": ["SUCCESS","FAILURE"]
+        },
+        "cmdid": {
+          "description": "Command ID",
+          "type": "string"
+        },
+        "message": {
+          "description": "Failure message, if any",
+          "type": "string"
+        }
+
+      }
+    },
+    "PollResponse": {
+      "required": [
+        "results"
+      ],
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["status","cmdid"],
+            "properties": {
+              "status": {
+                "type": "string",
+                "description": "Response status",
+                "enum": ["PENDING","COMPLETED","FAILURE"]
+              },
+              "cmdid": {
+                "description": "Command ID",
+                "type": "string"
+              },
+              "logidx": {
+                "description": "Associated ledger index of transaction",
+                "type": "string"
+              },
+              "message": {
+                "description": "Failure message, if any",
+                "type": "string"
+              },
+              "payload": {
+                "description": "Result payload, if any",
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "Digest": {
+      "required": [
+        "hash",
+        "key"
+      ],
+      "properties": {
+        "hash": {
+          "type": "string",
+          "description": "Signed hash of request payload"
+        },
+        "key": {
+          "description": "Signing public key of valid participant",
+          "type": "string"
+        }
+      }
+    },
+    "PollRequest": {
+      "required": [
+        "payload",
+        "digest"
+      ],
+      "properties": {
+        "payload": {
+          "type": "object",
+          "schema": {
+            "required": ["cmdids"],
+            "properties": {
+              "cmdids": {
+                "description": "Command IDs returned from async requests",
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "digest": {
+          "type": "object",
+          "schema": { "$ref": "#/definitions/Digest" }
+        }
+      }
+    },
+    "CreateAccountRequest": {
+      "required": [
+        "payload",
+        "digest"
+      ],
+      "properties": {
+        "payload": {
+          "type": "object",
+          "schema": {
+            "required": ["account"],
+            "properties": {
+              "account": {
+                "description": "New unique account ID to create",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "digest": {
+          "type": "object",
+          "schema": { "$ref": "#/definitions/Digest" }
+        }
+      }
+    },
+    "AdjustAccountRequest": {
+      "required": [
+        "payload",
+        "digest"
+      ],
+      "properties": {
+        "payload": {
+          "type": "object",
+          "schema": {
+            "required": ["account","amount"],
+            "properties": {
+              "account": {
+                "description": "New unique account ID to create",
+                "type": "string"
+              },
+              "amount": {
+                "description": "adjustment amount (n%d)",
+                "type": "string",
+                "format": "[0-9]+%[0-9]+"
+              }
+            }
+          }
+        },
+        "digest": {
+          "type": "object",
+          "schema": { "$ref": "#/definitions/Digest" }
+        }
+      }
+    },
+    "QueryLedgerRequest": {
+      "required": [
+        "payload",
+        "digest"
+      ],
+      "properties": {
+        "payload": {
+          "type": "object",
+          "schema": {
+            "required": ["filter"],
+            "properties": {
+              "filter": {
+                "description": "Ledger query filter, example: (and (eq 'fromAccount' '0123456') (> logidx '237565')). Supports 'and', 'or', 'not', 'eq', '>', '>=', '<', '<=', key names from data payload, and 'logidx'.",
+                "type": "string",
+                "format": "Ledger query syntax"
+              }
+            }
+          }
+        },
+        "digest": {
+          "type": "object",
+          "schema": { "$ref": "#/definitions/Digest" }
+        }
+      }
+    },
+    "TransactionRequest": {
+      "required": [
+        "payload",
+        "digest"
+      ],
+      "properties": {
+        "payload": {
+          "type": "object",
+          "schema": {
+            "required": ["code","data"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Transmatic Hopper code to run on ledger"
+              },
+              "data": {
+                "type": "object",
+                "description": "JSON data to persist with transaction"
+              }
+            }
+          }
+        },
+        "digest": {
+          "type": "object",
+          "schema": { "$ref": "#/definitions/Digest" }
+        }
+      }
+    }
+  }
+}

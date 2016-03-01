@@ -29,7 +29,7 @@ module Juno.Runtime.Types
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
-  , numTimeouts, pendingRequests, currentRequestId
+  , numTimeouts, pendingRequests, currentRequestId, timeSinceLastAER
   , initialRaftState
   -- * RPC
   , AppendEntries(..)
@@ -198,6 +198,7 @@ instance HasSig RequestVote where
 
 data RequestVoteResponse = RequestVoteResponse
   { _rvrTerm        :: Term
+  , _rvrCurLogIndex :: LogIndex
   , _rvrNodeId      :: NodeID
   , _voteGranted    :: Bool
   , _rvrCandidateId :: NodeID
@@ -311,7 +312,7 @@ data RaftState = RaftState
   { _role             :: Role -- Handler,Role,Util(debug)
   , _term             :: Term -- Handler,Role,Sender,Util(updateTerm)
   , _votedFor         :: Maybe NodeID -- Handler,Role
-  , _lazyVote         :: Maybe (Term, NodeID) -- Handler
+  , _lazyVote         :: Maybe (Term, NodeID, LogIndex) -- Handler
   , _currentLeader    :: Maybe NodeID -- Client,Handler,Role
   , _ignoreLeader     :: Bool -- Handler
   , _logEntries       :: Seq LogEntry -- Handler,Role,Sender
@@ -319,6 +320,7 @@ data RaftState = RaftState
   , _lastApplied      :: LogIndex -- Handler
   , _commitProof      :: Map LogIndex (Set AppendEntriesResponse) -- Handler
   , _timerThread      :: Maybe ThreadId -- Timer
+  , _timeSinceLastAER :: Int -- microseconds
   , _replayMap        :: Map (NodeID, LB.ByteString) (Maybe CommandResult) -- Handler
   , _cYesVotes        :: Set RequestVoteResponse -- Handler,Role,Sender
   , _cPotentialVotes  :: Set NodeID -- Hander,Role,Sender
@@ -346,6 +348,7 @@ initialRaftState = RaftState
   startIndex -- lastApplied
   Map.empty  -- commitProof
   Nothing    -- timerThread
+  0          -- timeSinceLastAER
   Map.empty  -- replayMap
   Set.empty  -- cYesVotes
   Set.empty  -- cPotentialVotes

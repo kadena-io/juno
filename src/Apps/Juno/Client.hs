@@ -33,7 +33,7 @@ import Apps.Juno.Parser
 import Apps.Juno.Ledger
 
 import Snap.CORS
-
+import Data.List
 import Data.Monoid
 
 import qualified Control.Concurrent.Lifted as CL
@@ -129,16 +129,24 @@ errDone :: Int -> BSC.ByteString -> Snap ()
 errDone c bs = logError bs >> writeBS bs >> withResponse (finishWith . setResponseCode c)
 
 swiftToHopper :: SWIFT -> String
-swiftToHopper m = hopperProgram to' from' amt'
+swiftToHopper m = hopperProgram to' from' inter' amt'
   where
     to' :: String
     to' = T.unpack $ view (sCode59a . bcAccount) m
     from' :: String
     from' = T.unpack $ dirtyPickOutAccount50a m
+    intermediaries :: [String]
+    intermediaries = ["100","101","102","103"]
+    branchA2BranchB = intercalate "->" intermediaries
+    branchB2BranchA = intercalate "->" (reverse intermediaries)
+    det71a = view sCode71A m
+    inter' = case det71a of
+               Beneficiary -> branchB2BranchA
+               _ -> branchA2BranchB
     amt' :: Ratio Int
     amt' = (fromIntegral $ view (sCode32A . vcsSettlementAmount . vWhole) m) + (view (sCode32A . vcsSettlementAmount . vPart) m)
-    hopperProgram :: String -> String -> Ratio Int -> String
-    hopperProgram t f a = "transfer(" ++ f ++ "->" ++ t ++ "," ++ show a ++ ")"
+    hopperProgram :: String -> String -> String -> Ratio Int -> String
+    hopperProgram t f i a = "transfer(" ++ f ++ "->" ++ i ++ "->" ++ t ++ "," ++ show a ++ ")"
 
 hopperHandler :: InChan CommandEntry -> OutChan CommandResult -> Snap ()
 hopperHandler toCommand fromResult = do

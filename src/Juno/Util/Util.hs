@@ -13,6 +13,8 @@ module Juno.Util.Util
   , messageReceiver
   , verifyRPCWithKey
   , verifyRPCWithClientKey
+  , verifyRPCWithKey'
+  , verifyRPCWithClientKey'
   , signRPCWithKey
   , updateTerm
   ) where
@@ -27,6 +29,7 @@ import Control.Monad.RWS
 import qualified Control.Concurrent.Lifted as CL
 import qualified Data.ByteString as B
 import qualified Data.Sequence as Seq
+import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified System.Random as R
 import Data.Serialize
@@ -110,8 +113,8 @@ senderId rpc = case rpc of
     REVOLUTION rev -> Just (_revClientId rev)
     DBG _          -> Nothing
 
-verifyRPCWithKey :: (Monad m) => RPC -> Raft m Bool
-verifyRPCWithKey rpc =
+verifyRPCWithKey' :: Map NodeID PublicKey -> RPC -> Either String Bool
+verifyRPCWithKey' clusterPks rpc =
   case rpc of
     AE _   -> doVerify rpc
     AER _  -> doVerify rpc
@@ -120,28 +123,38 @@ verifyRPCWithKey rpc =
     CMDR _ -> doVerify rpc
     _      -> return False
   where
-    doVerify rpc' = do
-      pks <- view (cfg.publicKeys)
-      let mk = (\k -> Map.lookup k pks) =<< senderId rpc'
-      maybe
-        (debug "RPC has invalid signature" >> return False)
-        (\k -> return (verifyWrappedRPC k rpc'))
-        mk
+    doVerify rpc' = case senderId rpc' of
+        Nothing -> Left "RPC has no NodeID"
+        Just nid -> case Map.lookup nid clusterPks of
+          Nothing -> Left "RPC has invalid signature"
+          Just k -> Right (verifyWrappedRPC k rpc')
 
-verifyRPCWithClientKey :: Monad m => RPC -> Raft m Bool
-verifyRPCWithClientKey rpc =
+verifyRPCWithKey :: (Monad m) => RPC -> Raft m Bool
+verifyRPCWithKey rpc = do
+  pks <- view (cfg.publicKeys)
+  case verifyRPCWithKey' pks rpc of
+    Left e -> debug e >> return False
+    Right b -> return b
+
+verifyRPCWithClientKey' :: Map NodeID PublicKey -> RPC -> Either String Bool
+verifyRPCWithClientKey' clientPks rpc =
   case rpc of
     CMD _        -> doVerify rpc
     REVOLUTION _ -> doVerify rpc
     _            -> return False
   where
-    doVerify rpc' = do
-      pks <- view (cfg.clientPublicKeys)
-      let mk = (\k -> Map.lookup k pks) =<< senderId rpc'
-      maybe
-        (debug "RPC has invalid signature" >> return False)
-        (\k -> return (verifyWrappedRPC k rpc'))
-        mk
+    doVerify rpc' = case senderId rpc' of
+        Nothing -> Left "RPC has no NodeID"
+        Just nid -> case Map.lookup nid clientPks of
+          Nothing -> Left "RPC has invalid signature"
+          Just k -> Right (verifyWrappedRPC k rpc')
+
+verifyRPCWithClientKey :: Monad m => RPC -> Raft m Bool
+verifyRPCWithClientKey rpc = do
+  pks <- view (cfg.clientPublicKeys)
+  case verifyRPCWithClientKey' pks rpc of
+    Left e -> debug e >> return False
+    Right b -> return b
 
 signRPCWithKey :: (Monad m, Serialize rpc, HasSig rpc) => rpc -> Raft m rpc
 signRPCWithKey rpc = do

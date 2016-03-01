@@ -1,0 +1,214 @@
+cPotentialVotes -- CAN ELIMINATE
+JT.cPotentialVotes WRITE %= Set.delete n -- RequestVoteResponseOut
+JT.cPotentialVotes ==> sendAllRequestVotes = traverse_ sendRequestVote =<< use JT.cPotentialVotes -- ElectionTimeoutOut
+JT.cPotentialVotes WRITE .= _potentialVotes -- ElectionTimeoutOut
+
+
+JT.cYesVotes WRITE .= Set.singleton _selfYesVote -- ElectionTimeoutOut
+JT.cYesVotes WRITE .= vs -- RequestVoteResponseOut
+JT.cYesVotes WRITE .= vs -- RequestVoteResponseOut
+JT.cYesVotes ==>    else use cYesVotes -- AEResponseOut
+JT.cYesVotes ==>    else use cYesVotes -- CommandOut
+JT.cYesVotes ==>    else use cYesVotes -- HeartbeatTimeoutOut
+JT.cYesVotes ==>    else use cYesVotes -- RequestVoteResponseOut
+JT.cYesVotes s) -- RequestVoteResponseEnv
+
+
+commitIndex -- AEResponse, Command
+JT.commitIndex WRITE .= qci -- AEResponseOut
+JT.commitIndex WRITE .= qci -- CommandOut
+JT.commitIndex ==> ci <- use commitIndex -- AEResponseOut
+JT.commitIndex ==> ci <- use commitIndex -- CommandOut
+JT.commitIndex s) -- AEResponseEnv
+
+commitProof -- AEResponse, Command
+JT.commitProof WRITE %= Map.adjust (Set.insert proofToInsert') aerIndex' -- AEResponseOut
+JT.commitProof WRITE %= Map.filterWithKey (\k _ -> k >= qci) -- AEResponseOut (doCommit)
+JT.commitProof WRITE %= Map.filterWithKey (\k _ -> k >= qci) -- CommandOut (doCommit)
+JT.commitProof WRITE %= Map.insert aerIndex' proofSet' -- AEResponseOut
+JT.commitProof ==> proof <- use commitProof -- AEResponseOut
+JT.commitProof ==> proof <- use commitProof -- CommandOut
+JT.commitProof s) -- AEResponseEnv
+
+
+JT.lastApplied WRITE .= ci -- AEResponseOut
+JT.lastApplied WRITE .= ci -- CommandOut
+JT.lastApplied ==> la <- use lastApplied -- AEResponseOut
+JT.lastApplied ==> la <- use lastApplied -- CommandOut
+
+
+
+JT.replayMap WRITE %= Map.insert (_cmdClientId, _cmdSig) (Just result) -- AEResponseOut
+JT.replayMap WRITE %= Map.insert (_cmdClientId, _cmdSig) (Just result) -- CommandOut
+JT.replayMap WRITE %= Map.insert _deleteReplayMapEntry Nothing -- RevolutionOut
+JT.replayMap WRITE %= Map.insert _deleteReplayMapEntry Nothing -- RevolutionOut
+JT.replayMap WRITE %= Map.insert replayKey Nothing -- CommandOut
+JT.replayMap WRITE %= Map.union rMap -- AppendEntriesOut
+JT.replayMap s) -- CommandEnv
+JT.replayMap s) -- RevolutionEnv
+
+
+
+JT.rs.JT.applyLogEntry ==> apply <- view (rs.applyLogEntry) -- AEResponseOut
+JT.rs.JT.applyLogEntry ==> apply <- view (rs.applyLogEntry) -- CommandOut
+
+
+
+
+JT.currentLeader WRITE .= Just _stateCurrentLeader -- AppendEntriesOut
+JT.currentLeader WRITE .= Nothing -- ElectionTimeoutOut
+JT.currentLeader WRITE .=) . Just =<< view (JT.cfg.JT.nodeId) -- RequestVoteResponseOut
+JT.currentLeader ==> mlid <- use currentLeader -- AEResponseOut
+JT.currentLeader ==> mlid <- use currentLeader -- CommandOut
+JT.currentLeader s) -- AppendEntriesEnv
+JT.currentLeader s) -- CommandEnv
+JT.currentLeader s) -- RequestVoteEnv
+JT.currentLeader s) -- RevolutionEnv
+
+
+JT.ignoreLeader WRITE .= False -- ElectionTimeoutOut
+JT.ignoreLeader WRITE .= True -- RevolutionOut
+JT.ignoreLeader WRITE .= True -- RevolutionOut
+JT.ignoreLeader WRITE .= _stateIgnoreLeader -- AppendEntriesOut
+JT.ignoreLeader s) -- AppendEntriesEnv
+JT.ignoreLeader s) -- RequestVoteEnv
+
+-- lConvinced used to populate cYesVotes -> _aeQuorumVotes on AE, kinda dumb.
+JT.lConvinced WRITE %= Set.delete _deleteConvinced -- AEResponseOut
+JT.lConvinced WRITE %= Set.insert _insertConvinced -- AEResponseOut
+JT.lConvinced WRITE .= Set.empty -- RequestVoteResponseOut
+JT.lConvinced ==>  convinced <- Set.member target <$> use lConvinced -- AEResponseOut
+JT.lConvinced ==>  convinced <- Set.member target <$> use lConvinced -- CommandOut
+JT.lConvinced ==>  convinced <- Set.member target <$> use lConvinced -- HeartbeatTimeoutOut
+JT.lConvinced ==>  convinced <- Set.member target <$> use lConvinced -- RequestVoteResponseOut
+
+-- NEVER READ ...
+JT.lMatchIndex WRITE .=) =<< Map.fromSet (const startIndex) <$> view (JT.cfg.JT.otherNodes) -- RequestVoteResponseOut
+
+JT.lNextIndex WRITE .=) =<< Map.fromSet (const $ LogIndex ni) <$> view (JT.cfg.JT.otherNodes) -- RequestVoteResponseOut
+JT.lNextIndex WRITE %= Map.adjust (subtract 1) _decrementNextIndex -- AEResponseOut
+JT.lNextIndex WRITE . at _incrementNextIndexNode .= Just (_incrementNextIndexLogIndex + 1) -- AEResponseOut
+JT.lNextIndex ==>  mni <- use $ lNextIndex.at target -- AEResponseOut
+JT.lNextIndex ==>  mni <- use $ lNextIndex.at target -- CommandOut
+JT.lNextIndex ==>  mni <- use $ lNextIndex.at target -- HeartbeatTimeoutOut
+JT.lNextIndex ==>  mni <- use $ lNextIndex.at target -- RequestVoteResponseOut
+
+JT.lazyVote WRITE .= Just stateUpdate -- RequestVoteOut
+JT.lazyVote WRITE .= Nothing -- AppendEntriesOut
+JT.lazyVote WRITE .= Nothing -- ElectionTimeoutOut
+JT.lazyVote WRITE .= Nothing -- RevolutionOut
+JT.lazyVote s) -- ElectionTimeoutEnv
+JT.lazyVote s) -- RequestVoteEnv
+JT.lazyVote s) -- RevolutionEnv
+
+JT.logEntries WRITE %= addLogEntryAndHash newEntry -- CommandOut
+JT.logEntries WRITE .= updatedLog' -- AppendEntriesOut
+JT.logEntries ==>  (_, lindex, lhash) <- lastLogInfo <$> use logEntries -- AppendEntriesOut
+JT.logEntries ==>  (_, lindex, lhash) <- lastLogInfo <$> use logEntries -- CommandOut
+JT.logEntries ==>  es <- use logEntries -- AEResponseOut
+JT.logEntries ==>  es <- use logEntries -- CommandOut
+JT.logEntries ==>  es <- use logEntries -- HeartbeatTimeoutOut
+JT.logEntries ==>  es <- use logEntries -- RequestVoteResponseOut
+JT.logEntries ==> es <- use logEntries -- AEResponseOut
+JT.logEntries ==> es <- use logEntries -- CommandOut
+JT.logEntries ==> le <- use logEntries -- AEResponseOut
+JT.logEntries ==> le <- use logEntries -- CommandOut
+JT.logEntries ==> llt, lli, _) <- lastLogInfo <$> use JT.logEntries -- ElectionTimeoutOut
+JT.logEntries ==> ni <- Seq.length <$> use JT.logEntries -- RequestVoteResponseOut
+JT.logEntries s) -- AppendEntriesEnv
+JT.logEntries s) -- RequestVoteEnv
+
+-- READ ONLY/CONFIG
+JT.nodeId $ JT.cfg r) -- RequestVoteEnv
+JT.nodeId ==>  nid <- view (cfg.nodeId) -- AEResponseOut
+JT.nodeId ==>  nid <- view (cfg.nodeId) -- AppendEntriesOut
+JT.nodeId ==>  nid <- view (cfg.nodeId) -- CommandOut
+JT.nodeId ==>  nid <- view (cfg.nodeId) -- CommandOut
+JT.nodeId ==>  nid <- view (cfg.nodeId) -- HeartbeatTimeoutOut
+JT.nodeId ==>  nid <- view (cfg.nodeId) -- RequestVoteResponseOut
+JT.nodeId ==> JT.currentLeader .=) . Just =<< view (JT.cfg.JT.nodeId) -- RequestVoteResponseOut
+JT.nodeId ==> nid <- view (JT.cfg.JT.nodeId) -- ElectionTimeoutOut
+JT.nodeId ==> nid <- view (cfg.nodeId) -- AEResponseOut
+JT.nodeId ==> nid <- view (cfg.nodeId) -- CommandOut
+JT.nodeId c) -- CommandEnv
+JT.nodeId c) -- ElectionTimeoutEnv
+
+-- READ ONLY/CONFIG
+JT.otherNodes ==>  traverse_ (\n -> sendAppendEntriesResponse n True True) =<< view (cfg.otherNodes) -- AppendEntriesOut
+JT.otherNodes ==>  traverse_ (\n -> sendAppendEntriesResponse n True True) =<< view (cfg.otherNodes) -- CommandOut
+JT.otherNodes ==> JT.lMatchIndex .=) =<< Map.fromSet (const startIndex) <$> view (JT.cfg.JT.otherNodes) -- RequestVoteResponseOut
+JT.otherNodes ==> JT.lNextIndex  .=) =<< Map.fromSet (const $ LogIndex ni) <$> view (JT.cfg.JT.otherNodes) -- RequestVoteResponseOut
+JT.otherNodes ==> traverse_ sendAppendEntries =<< view (cfg.otherNodes) -- CommandOut
+JT.otherNodes ==> traverse_ sendAppendEntries =<< view (cfg.otherNodes) -- HeartbeatTimeoutOut
+JT.otherNodes ==> traverse_ sendAppendEntries =<< view (cfg.otherNodes) -- RequestVoteResponseOut
+JT.otherNodes c) -- ElectionTimeoutEnv
+
+-- READ ONLY/CONFIG
+JT.privateKey c) -- CommandEnv
+JT.privateKey c) -- ElectionTimeoutEnv
+
+-- READ ONLY/CONFIG
+JT.publicKeys $ JT.cfg r) -- AppendEntriesEnv
+
+-- READ ONLY/CONFIG
+JT.quorumSize ==> qsize <- view quorumSize -- AEResponseOut
+JT.quorumSize ==> qsize <- view quorumSize -- CommandOut
+JT.quorumSize r) -- AppendEntriesEnv
+JT.quorumSize r)) -- RequestVoteResponseEnv
+
+
+JT.role WRITE .= Leader -- RequestVoteResponseOut
+JT.role WRITE .= _newRole -- ElectionTimeoutOut
+JT.role WRITE .= _stateRole -- AppendEntriesOut
+JT.role ==> r <- use role -- AEResponseOut
+JT.role ==> r <- use role -- CommandOut
+JT.role s) -- AEResponseEnv
+JT.role s) -- ElectionTimeoutEnv
+JT.role s) -- HeartbeatTimeoutEnv
+JT.role s) -- RequestVoteResponseEnv
+
+JT.rs.JT.writeTermNumber ==> updateTerm _lazyTerm -- ElectionTimeoutOut
+JT.rs.JT.writeTermNumber ==> updateTerm _newTerm -- ElectionTimeoutOut
+JT.rs.JT.writeTermNumber ==> updateTerm _stateRsUpdateTerm -- AppendEntriesOut
+JT.rs.JT.writeVotedFor ==> void $ JT.rs.JT.writeVotedFor ^$ mvote -- ElectionTimeoutOut
+
+
+JT.term WRITE ==> updateTerm _lazyTerm -- ElectionTimeoutOut
+JT.term WRITE ==> updateTerm _newTerm -- ElectionTimeoutOut
+JT.term WRITE ==> updateTerm _stateRsUpdateTerm -- AppendEntriesOut
+JT.term ==>  ct <- use term -- AEResponseOut
+JT.term ==>  ct <- use term -- AppendEntriesOut
+JT.term ==>  ct <- use term -- CommandOut
+JT.term ==>  ct <- use term -- CommandOut
+JT.term ==>  ct <- use term -- HeartbeatTimeoutOut
+JT.term ==>  ct <- use term -- RequestVoteResponseOut
+JT.term ==> ct <- use JT.term -- ElectionTimeoutOut
+JT.term s) -- AEResponseEnv
+JT.term s) -- AppendEntriesEnv
+JT.term s) -- CommandEnv
+JT.term s) -- ElectionTimeoutEnv
+JT.term s) -- RequestVoteEnv
+JT.term s) -- RequestVoteResponseEnv
+
+-- This can be bound with affirmative RVRs, or just store the last RVR...
+JT.votedFor WRITE .= mvote -- ElectionTimeoutOut -- only written in timeout???
+JT.votedFor s) -- RequestVoteEnv
+
+resetElectionTimer -- AppendEntriesOut
+resetElectionTimer -- ElectionTimeoutOut
+resetHeartbeatTimer -- HeartbeatTimeoutOut
+resetHeartbeatTimer -- RequestVoteResponseOut
+sendRPC _lazyCandidate (RVR _lazyResponse) -- ElectionTimeoutOut
+sendRPC cid rpc -- CommandOut
+sendResults ==> when (r == Leader) $ sendResults results -- AEResponseOut
+sendResults ==> when (r == Leader) $ sendResults results -- CommandOut
+sendSignedRPC target $ AE $ -- AEResponseOut
+sendSignedRPC target $ AE $ -- CommandOut
+sendSignedRPC target $ AE $ -- HeartbeatTimeoutOut
+sendSignedRPC target $ AE $ -- RequestVoteResponseOut
+sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success convinced lindex lhash B.empty -- AppendEntriesOut
+sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success convinced lindex lhash B.empty -- CommandOut
+sendSignedRPC target $ RV $ RequestVote ct nid lli llt LB.empty -- ElectionTimeoutOut
+sendSignedRPC targetNode $ JT.RVR rpc -- RequestVoteOut
+verifyRPCWithKey ==> sigsOkay <- allM (verifyRPCWithKey . AER) (Set.toList aers) -- AEResponseOut
+verifyRPCWithKey ==> sigsOkay <- allM (verifyRPCWithKey . AER) (Set.toList aers) -- CommandOut

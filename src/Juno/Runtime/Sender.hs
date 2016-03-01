@@ -1,12 +1,11 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Juno.Runtime.Sender
   ( sendAppendEntries
   , sendAppendEntriesResponse
-  , sendRequestVote
-  , sendRequestVoteResponse
+  , createRequestVoteResponse
   , sendAllAppendEntries
-  , sendAllRequestVotes
   , sendAllAppendEntriesResponse
   , sendResults
   , sendRPC
@@ -14,6 +13,7 @@ module Juno.Runtime.Sender
   ) where
 
 import Control.Lens
+import Control.Monad.Writer
 import Data.Foldable (traverse_)
 import Data.Sequence (Seq)
 import Data.Set (Set)
@@ -59,29 +59,23 @@ sendAllAppendEntriesResponse :: Monad m => Raft m ()
 sendAllAppendEntriesResponse =
   traverse_ (\n -> sendAppendEntriesResponse n True True) =<< view (cfg.otherNodes)
 
--- uses state, but does not update
-sendRequestVote :: Monad m => NodeID -> Raft m ()
-sendRequestVote target = do
-  ct <- use term
-  nid <- view (cfg.nodeId)
-  (llt, lli, _) <- lastLogInfo <$> use logEntries
-  debug $ "sendRequestVote: " ++ show ct
-  sendSignedRPC target $ RV $ RequestVote ct nid lli llt B.empty
-
+{-
 sendRequestVoteResponse :: Monad m => NodeID -> Bool -> Raft m ()
 sendRequestVoteResponse target vote = do
   ct <- use term
   nid <- view (cfg.nodeId)
   debug $ "sendRequestVoteResponse: " ++ show ct
   sendSignedRPC target $ RVR $ RequestVoteResponse ct nid vote target B.empty
+-}
+
+createRequestVoteResponse :: MonadWriter [String] m => Term -> LogIndex -> NodeID -> NodeID -> Bool -> m RequestVoteResponse
+createRequestVoteResponse term' logIndex' myNodeId' target vote = do
+  tell ["createRequestVoteResponse: " ++ show term']
+  return $ RequestVoteResponse term' logIndex' myNodeId' vote target B.empty
 
 -- no state update
 sendAllAppendEntries :: Monad m => Raft m ()
 sendAllAppendEntries = traverse_ sendAppendEntries =<< view (cfg.otherNodes)
-
--- uses state, but does not update
-sendAllRequestVotes :: Monad m => Raft m ()
-sendAllRequestVotes = traverse_ sendRequestVote =<< use cPotentialVotes
 
 -- no state update
 sendResults :: Monad m => Seq (NodeID, CommandResponse) -> Raft m ()
