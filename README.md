@@ -38,7 +38,7 @@ This is a fundamental feature of Bitcoin and its derivative technologies. It dem
 As such, removal of this feature implies that mining may be possible to remove entirely.
 Mining, however, also provides Blockchain technologies with a means of coming to a distributed consensus about the state of the world.
 Specifically, how to get a collective of servers to agree about what entries come before other entries in the global ledger of transactions.
-Therein lays our first principle:
+Therein lies our first principle:
 
 * #1 A means for a distributed cluster to agree on order of some sort of message.
 
@@ -62,7 +62,7 @@ Ethereum is a good first step and informs our third principle:
 
 Blockchains, via Merkle trees or similar data structures, provide a method of quickly validating an immutable copy of historical entries via cryptographic hashes.
 Due to anonymous participation, this data structure needs to also be able to handle forks in the chain.
-Given that we don't need anonymous participation and thus don't need to be able to handle forks (a correctly functioning node can never encounter them), we can state our forth principle:
+Given that we don't need anonymous participation and thus don't need to be able to handle forks (a correctly functioning node can never encounter them), we can state our fourth principle:
 
 * #4 All entries to our system are stored in an immutable list (log) that can be cryptographically validated.
 
@@ -90,7 +90,7 @@ By using Raft, as opposed to an [EPaxos] like system, the messages' meaning may 
 ### #2 Replicated State Machine
 
 Once the messages are globally ordered and replicated, they can be interpreted by some other system -- the replicated state machine.
-The guarantees that we can do this stems directly from the guarantees of the consensus layer.
+The guarantees that we can do this stem directly from the guarantees of the consensus layer.
 In Raft, the Leader only applies an entry to the state machine when it has been replicated by a majority of nodes.
 
 The way this works is as simple as feeding the input into the state machine, along with the state machine's previous state.
