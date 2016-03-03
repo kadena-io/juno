@@ -22,6 +22,7 @@ library
   exposed-modules:     Apps.Juno.Server
                      , Apps.Juno.Command
                      , Apps.Juno.Client
+                     , Apps.Juno.JsonModels
                      , Apps.Juno.Ledger
                      , Apps.Juno.Parser
                      , Juno.Consensus.ByzRaft.Handler
@@ -48,7 +49,7 @@ library
                      , Juno.Runtime.Types
                      , Juno.Spec.Simple
                      , Juno.Util.Combinator
-                     , Juno.Util.Util 
+                     , Juno.Util.Util
                      , Schwifty.Swift.M105.Types
                      , Schwifty.Swift.M105.Parser
 

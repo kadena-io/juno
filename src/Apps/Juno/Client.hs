@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Apps.Juno.Client
   ( main
@@ -14,14 +15,16 @@ import Data.Maybe (catMaybes)
 import System.IO
 
 import qualified Data.ByteString.Lazy.Char8 as BLC
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as BSC
-import Data.Text.Encoding (decodeUtf8)
+import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Text as T
 import Snap.Http.Server
 import Snap.Core
 import Control.Lens hiding ((.=))
 import Data.Ratio
 import Data.Aeson (encode, object, (.=))
+import qualified Data.Aeson as JSON
 
 import Juno.Spec.Simple
 import Juno.Runtime.Types (CommandEntry(..), CommandResult(..))
@@ -38,6 +41,7 @@ import Data.Monoid
 
 import qualified Control.Concurrent.Lifted as CL
 import Control.Monad
+import Apps.Juno.JsonModels
 
 prompt :: String
 prompt = "\ESC[0;31mhopper>> \ESC[0m"
@@ -72,10 +76,37 @@ snapServer :: InChan CommandEntry -> OutChan CommandResult -> IO ()
 snapServer toCommand fromResult = httpServe serverConf $
     applyCORS defaultOptions $ methods [GET, POST]
     (ifTop (writeBS "use /hopper for commands") <|>
-     route [ ("hopper", hopperHandler toCommand fromResult)
+     route [("accounts/create", createAccounts toCommand fromResult)
+           , ("hopper", hopperHandler toCommand fromResult)
            , ("swift", swiftHandler toCommand fromResult)
            , ("api/swift-submit", swiftSubmission toCommand fromResult)
            , ("api/ledger-query", ledgerQuery toCommand fromResult)])
+
+-- |
+-- good: curl -H "Content-Type: application/json" -X POST -d '{ "payload" : { "account": "TSLA" }, "digest": { "hash" : "mhash", "key" : "mykey"} }' http://localhost:8000/accounts/create
+-- bad: curl -H "Content-Type: application/json" -X POST -d '{ "payloadGarb" : { "account": "KALE" }, "digest": { "hash" : "mhash", "key" : "mykey", "garbage" : "jsonError"} }' http://localhost:8000/accounts/create
+createAccounts :: InChan CommandEntry -> OutChan CommandResult -> Snap ()
+createAccounts toCommand fromResult = do
+   maybeCreateAccount <- liftM (JSON.decode) (readRequestBody 10000000)
+   case maybeCreateAccount of
+     Just (CreateAccountRequest (AccountPayload account) digest) ->
+         case readHopper (createAccountBS account) of
+
+           Left err ->
+               (writeBS . BL.toStrict . JSON.encode)
+               (createAccountResponseFailure ("cmdTestFail_" ++ err))
+
+           Right _ ->
+             liftIO (writeChan toCommand (CommandEntry (createAccountBS account))) >>
+             liftIO (readChan fromResult) >>
+             (writeBS . BL.toStrict . JSON.encode) (createAccountResponseSuccess "cmdTest")
+
+     Nothing ->
+         (writeBS . BL.toStrict . JSON.encode) (createAccountResponseFailure "cmdTestFailDecode")
+
+     where
+       byteStringEncodeUtf8 = (encodeUtf8 . T.pack)
+       createAccountBS = byteStringEncodeUtf8 . ("CreateAccount " ++)
 
 swiftSubmission :: InChan CommandEntry -> OutChan CommandResult -> Snap ()
 swiftSubmission toCommand fromResult = do
