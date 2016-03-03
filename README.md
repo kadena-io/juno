@@ -31,21 +31,21 @@ We believe this defeats the point of mining.
 NB: This is v0.1 release of Juno, our last stable version. Our internal version extends the Tangaroa protocol to fix various edge cases and attack vectors that we've identified.
 Hopefully we will be able to publish the protocol's extension and open source this version in coming months, once it becomes stable and release is approved.
 
-## First Principals
+## First Principles
 
 For many internal enterprise applications the notion of anonymous participation is anathema.
 This is a fundamental feature of Bitcoin and its derivative technologies. It demands the need for Proof of Work, etc. in Blockchain technologies.
 As such, removal of this feature implies that mining may be possible to remove entirely.
 Mining, however, also provides Blockchain technologies with a means of coming to a distributed consensus about the state of the world.
 Specifically, how to get a collective of servers to agree about what entries come before other entries in the global ledger of transactions.
-Therein lays our first principal:
+Therein lays our first principle:
 
 * #1 A means for a distributed cluster to agree on order of some sort of message.
 
 Blockchain-based Smart Contract systems use the distributed ledger as substrate for storing & ordering commands to run.
 One can think of the Smart Contract system as a REPL and the Blockchain substrate as a means for ordering input commands to the REPL.
 Put another way, the Smart Contract layer is a replicated state machine and the Blockchain layer orders what happens when.
-This identifies our second principal:
+This identifies our second principle:
 
 * #2 A means to step a state machine in a distributed and deterministic way.
 
@@ -56,13 +56,13 @@ All are key features.
 We want our replicated state machine to build up the same state given the same inputs and we want to be able to message the machine's state over the wire (or hash it for equivalence checking).
 Further, we don't want our state machine to accidentally transfer $10 from Alice to Bob a dozen times because it ran on a dozen servers.
 The built up state of our smart contract language is the ledger of truth that other systems can query to get orders from.
-Ethereum is a good first step and informs our third principal:
+Ethereum is a good first step and informs our third principle:
 
 * #3 A language that is deterministic, serializable, unable to perform IO, and has a measure of execution cost.
 
 Blockchains, via Merkle trees or similar data structures, provide a method of quickly validating an immutable copy of historical entries via cryptographic hashes.
 Due to anonymous participation, this data structure needs to also be able to handle forks in the chain.
-Given that we don't need anonymous participation and thus don't need to be able to handle forks (a correctly functioning node can never encounter them), we can state our third principal:
+Given that we don't need anonymous participation and thus don't need to be able to handle forks (a correctly functioning node can never encounter them), we can state our forth principle:
 
 * #4 All entries to our system are stored in an immutable list (log) that can be cryptographically validated.
 
