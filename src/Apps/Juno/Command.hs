@@ -76,7 +76,9 @@ runCommand env cmd' = do
 
             Program term ->
                 case DTerm.evaluableDemoTerm term of
-                    Nothing -> return "error: could not run program with free variables"
+                    Nothing -> do
+                      MV.putMVar mvar (ps, ss)
+                      return "Invalid Command or Program"
                     Just (DTerm.PolyF evaluableTerm) ->
                         case DEval.runExpr 10000 ps evaluableTerm of
                             Left err -> do
@@ -92,7 +94,9 @@ runCommand env cmd' = do
 
             SwiftPayment s term ->
                 case DTerm.evaluableDemoTerm term of
-                    Nothing -> return "error: could not run program with free variables"
+                    Nothing -> do
+                      MV.putMVar mvar (ps, ss)
+                      return "Invalid SwiftPayment Command"
                     Just (DTerm.PolyF evaluableTerm) ->
                         case DEval.runExpr 10000 ps evaluableTerm of
                             Left err -> do
