@@ -3,58 +3,82 @@
 
 module Apps.Juno.JsonModels where
 
-import Data.Aeson (encode, decode, ToJSON, FromJSON)
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Text.Lazy as TL
-import GHC.Generics
-import Data.Text.Lazy.Encoding (decodeUtf8, encodeUtf8)
+import           Control.Applicative
+import           Data.Aeson (encode
+                            , decode
+                            , parseJSON
+                            , toJSON
+                            , object
+                            , (.:), (.=)
+                            , Value (..)
+                            , ToJSON
+                            , FromJSON)
+import qualified Data.ByteString.Lazy.Char8 as BL
+import           GHC.Generics
+import qualified Data.Text as T
+import           Data.Text (Text)
 
-data Digest = Digest { hash :: String, key :: String } deriving (Eq, Generic, Show)
+data Digest = Digest { _hash :: Text, _key :: Text } deriving (Eq, Generic, Show)
 instance ToJSON Digest where
 instance FromJSON Digest where
+    parseJSON (Object v) = Digest <$>
+                           v .: "hash" <*>
+                           v .: "key"
+    parseJSON _          = empty
 
 -- | CreateAccountRequest
 -- encode (CreateAccoutRequest (AccountPayload "TSLA") (Digest "hashy" "mykey"))
 -- "{\"_digest\":{\"_hash\":\"hashy\",\"_key\":\"mykey\"},\"_payload\":{\"_account\":\"TSLA\"}}"
 -- decode bytesCreateAccount :: Maybe CreateAccountRequest
-data AccountPayload = AccountPayload { account :: String } deriving (Eq, Generic, Show)
+data AccountPayload = AccountPayload { _account :: Text } deriving (Eq, Generic, Show)
+
 instance ToJSON AccountPayload where
+    toJSON (AccountPayload acct) =
+        object ["account" .= acct]
+
 instance FromJSON AccountPayload where
+  parseJSON (Object v) = AccountPayload <$>
+                         v .: "account"
+  parseJSON _          = empty
 
 data CreateAccountRequest = CreateAccountRequest {
-      payload :: AccountPayload,
-      digest :: Digest
+      _payload :: AccountPayload,
+      _digest :: Digest
     } deriving (Eq, Generic, Show)
 instance ToJSON CreateAccountRequest where
 instance FromJSON CreateAccountRequest where
+     parseJSON (Object v) = CreateAccountRequest <$>
+                            v .: "payload" <*>
+                            v .: "digest"
+     parseJSON _          = empty
 
 data CreateAccountResponse = CreateAccountResponse {
-      cmdid :: String
-    , status :: String
+      cmdid :: Text
+    , status :: Text
     } deriving (Eq, Generic, Show)
 instance ToJSON CreateAccountResponse where
 instance FromJSON CreateAccountResponse where
 
-createAccountResponseSuccess :: String -> CreateAccountResponse
+createAccountResponseSuccess :: Text -> CreateAccountResponse
 createAccountResponseSuccess cid = CreateAccountResponse cid "Success"
 
-createAccountResponseFailure :: String -> CreateAccountResponse
+createAccountResponseFailure :: Text -> CreateAccountResponse
 createAccountResponseFailure cid = CreateAccountResponse cid "Failure"
-
 
 -- Tests
 test :: Bool
 test = testCAEncode && testCAEncode
 
-bytesCreateAccount = (encodeUtf8 . TL.pack) "{\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"},\"payload\":{\"account\":\"TSLA\"}}"
+bytesCreateAccount :: BL.ByteString
+bytesCreateAccount = BL.pack "{\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"},\"payload\":{\"account\":\"TSLA\"}}"
 
 testCADecode :: Bool
-testCADecode =  (decode bytesCreateAccount :: Maybe CreateAccountRequest) == (Just (CreateAccountRequest {payload = AccountPayload {account = "TSLA"}, digest = Digest {hash = "hashy", key = "mykey"}}))
+testCADecode =  (decode bytesCreateAccount :: Maybe CreateAccountRequest) == (Just (CreateAccountRequest {_payload = AccountPayload {_account = "TSLA"}, _digest = Digest {_hash = "hashy", _key = "mykey"}}))
 
 testCADecode' :: Bool
 testCADecode' = case (decode bytesCreateAccount :: Maybe CreateAccountRequest) of
-                  Just (CreateAccountRequest (AccountPayload account) digest) -> True
+                  Just (CreateAccountRequest (AccountPayload _) _) -> True
                   Nothing -> False
 
 testCAEncode :: Bool
-testCAEncode = (encode (CreateAccountRequest (AccountPayload "TSLA") (Digest "hashy" "mykey"))) == ("{\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"},\"payload\":{\"account\":\"TSLA\"}}")
+testCAEncode = (encode (CreateAccountRequest (AccountPayload (T.pack "TSLA")) (Digest (T.pack "hashy") (T.pack "mykey")))) == ("{\"payload\":{\"account\":\"TSLA\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}")

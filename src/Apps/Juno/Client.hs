@@ -89,24 +89,16 @@ createAccounts :: InChan CommandEntry -> OutChan CommandResult -> Snap ()
 createAccounts toCommand fromResult = do
    maybeCreateAccount <- liftM (JSON.decode) (readRequestBody 10000000)
    case maybeCreateAccount of
-     Just (CreateAccountRequest (AccountPayload account) digest) ->
-         case readHopper (createAccountBS account) of
-
-           Left err ->
-               (writeBS . BL.toStrict . JSON.encode)
-               (createAccountResponseFailure ("cmdTestFail_" ++ err))
-
-           Right _ ->
-             liftIO (writeChan toCommand (CommandEntry (createAccountBS account))) >>
-             liftIO (readChan fromResult) >>
-             (writeBS . BL.toStrict . JSON.encode) (createAccountResponseSuccess "cmdTest")
+     Just (CreateAccountRequest (AccountPayload acct) _) -> do
+         liftIO (writeChan toCommand (CommandEntry (createAccountBS acct)))
+         res <- liftIO (readChan fromResult) -- cmdId should be in res?
+         (writeBS . BL.toStrict . JSON.encode . createAccountResponseSuccess . T.pack) "cmdIdTODO"
 
      Nothing ->
          (writeBS . BL.toStrict . JSON.encode) (createAccountResponseFailure "cmdTestFailDecode")
 
      where
-       byteStringEncodeUtf8 = (encodeUtf8 . T.pack)
-       createAccountBS = byteStringEncodeUtf8 . ("CreateAccount " ++)
+       createAccountBS = (encodeUtf8 . T.pack . show . CreateAccount)
 
 swiftSubmission :: InChan CommandEntry -> OutChan CommandResult -> Snap ()
 swiftSubmission toCommand fromResult = do
