@@ -41,7 +41,7 @@ import Data.Monoid
 
 import qualified Control.Concurrent.Lifted as CL
 import Control.Monad
-import Apps.Juno.JsonModels
+import Apps.Juno.JsonTypes
 
 prompt :: String
 prompt = "\ESC[0;31mhopper>> \ESC[0m"
@@ -90,8 +90,8 @@ createAccounts toCommand fromResult = do
    maybeCreateAccount <- liftM (JSON.decode) (readRequestBody 10000000)
    case maybeCreateAccount of
      Just (CreateAccountRequest (AccountPayload acct) _) -> do
-         liftIO (writeChan toCommand (CommandEntry (createAccountBS acct)))
-         res <- liftIO (readChan fromResult) -- cmdId should be in res?
+         liftIO $ writeChan toCommand $ CommandEntry $ createAccountBS acct
+         res <- liftIO $ readChan fromResult -- cmdId should be in res?
          (writeBS . BL.toStrict . JSON.encode . createAccountResponseSuccess . T.pack) "cmdIdTODO"
 
      Nothing ->

@@ -1,63 +1,64 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
-module Apps.Juno.JsonModels where
+module Apps.Juno.JsonTypes where
 
-import           Control.Applicative
 import           Data.Aeson (encode
                             , decode
+                            , genericParseJSON
+                            , genericToJSON
                             , parseJSON
                             , toJSON
-                            , object
-                            , (.:), (.=)
-                            , Value (..)
                             , ToJSON
                             , FromJSON)
+import           Data.Aeson.Types (defaultOptions
+                                 , Options(..))
 import qualified Data.ByteString.Lazy.Char8 as BL
 import           GHC.Generics
 import qualified Data.Text as T
 import           Data.Text (Text)
 
-data Digest = Digest { _hash :: Text, _key :: Text } deriving (Eq, Generic, Show)
-instance ToJSON Digest where
-instance FromJSON Digest where
-    parseJSON (Object v) = Digest <$>
-                           v .: "hash" <*>
-                           v .: "key"
-    parseJSON _          = empty
+removeUnderscore :: String -> String
+removeUnderscore = drop 1
 
--- | CreateAccountRequest
--- encode (CreateAccoutRequest (AccountPayload "TSLA") (Digest "hashy" "mykey"))
--- "{\"_digest\":{\"_hash\":\"hashy\",\"_key\":\"mykey\"},\"_payload\":{\"_account\":\"TSLA\"}}"
--- decode bytesCreateAccount :: Maybe CreateAccountRequest
+addUnderscore :: String -> String
+addUnderscore = ("_" ++)
+
+data Digest = Digest { _hash :: Text, _key :: Text } deriving (Eq, Generic, Show)
+
+instance ToJSON Digest where
+    toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
+instance FromJSON Digest where
+    parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = addUnderscore }
+
 data AccountPayload = AccountPayload { _account :: Text } deriving (Eq, Generic, Show)
 
 instance ToJSON AccountPayload where
-    toJSON (AccountPayload acct) =
-        object ["account" .= acct]
-
+    toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
 instance FromJSON AccountPayload where
-  parseJSON (Object v) = AccountPayload <$>
-                         v .: "account"
-  parseJSON _          = empty
+    parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = addUnderscore }
 
 data CreateAccountRequest = CreateAccountRequest {
       _payload :: AccountPayload,
       _digest :: Digest
     } deriving (Eq, Generic, Show)
+
 instance ToJSON CreateAccountRequest where
+    toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
 instance FromJSON CreateAccountRequest where
-     parseJSON (Object v) = CreateAccountRequest <$>
-                            v .: "payload" <*>
-                            v .: "digest"
-     parseJSON _          = empty
+    parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = addUnderscore }
 
 data CreateAccountResponse = CreateAccountResponse {
-      cmdid :: Text
-    , status :: Text
+      _cmdid :: Text
+    , _status :: Text
     } deriving (Eq, Generic, Show)
+
 instance ToJSON CreateAccountResponse where
+    toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
 instance FromJSON CreateAccountResponse where
+    parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = addUnderscore }
 
 createAccountResponseSuccess :: Text -> CreateAccountResponse
 createAccountResponseSuccess cid = CreateAccountResponse cid "Success"

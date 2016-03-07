@@ -22,7 +22,7 @@ library
   exposed-modules:     Apps.Juno.Server
                      , Apps.Juno.Command
                      , Apps.Juno.Client
-                     , Apps.Juno.JsonModels
+                     , Apps.Juno.JsonTypes
                      , Apps.Juno.Ledger
                      , Apps.Juno.Parser
                      , Juno.Consensus.ByzRaft.Handler
