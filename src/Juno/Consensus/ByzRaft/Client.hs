@@ -2,12 +2,16 @@
 
 module Juno.Consensus.ByzRaft.Client
   ( runRaftClient
+   ,CommandMVarMap
+   ,setNextCmdRequestId
   ) where
 
 import Control.Lens hiding (Index)
 import Control.Monad.RWS
 
 import Data.Foldable (traverse_)
+import qualified Data.ByteString.Lazy as B
+import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Thyme.Clock
@@ -16,53 +20,77 @@ import Data.Thyme.Time.Core (unUTCTime, toMicroseconds)
 import Juno.Runtime.Timer
 import Juno.Runtime.Types
 import Juno.Util.Util
-import Juno.Runtime.Sender (sendRPC)
+import Juno.Runtime.Sender (sendSignedRPC)
 
+import           Control.Concurrent (MVar, modifyMVar_, takeMVar, putMVar)
 import qualified Control.Concurrent.Lifted as CL
 
-runRaftClient :: IO CommandEntry -> (CommandResult -> IO ()) -> Config -> RaftSpec (Raft IO) -> IO ()
-runRaftClient getEntry useResult rconf spec@RaftSpec{..} = do
+-- shared holds the command result when the status is CmdApplied
+type CommandMVarMap = MVar (Map RequestId CommandStatus)
+
+-- move to utils, this is the only CommandStatus that should inc the requestId
+setNextCmdRequestId :: CommandMVarMap -> IO (RequestId, CommandMVarMap)
+setNextCmdRequestId cmdStatusMap = do
+         m <- takeMVar cmdStatusMap
+         let nextId = if (Map.size m == 0)
+                      then 1
+                      else (fst $ Map.findMax m) + 1 -- O(log n)
+         putMVar cmdStatusMap (Map.insert nextId CmdSubmitted m)
+         return (nextId, cmdStatusMap)
+
+-- main entry point wired up by Simple.hs
+-- getEntry (readChan) useResult (writeChan) replace by
+-- CommandMVarMap (MVar shared with App client)
+runRaftClient :: IO (RequestId, CommandEntry) -> CommandMVarMap -> Config -> RaftSpec (Raft IO) -> IO ()
+runRaftClient getEntry cmdStatusMap rconf spec@RaftSpec{..} = do
   let qsize = getQuorumSize $ Set.size $ rconf ^. otherNodes
   UTCTime _ time <- liftIO $ unUTCTime <$> getCurrentTime
   runRWS_
-    (raftClient (lift getEntry) (lift . useResult))
+    (raftClient (lift getEntry) cmdStatusMap)
     (RaftEnv rconf qsize spec)
     initialRaftState {_currentRequestId = toRequestId $ toMicroseconds time }-- only use currentLeader and logEntries
 
 -- THREAD: CLIENT MAIN
-raftClient :: Raft IO CommandEntry -> (CommandResult -> Raft IO ()) -> Raft IO ()
-raftClient getEntry useResult = do
+raftClient :: Raft IO (RequestId, CommandEntry) -> CommandMVarMap -> Raft IO ()
+raftClient getEntry cmdStatusMap = do
   nodes <- view (cfg.otherNodes)
   when (Set.null nodes) $ error "The client has no nodes to send requests to."
   currentLeader .= (Just $ Set.findMin nodes)
   void $ CL.fork messageReceiver -- THREAD: CLIENT MESSAGE RECEIVER
-  void $ CL.fork $ commandGetter getEntry -- THREAD: CLIENT COMMAND
+  void $ CL.fork $ commandGetter getEntry cmdStatusMap -- THREAD: CLIENT COMMAND REPL?
   pendingRequests .= Map.empty
-  clientHandleEvents useResult
+  clientHandleEvents cmdStatusMap -- forever read chan loop
 
 -- get commands with getEntry and put them on the event queue to be sent
 -- THREAD: CLIENT COMMAND
-commandGetter :: Monad m => Raft m CommandEntry -> Raft m ()
-commandGetter getEntry = do
+commandGetter :: MonadIO m => Raft m (RequestId, CommandEntry) -> CommandMVarMap -> Raft m ()
+commandGetter getEntry cmdStatusMap = do
   nid <- view (cfg.nodeId)
   forever $ do
-    entry <- getEntry
-    rid <- nextRequestId
-    enqueueEvent $ ERPC $ CMD' $ Command entry nid rid NewMsg
+    (rid, entry) <- getEntry
+    rid' <- setNextRequestId rid -- set current requestId to the value associated with this request.
+    liftIO (modifyMVar_ cmdStatusMap (\m -> return (Map.insert rid CmdAccepted m)))
+    enqueueEvent $ ERPC $ CMD $ Command entry nid rid' B.empty
 
 -- THREAD: CLIENT COMMAND. updates state!
+-- TODO: used in revolution, should take this from MVar map as well?
 nextRequestId :: Monad m => Raft m RequestId
 nextRequestId = do
   currentRequestId += 1
   use currentRequestId
 
+setNextRequestId :: Monad m => RequestId -> Raft m RequestId
+setNextRequestId rid = do
+  currentRequestId .= rid
+  use currentRequestId
+
 -- THREAD: CLIENT MAIN. updates state
-clientHandleEvents :: Monad m => (CommandResult -> Raft m ()) -> Raft m ()
-clientHandleEvents useResult = forever $ do
-  e <- dequeueEvent
+clientHandleEvents :: MonadIO m => CommandMVarMap -> Raft m ()
+clientHandleEvents cmdStatusMap = forever $ do
+  e <- dequeueEvent -- blocking queue
   case e of
-    ERPC (CMD' cmd)     -> clientSendCommand cmd -- these are commands coming from the commandGetter thread
-    ERPC (CMDR' cmdr)   -> clientHandleCommandResponse useResult cmdr
+    ERPC (CMD cmd)     -> clientSendCommand cmd -- RPC + heartbeat + electionTimeout these are commands coming from the commandGetter thread
+    ERPC (CMDR cmdr)   -> clientHandleCommandResponse cmdStatusMap cmdr
     HeartbeatTimeout _ -> do
       timeouts <- use numTimeouts
       limit <- view (cfg.clientTimeoutLimit)
@@ -82,7 +110,7 @@ clientHandleEvents useResult = forever $ do
             Just lid -> do
               rid <- nextRequestId
               view (cfg.otherNodes) >>=
-                traverse_ (\n -> sendRPC n (REV' (Revolution nid lid rid NewMsg)))
+                traverse_ (\n -> sendSignedRPC n (REVOLUTION (Revolution nid lid rid B.empty)))
               numTimeouts .= 0
               resetHeartbeatTimer
             _ -> do
@@ -91,6 +119,7 @@ clientHandleEvents useResult = forever $ do
     _                  -> return ()
 
 -- THREAD: CLIENT MAIN. updates state
+-- If the client doesn't know the leader? Then set leader to first node, the client will be updated with the real leaderId when it receives a command response.
 setLeaderToFirst :: Monad m => Raft m ()
 setLeaderToFirst = do
   nodes <- view (cfg.otherNodes)
@@ -114,24 +143,27 @@ clientSendCommand cmd@Command{..} = do
   mlid <- use currentLeader
   case mlid of
     Just lid -> do
-      sendRPC lid $ CMD' cmd
+      sendSignedRPC lid $ CMD cmd
       prcount <- fmap Map.size (use pendingRequests)
       -- if this will be our only pending request, start the timer
       -- otherwise, it should already be running
       when (prcount == 0) resetHeartbeatTimer
-      pendingRequests %= Map.insert _cmdRequestId cmd
+      pendingRequests %= Map.insert _cmdRequestId cmd -- TODO should we update CommandMap here?
     Nothing  -> do
       setLeaderToFirst
       clientSendCommand cmd
 
 -- THREAD: CLIENT MAIN. updates state
-clientHandleCommandResponse :: Monad m => (CommandResult -> Raft m ()) -> CommandResponse -> Raft m ()
-clientHandleCommandResponse useResult CommandResponse{..} = do
+-- Command returned has been applied
+clientHandleCommandResponse :: MonadIO m => CommandMVarMap -> CommandResponse -> Raft m ()
+clientHandleCommandResponse cmdStatusMap cmdr@CommandResponse{..} = do
   prs <- use pendingRequests
-  when (Map.member _cmdrRequestId prs) $ do
-    useResult _cmdrResult
+  valid <- verifyRPCWithKey (CMDR cmdr)
+  when (valid && Map.member _cmdrRequestId prs) $ do
     currentLeader .= Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
+    -- cmdStatusMap shared with the client, client can poll this map to await applied result
+    liftIO (modifyMVar_ cmdStatusMap (\m -> return (Map.insert _cmdrRequestId (CmdApplied _cmdrResult ) m)))
     numTimeouts .= 0
     prcount <- fmap Map.size (use pendingRequests)
     -- if we still have pending requests, reset the timer

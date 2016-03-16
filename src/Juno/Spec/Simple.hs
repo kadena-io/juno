@@ -6,6 +6,8 @@
 module Juno.Spec.Simple
   ( runServer
   , runClient
+  , RequestId
+  , CommandStatus
   ) where
 
 import Juno.Consensus.ByzRaft.Server
@@ -28,8 +30,10 @@ import qualified Data.Set as Set
 import Data.ByteString (ByteString)
 
 import Control.Monad.IO.Class
+import Data.Map (Map)
 import qualified Data.Map as Map
 
+import Control.Concurrent.MVar
 import qualified Control.Concurrent.Lifted as CL
 import System.Random
 
@@ -197,16 +201,16 @@ runServer applyFn = do
   runMsgServer inboxWrite outboxRead me []
   runRaftServer rconf $ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
 
-runClient :: (CommandEntry -> IO CommandResult) -> IO CommandEntry -> (CommandResult -> IO ()) -> IO ()
-runClient applyFn getEntry useResult = do
+runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, CommandEntry) -> MVar (Map RequestId CommandStatus) -> IO ()
+runClient applyFn getEntry cmdStatusMap = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
-  (inboxWrite, inboxRead) <- newChan
-  (outboxWrite, outboxRead) <- newChan
-  (eventWrite, eventRead) <- newChan
+  (inboxWrite, inboxRead) <- newChan -- client writes to inbox, raft reads
+  (outboxWrite, outboxRead) <- newChan -- raft writes to outbox, client reads
+  (eventWrite, eventRead) <- newChan -- timer events
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  runMsgServer inboxWrite outboxRead me []
-  runRaftClient getEntry useResult rconf (simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn))
+  runMsgServer inboxWrite outboxRead me [] -- ZMQ
+  runRaftClient getEntry cmdStatusMap rconf (simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn))
 
 
 -- | lift a two-arg action into MonadIO

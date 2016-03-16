@@ -19,6 +19,7 @@ module Juno.Runtime.Types
   , NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
+  , CommandStatus(..)
   , Term(..), startTerm
   , LogIndex(..), startIndex
   , RequestId(..), startRequestId, toRequestId
@@ -525,6 +526,11 @@ data Event = ERPC RPC
            | HeartbeatTimeout String
   deriving (Show)
 
+data CommandStatus = CmdSubmitted -- client sets when sending command
+                   | CmdAccepted  -- Raft client has recieved command and submitted
+                   | CmdCommitted -- Raft has Committed the command, not yet applied
+                   | CmdApplied { result :: CommandResult }  -- We have a result
+                   deriving (Show)
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
@@ -574,6 +580,7 @@ data RaftSpec m = RaftSpec
   , _killEnqueued     :: ThreadId -> m () -- Simple,Timer
 
   , _dequeue          :: m Event -- Simple,Util(dequeueEvent)
+
   }
 makeLenses (''RaftSpec)
 
