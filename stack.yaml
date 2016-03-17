@@ -8,8 +8,12 @@ packages:
     commit: 48bd36e7169f1b6f6763aa7d6cb946983e748e7d
   extra-dep: true
 - location:
-    git: https://github.com/slpopejoy/snap-cors.git
+    git: git@github.com:slpopejoy/snap-cors.git
     commit: cc88bab1fd3f62dc4d9f9ad81a231877a639c812
+  extra-dep: true
+- location:
+    git: git@github.com:well-typed/binary-serialise-cbor.git
+    commit: 8f60b0c9cc835a32fbd036ae2c67d35c28496a88
   extra-dep: true
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
@@ -24,7 +28,9 @@ extra-deps:
 - vector-0.11.0.0
 
 # Override default flag values for local packages and extra-deps
-flags: {}
+flags:
+  binary-serialise-cbor:
+    newtime15: true
 
 # Extra package databases containing global packages
 extra-package-dbs: []
