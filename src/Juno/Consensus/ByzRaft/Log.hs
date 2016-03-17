@@ -15,6 +15,7 @@ import qualified Data.ByteString as B
 import Juno.Runtime.Types
 import Juno.Util.Util
 
+-- TODO: This uses the old decode encode trick and should be changed...
 hashLogEntry :: Maybe LogEntry -> LogEntry -> LogEntry
 hashLogEntry (Just LogEntry{ _leHash = prevHash}) le =
   le { _leHash = hash SHA256 (encode (le { _leHash = prevHash }))}

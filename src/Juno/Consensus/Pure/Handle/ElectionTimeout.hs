@@ -6,18 +6,17 @@ module Juno.Consensus.Pure.Handle.ElectionTimeout
     (handle)
     where
 
-import Codec.Crypto.RSA
+import Codec.Crypto.RSA (PrivateKey)
 import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Foldable (traverse_)
-import qualified Data.ByteString.Lazy as LB
 import qualified Data.Set as Set
 import Data.Sequence (Seq)
 
 import Juno.Consensus.Pure.Types
-import Juno.Runtime.Sender (createRequestVoteResponse,sendSignedRPC,sendRPC)
+import Juno.Runtime.Sender (createRequestVoteResponse,sendRPC)
 import Juno.Runtime.Timer (resetElectionTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Combinator ((^$))
 import Juno.Util.Util (lastLogInfo,debug,updateTerm)
@@ -28,10 +27,10 @@ data ElectionTimeoutEnv = ElectionTimeoutEnv {
     , _term :: Term
     , _lazyVote :: Maybe (Term,NodeID,LogIndex)
     , _nodeId :: NodeID
-    , _privateKey :: PrivateKey
     , _otherNodes :: Set.Set NodeID
     , _logEntries :: Seq LogEntry
     , _leaderWithoutFollowers :: Bool
+    , _myPrivateKey :: PrivateKey
     }
 makeLenses ''ElectionTimeoutEnv
 
@@ -66,8 +65,7 @@ handleElectionTimeout s = do
     case lv of
       Just (lazyTerm, lazyCandidate, lastLogIndex') -> do
         me <- view nodeId
-        pk <- view privateKey
-        lazyResp <- signRPC pk <$> createRequestVoteResponse lazyTerm lastLogIndex' me lazyCandidate True
+        lazyResp <- createRequestVoteResponse lazyTerm lastLogIndex' me lazyCandidate True
         return $ VoteForLazyCandidate lazyTerm lazyCandidate lazyResp
       Nothing -> becomeCandidate
   else if (r == Leader && leaderWithoutFollowers')
@@ -76,8 +74,7 @@ handleElectionTimeout s = do
             case lv of
               Just (lazyTerm, lazyCandidate, lastLogIndex') -> do
                 me <- view nodeId
-                pk <- view privateKey
-                lazyResp <- signRPC pk <$> createRequestVoteResponse lazyTerm lastLogIndex' me lazyCandidate True
+                lazyResp <- createRequestVoteResponse lazyTerm lastLogIndex' me lazyCandidate True
                 return $ AbdicateAndLazyVote lazyTerm lazyCandidate lazyResp
               Nothing -> becomeCandidate
        else return AlreadyLeader
@@ -88,12 +85,20 @@ becomeCandidate = do
   tell ["becoming candidate"]
   newTerm <- (+1) <$> view term
   me <- view nodeId
-  pk <- view privateKey
   es <- view logEntries
   (_,lli,_) <- return $ lastLogInfo es
-  selfVote <- signRPC pk <$> createRequestVoteResponse newTerm lli me me True
+  selfVote <- createRequestVoteResponse newTerm lli me me True
+  provenance <- selfVoteProvenance selfVote
   potentials <- view otherNodes
-  return $ BecomeCandidate newTerm Candidate me selfVote potentials
+  return $ BecomeCandidate newTerm Candidate me (selfVote {_rvrProvenance = provenance}) potentials
+
+-- we need to actually sign this one now, or else we'll end up signing it every time we transmit it as evidence (i.e. every AE)
+selfVoteProvenance :: (MonadReader ElectionTimeoutEnv m, MonadWriter [String] m) => RequestVoteResponse -> m Provenance
+selfVoteProvenance rvr = do
+  nodeId' <- view nodeId
+  myPrivateKey' <- view myPrivateKey
+  (SignedRPC dig bdy) <- return $ toWire nodeId' myPrivateKey' rvr
+  return $ ReceivedMsg dig bdy
 
 handle :: Monad m => String -> JT.Raft m ()
 handle msg = do
@@ -106,10 +111,10 @@ handle msg = do
              (JT._term s)
              (JT._lazyVote s)
              (JT._nodeId c)
-             (JT._privateKey c)
              (JT._otherNodes c)
              (JT._logEntries s)
              leaderWithoutFollowers'
+             (JT._myPrivateKey c)
   mapM_ debug l
   case out of
     AlreadyLeader -> return ()
@@ -125,7 +130,6 @@ handle msg = do
                resetElectionTimer
                sendAllRequestVotes
 
-
 castLazyVote :: Monad m => Term -> NodeID -> RequestVoteResponse -> JT.Raft m ()
 castLazyVote lazyTerm' lazyCandidate' lazyResponse' = do
   updateTerm lazyTerm'
@@ -133,7 +137,7 @@ castLazyVote lazyTerm' lazyCandidate' lazyResponse' = do
   JT.lazyVote .= Nothing
   JT.ignoreLeader .= False
   JT.currentLeader .= Nothing
-  sendRPC lazyCandidate' (RVR lazyResponse')
+  sendRPC lazyCandidate' (RVR' lazyResponse')
   -- TODO: we need to verify that this is correct. It seems that a RVR (so a vote) is sent every time an election timeout fires.
   -- However, should that be the case? I think so, as you shouldn't vote for multiple people in the same election. Still though...
   resetElectionTimer
@@ -157,4 +161,4 @@ sendRequestVote target = do
   nid <- view (JT.cfg.JT.nodeId)
   (llt, lli, _) <- lastLogInfo <$> use JT.logEntries
   debug $ "sendRequestVote: " ++ show ct
-  sendSignedRPC target $ RV $ RequestVote ct nid lli llt LB.empty
+  sendRPC target $ RV' $ RequestVote ct nid lli llt NewMsg

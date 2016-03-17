@@ -14,7 +14,7 @@ import Control.Monad.State (get)
 import Data.Sequence (Seq)
 
 import Juno.Util.Util (lastLogInfo, debug)
-import Juno.Runtime.Sender (sendSignedRPC,createRequestVoteResponse)
+import Juno.Runtime.Sender (sendRPC,createRequestVoteResponse)
 
 import Juno.Consensus.Pure.Types
 
@@ -121,4 +121,4 @@ handle rv = do
   case rvo of
     NoAction -> return ()
     UpdateLazyVote stateUpdate -> JT.lazyVote .= Just stateUpdate
-    VoteForRPCSender (targetNode, rpc) -> sendSignedRPC targetNode $ JT.RVR rpc
+    VoteForRPCSender (targetNode, rpc) -> sendRPC targetNode $ JT.RVR' rpc

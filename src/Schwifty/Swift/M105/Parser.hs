@@ -194,6 +194,7 @@ validateSWIFT msg = case reqs of
     xs -> Left $ "Required Fields Not Found: " ++ show xs
   where
     go s l = maybe [s] (const []) (view l msg)
+    reqs :: [String]
     reqs = go "20 " msCode20
            ++  go "23B" msCode23B
            ++  go "32A" msCode32A

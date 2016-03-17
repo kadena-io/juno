@@ -1,7 +1,8 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE Rank2Types #-}
@@ -12,8 +13,8 @@ module Juno.Runtime.Types
   ( Raft
   , RaftSpec(..)
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
-  , readVotedFor, writeVotedFor, applyLogEntry, serializeRPC
-  , deserializeRPC, sendMessage, getMessage, debugPrint
+  , readVotedFor, writeVotedFor, applyLogEntry
+  , sendMessage, getMessage, debugPrint
   , random, enqueue, dequeue, enqueueLater, killEnqueued
   , NodeID(..)
   , CommandEntry(..)
@@ -22,7 +23,7 @@ module Juno.Runtime.Types
   , LogIndex(..), startIndex
   , RequestId(..), startRequestId, toRequestId
   , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
-  , enableDebug, publicKeys, clientPublicKeys, privateKey, clientTimeoutLimit
+  , enableDebug, publicKeys, clientPublicKeys, myPrivateKey, clientTimeoutLimit
   , Role(..)
   , RaftEnv(..), cfg, quorumSize, rs
   , LogEntry(..)
@@ -41,44 +42,43 @@ module Juno.Runtime.Types
   , Revolution(..)
   , RPC(..)
   , Event(..)
-  , HasSig(..)
-  , signRPC
-  , verifyRPC
+  , MsgType(..), KeySet(..), Digest(..), Provenance(..), WireFormat(..)
+  , signedRPCtoRPC, rpcToSignedRPC
+  , SignedRPC(..)
+  -- for testing
+  , LEWire(..), encodeLEWire, decodeLEWire, decodeRVRWire
   ) where
 
 import Control.Concurrent (ThreadId)
-import Control.Lens hiding (Index)
+import Control.Lens hiding (Index, (|>))
 import Control.Monad.RWS (RWST)
 import Codec.Crypto.RSA
-import Data.Sequence (Seq)
+import Data.Sequence (Seq, (|>))
 import qualified Data.Sequence as Seq
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
-import Data.Serialize
+import Data.Serialize (Serialize)
+import qualified Data.Serialize as S
 import Data.Word (Word64)
+import Data.Foldable
 
 import GHC.Int (Int64)
 import GHC.Generics
 
 import System.Random (Random)
 
--- | replaced et with CommandEntry
 newtype CommandEntry = CommandEntry { unCommandEntry :: ByteString }
   deriving (Show, Eq, Ord, Generic, Serialize)
 
--- | replaced rt with CommandResp
 newtype CommandResult = CommandResult { unCommandResult :: ByteString }
   deriving (Show, Eq, Ord, Generic, Serialize)
 
--- | replaced nt with NodeID
-data NodeID = NodeID { _host :: String, _port :: Word64 }
+data NodeID = NodeID { _host :: !String, _port :: !Word64 }
   deriving (Eq,Ord,Read,Show,Generic)
-
 instance Serialize NodeID
 
 newtype Term = Term Int
@@ -103,142 +103,395 @@ toRequestId :: Int64 -> RequestId
 toRequestId a = RequestId a
 
 data Config = Config
-  { _otherNodes           :: Set NodeID -- Client,Server,Role,Sender,Simple
-  , _nodeId               :: NodeID -- Client,Handler,Role,Sender,Simple,Util(debug)
-  , _publicKeys           :: Map NodeID PublicKey -- Simple,Util(verifyRPCWithKey)
-  , _clientPublicKeys     :: Map NodeID PublicKey -- Simple,Util(verifyRPCWithClientKey)
-  , _privateKey           :: PrivateKey -- Sender,Simple,Util(signRPCWithKey)
-  , _electionTimeoutRange :: (Int,Int) -- in microseconds  -- Timer
-  , _heartbeatTimeout     :: Int       -- in microseconds  -- Timer
-  , _enableDebug          :: Bool -- Simple
-  , _clientTimeoutLimit   :: Int -- Client
+  { _otherNodes           :: !(Set NodeID)
+  , _nodeId               :: !NodeID
+  , _publicKeys           :: !(Map NodeID PublicKey)
+  , _clientPublicKeys     :: !(Map NodeID PublicKey)
+  , _myPrivateKey         :: !PrivateKey
+  , _electionTimeoutRange :: !(Int,Int)
+  , _heartbeatTimeout     :: !Int
+  , _enableDebug          :: !Bool
+  , _clientTimeoutLimit   :: !Int
   }
   deriving (Show, Generic)
 makeLenses ''Config
 
-class HasSig a where
-    sig :: Lens' a LB.ByteString
+data KeySet = KeySet
+  { _ksCluster :: !(Map NodeID PublicKey)
+  , _ksClient  :: !(Map NodeID PublicKey)
+  } deriving (Show)
+
+-- | One way or another we need a way to figure our what set of public keys to use for verification of signatures.
+-- By placing the message type in the digest, we can make the WireFormat implementation easier as well. CMD and REV
+-- need to use the Client Public Key maps.
+data MsgType = AE | AER | RV | RVR | CMD | CMDR | REV
+  deriving (Show, Eq, Ord, Generic)
+instance Serialize MsgType
+
+-- | Digest containing Sender ID, Signature, Sender's Public Key and the message type
+data Digest = Digest
+  { _digNodeId :: !NodeID
+  , _digSig    :: !LB.ByteString
+  , _digPubkey :: !PublicKey
+  , _digType   :: !MsgType
+  } deriving (Show, Eq, Ord, Generic)
+deriving instance Ord PublicKey
+instance Serialize PublicKey where
+  put (PublicKey s n e) = S.put (s,n,e)
+  get = (\(s',n',e') -> PublicKey s' n' e') <$> S.get
+instance Serialize Digest
+
+-- | Type that is serialized and sent over the wire
+data SignedRPC = SignedRPC
+  { _sigDigest :: !Digest
+  , _sigBody   :: !LB.ByteString
+  } deriving (Show, Eq, Generic)
+instance Serialize SignedRPC
+
+-- | Provenance is used to track if we made the message or received it. This is important for re-transmission.
+data Provenance =
+  NewMsg |
+  ReceivedMsg
+    { _pDig :: Digest
+    , _pOrig :: LB.ByteString }
+  deriving (Show, Eq, Ord, Generic)
+instance Serialize Provenance -- this instance is used for persistence, not sure we need it though
+
+-- | Based on the MsgType in the SignedRPC's Digest, we know which set of keys are needed to validate the message
+verifySignedRPC :: KeySet -> SignedRPC -> Either String Bool
+verifySignedRPC KeySet{..} s@(SignedRPC Digest{..} bdy)
+  | _digType == CMD || _digType == REV =
+      case Map.lookup _digNodeId _ksClient of
+        Nothing -> Left $ "PubKey not found for NodeID: " ++ show _digNodeId
+        Just key
+          | key /= _digPubkey -> Left $ "Public key in storage doesn't match digest's key for msg: " ++ show s
+          | otherwise -> if not $ verify key bdy _digSig
+                         then Left $ "Unable to verify SignedRPC sig: " ++ show s
+                         else Right True
+  | otherwise =
+      case Map.lookup _digNodeId _ksCluster of
+        Nothing -> Left $ "PubKey not found for NodeID: " ++ show _digNodeId
+        Just key
+          | key /= _digPubkey -> Left $ "Public key in storage doesn't match digest's key for msg: " ++ show s
+          | otherwise -> if not $ verify key bdy _digSig
+                         then Left $ "Unable to verify SignedRPC sig: " ++ show s
+                         else Right True
+{-# INLINE verifySignedRPC #-}
+
+class WireFormat a where
+  toWire   :: NodeID -> PrivateKey -> a -> SignedRPC
+  fromWire :: KeySet -> SignedRPC -> Either String a
 
 data Command = Command
-  { _cmdEntry     :: CommandEntry
-  , _cmdClientId  :: NodeID
-  , _cmdRequestId :: RequestId
-  , _cmdSig       :: LB.ByteString
+  { _cmdEntry      :: !CommandEntry
+  , _cmdClientId   :: !NodeID
+  , _cmdRequestId  :: !RequestId
+  , _cmdProvenance :: !Provenance
   }
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
+instance Serialize Command -- again, for SQLite
 
-instance Serialize Command
-instance HasSig Command where
-    sig f s = fmap (\a -> s { _cmdSig = a }) (f (_cmdSig s))
+data CMDWire = CMDWire (CommandEntry, NodeID, RequestId)
+  deriving (Show, Generic)
+instance Serialize CMDWire
+
+instance WireFormat Command where
+  toWire nid privKey Command{..} = case _cmdProvenance of
+    NewMsg -> let bdy = S.encodeLazy $ CMDWire (_cmdEntry, _cmdClientId, _cmdRequestId)
+                  sig = sign privKey bdy
+                  dig = Digest nid sig (private_pub privKey) CMD
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left err -> Left err
+    Right False -> error "Invariant Failure: verification came back as Right False"
+    Right True -> if _digType dig /= CMD
+      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDWire instance"
+      else case S.decodeLazy bdy of
+        Left err -> Left $ "Failure to decode CMDWire: " ++ err
+        Right (CMDWire (ce,nid,rid)) -> Right $ Command ce nid rid $ ReceivedMsg dig bdy
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
 
 data CommandResponse = CommandResponse
-  { _cmdrResult    :: CommandResult
-  , _cmdrLeaderId  :: NodeID
-  , _cmdrNodeId    :: NodeID
-  , _cmdrRequestId :: RequestId
-  , _cmdrSig       :: LB.ByteString
+  { _cmdrResult     :: !CommandResult
+  , _cmdrLeaderId   :: !NodeID
+  , _cmdrNodeId     :: !NodeID
+  , _cmdrRequestId  :: !RequestId
+  , _cmdrProvenance :: !Provenance
   }
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
 
-instance Serialize CommandResponse
-instance HasSig CommandResponse where
-    sig f s = fmap (\a -> s { _cmdrSig = a }) (f (_cmdrSig s))
+data CMDRWire = CMDRWire (CommandResult, NodeID, NodeID, RequestId)
+  deriving (Show, Generic)
+instance Serialize CMDRWire
+
+instance WireFormat CommandResponse where
+  toWire nid privKey CommandResponse{..} = case _cmdrProvenance of
+    NewMsg -> let bdy = S.encodeLazy $ CMDRWire (_cmdrResult,_cmdrLeaderId,_cmdrNodeId,_cmdrRequestId)
+                  sig = sign privKey bdy
+                  dig = Digest nid sig (private_pub privKey) CMDR
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left err -> Left err
+    Right False -> error "Invariant Failure: verification came back as Right False"
+    Right True -> if _digType dig /= CMDR
+      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDRWire instance"
+      else case S.decodeLazy bdy of
+        Left err -> Left $ "Failure to decode CMDRWire: " ++ err
+        Right (CMDRWire (r,lid,nid,rid)) -> Right $ CommandResponse r lid nid rid $ ReceivedMsg dig bdy
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
 
 data LogEntry = LogEntry
-  { _leTerm    :: Term
-  , _leCommand :: Command
-  , _leHash    :: B.ByteString
+  { _leTerm    :: !Term
+  , _leCommand :: !Command
+  , _leHash    :: !ByteString
   }
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
+instance Serialize LogEntry -- again, for SQLite
 
-instance Serialize LogEntry
+data LEWire = LEWire (Term, SignedRPC, ByteString)
+  deriving (Show, Generic)
+instance Serialize LEWire
+
+decodeLEWire :: KeySet -> [LEWire] -> Either String (Seq LogEntry)
+decodeLEWire ks les = go les Seq.empty
+  where
+    go [LEWire (t,cmd,hsh)] v = case fromWire ks cmd of
+      Left err -> Left err
+      Right cmd' -> Right $ v |> LogEntry t cmd' hsh
+    go (LEWire (t,cmd,hsh):ls) v = case fromWire ks cmd of
+      Left err -> Left err
+      Right cmd' -> go ls $ v |> LogEntry t cmd' hsh
+    go [] _ = Right Seq.empty
+{-# INLINE decodeLEWire #-}
+
+encodeLEWire :: NodeID -> PrivateKey -> Seq LogEntry -> [LEWire]
+encodeLEWire nid privKey les =
+  (\LogEntry{..} -> LEWire (_leTerm, toWire nid privKey _leCommand, _leHash)) <$> toList les
+{-# INLINE encodeLEWire #-}
 
 data AppendEntries = AppendEntries
-  { _aeTerm        :: Term
-  , _leaderId      :: NodeID
-  , _prevLogIndex  :: LogIndex
-  , _prevLogTerm   :: Term
-  , _aeEntries     :: Seq LogEntry
-  , _aeQuorumVotes :: Set RequestVoteResponse
-  , _aeSig         :: LB.ByteString
+  { _aeTerm        :: !Term
+  , _leaderId      :: !NodeID
+  , _prevLogIndex  :: !LogIndex
+  , _prevLogTerm   :: !Term
+  , _aeEntries     :: !(Seq LogEntry)
+  , _aeQuorumVotes :: !(Set RequestVoteResponse)
+  , _aeProvenance  :: !Provenance
   }
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
 
-instance Serialize AppendEntries
-instance HasSig AppendEntries where
-    sig f s = fmap (\a -> s { _aeSig = a }) (f (_aeSig s))
+data AEWire = AEWire (Term,NodeID,LogIndex,Term,[LEWire],[SignedRPC])
+  deriving (Show, Generic)
+instance Serialize AEWire
+
+instance WireFormat AppendEntries where
+  toWire nid privKey AppendEntries{..} = case _aeProvenance of
+    NewMsg -> let bdy = S.encodeLazy $ AEWire (_aeTerm
+                                              ,_leaderId
+                                              ,_prevLogIndex
+                                              ,_prevLogTerm
+                                              ,encodeLEWire nid privKey _aeEntries
+                                              ,toWire nid privKey <$> toList _aeQuorumVotes)
+                  sig = sign privKey bdy
+                  dig = Digest nid sig (private_pub privKey) AE
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left err -> Left err
+    Right False -> error "Invariant Failure: verification came back as Right False"
+    Right True -> if _digType dig /= AE
+      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with AEWire instance"
+      else case S.decodeLazy bdy of
+        Left err -> Left $ "Failure to decode AEWire: " ++ err
+        Right (AEWire (t,lid,pli,pt,les,vts)) -> case decodeLEWire ks les of
+          Left err -> Left $ "Found a LogEntry with an invalid Command: " ++ err
+          Right les' -> case decodeRVRWire ks vts of
+            Left err -> Left $ "Caught an invalid RVR in an AE: " ++ err
+            Right vts' -> Right $ AppendEntries t lid pli pt les' vts' $ ReceivedMsg dig bdy
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
 
 data AppendEntriesResponse = AppendEntriesResponse
-  { _aerTerm      :: Term
-  , _aerNodeId    :: NodeID
-  , _aerSuccess   :: Bool
-  , _aerConvinced :: Bool
-  , _aerIndex     :: LogIndex
-  , _aerHash      :: B.ByteString
-  , _aerSig       :: LB.ByteString
+  { _aerTerm       :: !Term
+  , _aerNodeId     :: !NodeID
+  , _aerSuccess    :: !Bool
+  , _aerConvinced  :: !Bool
+  , _aerIndex      :: !LogIndex
+  , _aerHash       :: !ByteString
+  , _aerProvenance :: !Provenance
   }
   deriving (Show, Generic, Eq, Ord)
 
-instance Serialize AppendEntriesResponse
-instance HasSig AppendEntriesResponse where
-    sig f s = fmap (\a -> s { _aerSig = a }) (f (_aerSig s))
+data AERWire = AERWire (Term,NodeID,Bool,Bool,LogIndex,ByteString)
+  deriving (Show, Generic)
+instance Serialize AERWire
+
+instance WireFormat AppendEntriesResponse where
+  toWire nid privKey AppendEntriesResponse{..} = case _aerProvenance of
+    NewMsg -> let bdy = S.encodeLazy $ AERWire ( _aerTerm
+                                               , _aerNodeId
+                                               , _aerSuccess
+                                               , _aerConvinced
+                                               , _aerIndex
+                                               , _aerHash)
+                  sig = sign privKey bdy
+                  dig = Digest nid sig (private_pub privKey) AER
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left err -> Left err
+    Right False -> error "Invariant Failure: verification came back as Right False"
+    Right True -> if _digType dig /= AER
+      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with AERWire instance"
+      else case S.decodeLazy bdy of
+        Left err -> Left $ "Failure to decode AERWire: " ++ err
+        Right (AERWire (t,nid,s',c,i,h)) -> Right $ AppendEntriesResponse t nid s' c i h $ ReceivedMsg dig bdy
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
 
 data RequestVote = RequestVote
-  { _rvTerm        :: Term
-  , _rvCandidateId :: NodeID
-  , _lastLogIndex  :: LogIndex
-  , _lastLogTerm   :: Term
-  , _rvSig         :: LB.ByteString
+  { _rvTerm        :: !Term
+  , _rvCandidateId :: !NodeID -- Sender ID Right? We don't forward RV's
+  , _lastLogIndex  :: !LogIndex
+  , _lastLogTerm   :: !Term
+  , _rvProvenance  :: !Provenance
   }
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
 
-instance Serialize RequestVote
-instance HasSig RequestVote where
-    sig f s = fmap (\a -> s { _rvSig = a }) (f (_rvSig s))
+data RVWire = RVWire (Term,NodeID,LogIndex,Term)
+  deriving (Show, Generic)
+instance Serialize RVWire
+
+instance WireFormat RequestVote where
+  toWire nid privKey RequestVote{..} = case _rvProvenance of
+    NewMsg -> let bdy = S.encodeLazy $ RVWire ( _rvTerm
+                                              , _rvCandidateId
+                                              , _lastLogIndex
+                                              , _lastLogTerm)
+                  sig = sign privKey bdy
+                  dig = Digest nid sig (private_pub privKey) RV
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left err -> Left err
+    Right False -> error "Invariant Failure: verification came back as Right False"
+    Right True -> if _digType dig /= RV
+      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with RVWire instance"
+      else case S.decodeLazy bdy of
+        Left err -> Left $ "Failure to decode RVWire: " ++ err
+        Right (RVWire (t,cid,lli,llt)) -> Right $ RequestVote t cid lli llt $ ReceivedMsg dig bdy
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
 
 data RequestVoteResponse = RequestVoteResponse
-  { _rvrTerm        :: Term
-  , _rvrCurLogIndex :: LogIndex
-  , _rvrNodeId      :: NodeID
-  , _voteGranted    :: Bool
-  , _rvrCandidateId :: NodeID
-  , _rvrSig         :: LB.ByteString
+  { _rvrTerm        :: !Term
+  , _rvrCurLogIndex :: !LogIndex
+  , _rvrNodeId      :: !NodeID
+  , _voteGranted    :: !Bool
+  , _rvrCandidateId :: !NodeID
+  , _rvrProvenance  :: !Provenance
   }
-  deriving (Show, Generic, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+instance Serialize RequestVoteResponse -- again, for SQLite
 
-instance Serialize RequestVoteResponse
-instance HasSig RequestVoteResponse where
-    sig f s = fmap (\a -> s { _rvrSig = a }) (f (_rvrSig s))
+data RVRWire = RVRWire (Term,LogIndex,NodeID,Bool,NodeID)
+  deriving (Show, Generic)
+instance Serialize RVRWire
+
+instance WireFormat RequestVoteResponse where
+  toWire nid privKey RequestVoteResponse{..} = case _rvrProvenance of
+    NewMsg -> let bdy = S.encodeLazy $ RVRWire (_rvrTerm,_rvrCurLogIndex,_rvrNodeId,_voteGranted,_rvrCandidateId)
+                  sig = sign privKey bdy
+                  dig = Digest nid sig (private_pub privKey) RVR
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left err -> Left err
+    Right False -> error "Invariant Failure: verification came back as Right False"
+    Right True -> if _digType dig /= RVR
+      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with RVRWire instance"
+      else case S.decodeLazy bdy of
+        Left err -> Left $ "Failure to decode RVRWire: " ++ err
+        Right (RVRWire (t,li,nid,granted,cid)) -> Right $ RequestVoteResponse t li nid granted cid $ ReceivedMsg dig bdy
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
+
+-- the expected behavior here is tricky. For a set of votes, we are actually okay if some are invalid so long as there's a quorum
+-- however while we're still in alpha I think these failures represent a bug. Hence, they should be raised asap.
+decodeRVRWire :: KeySet -> [SignedRPC] -> Either String (Set RequestVoteResponse)
+decodeRVRWire ks votes' = go votes' Set.empty
+  where
+    go [v] s = case fromWire ks v of
+      Left err -> Left err
+      Right rvr' -> Right $ Set.insert rvr' s
+    go (v:vs) s = case fromWire ks v of
+      Left err -> Left err
+      Right rvr' -> go vs $ Set.insert rvr' s
+    go [] _ = Right Set.empty
+{-# INLINE decodeRVRWire #-}
 
 data Revolution = Revolution
-  { _revClientId  :: NodeID
-  , _revLeaderId  :: NodeID
-  , _revRequestId :: RequestId
-  , _revSig       :: LB.ByteString
+  { _revClientId   :: !NodeID
+  , _revLeaderId   :: !NodeID
+  , _revRequestId  :: !RequestId
+  , _revProvenance :: !Provenance
   }
+  deriving (Show, Eq, Generic)
+
+data REVWire = REVWire (NodeID,NodeID,RequestId)
+  deriving (Show, Generic)
+instance Serialize REVWire
+
+instance WireFormat Revolution where
+  toWire nid privKey Revolution{..} = case _revProvenance of
+    NewMsg -> let bdy = S.encodeLazy $ REVWire (_revClientId,_revLeaderId,_revRequestId)
+                  sig = sign privKey bdy
+                  dig = Digest nid sig (private_pub privKey) REV
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left err -> Left err
+    Right False -> error "Invariant Failure: verification came back as Right False"
+    Right True -> if _digType dig /= REV
+      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with REVWire instance"
+      else case S.decodeLazy bdy of
+        Left err -> Left $ "Failure to decode REVWire: " ++ err
+        Right (REVWire (cid,lid,rid)) -> Right $ Revolution cid lid rid $ ReceivedMsg dig bdy
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
+
+data RPC = AE'   AppendEntries
+         | AER'  AppendEntriesResponse
+         | RV'   RequestVote
+         | RVR'  RequestVoteResponse
+         | CMD'  Command
+         | CMDR' CommandResponse
+         | REV'  Revolution
   deriving (Show, Generic)
 
-instance Serialize Revolution
-instance HasSig Revolution where
-    sig f s = fmap (\a -> s { _revSig = a }) (f (_revSig s))
+signedRPCtoRPC :: KeySet -> SignedRPC -> Either String RPC
+signedRPCtoRPC ks s@(SignedRPC (Digest _ _ _ AE)   _) = AE'   <$> fromWire ks s
+signedRPCtoRPC ks s@(SignedRPC (Digest _ _ _ AER)  _) = AER'  <$> fromWire ks s
+signedRPCtoRPC ks s@(SignedRPC (Digest _ _ _ RV)   _) = RV'   <$> fromWire ks s
+signedRPCtoRPC ks s@(SignedRPC (Digest _ _ _ RVR)  _) = RVR'  <$> fromWire ks s
+signedRPCtoRPC ks s@(SignedRPC (Digest _ _ _ CMD)  _) = CMD'  <$> fromWire ks s
+signedRPCtoRPC ks s@(SignedRPC (Digest _ _ _ CMDR) _) = CMDR' <$> fromWire ks s
+signedRPCtoRPC ks s@(SignedRPC (Digest _ _ _ REV)  _) = REV'  <$> fromWire ks s
+{-# INLINE signedRPCtoRPC #-}
 
-data RPC = AE   AppendEntries
-         | AER  AppendEntriesResponse
-         | RV   RequestVote
-         | RVR  RequestVoteResponse
-         | CMD  Command
-         | CMDR CommandResponse
-         | REVOLUTION Revolution
-         | DBG String
-  deriving (Show, Generic)
-
-instance Serialize RPC
-
-signRPC :: (Serialize rpc, HasSig rpc) => PrivateKey -> rpc -> rpc
-signRPC k rpc = set sig (sign k (encodeLazy (set sig LB.empty rpc))) rpc
-
-verifyRPC :: (Serialize rpc, HasSig rpc) => PublicKey -> rpc -> Bool
-verifyRPC k rpc = verify k (encodeLazy (set sig LB.empty rpc)) (view sig rpc)
+rpcToSignedRPC :: NodeID -> PrivateKey -> RPC -> SignedRPC
+rpcToSignedRPC nid privKey (AE' v) = toWire nid privKey v
+rpcToSignedRPC nid privKey (AER' v) = toWire nid privKey v
+rpcToSignedRPC nid privKey (RV' v) = toWire nid privKey v
+rpcToSignedRPC nid privKey (RVR' v) = toWire nid privKey v
+rpcToSignedRPC nid privKey (CMD' v) = toWire nid privKey v
+rpcToSignedRPC nid privKey (CMDR' v) = toWire nid privKey v
+rpcToSignedRPC nid privKey (REV' v) = toWire nid privKey v
+{-# INLINE rpcToSignedRPC #-}
 
 data Event = ERPC RPC
            | ElectionTimeout String
@@ -275,12 +528,6 @@ data RaftSpec m = RaftSpec
 
     -- ^ Function to apply a log entry to the state machine.
   , _applyLogEntry    :: CommandEntry -> m CommandResult -- Simple,Handler
-
-    -- ^ Function to serialize an RPC.
-  , _serializeRPC     :: RPC -> ByteString -- Simple,Sender
-
-    -- ^ Function to deserialize an RPC.
-  , _deserializeRPC   :: ByteString -> Either String RPC -- Simple,Util(messageReceiver)
 
     -- ^ Function to send a message to a node.
   , _sendMessage      :: NodeID -> ByteString -> m () -- Simple,Sender

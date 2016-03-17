@@ -9,7 +9,6 @@ module Juno.Runtime.Sender
   , sendAllAppendEntriesResponse
   , sendResults
   , sendRPC
-  , sendSignedRPC
   ) where
 
 import Control.Lens
@@ -17,14 +16,16 @@ import Control.Monad.Writer
 import Data.Foldable (traverse_)
 import Data.Sequence (Seq)
 import Data.Set (Set)
-import qualified Data.ByteString.Lazy as B
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
+import Data.Serialize
 
 import Juno.Util.Util
 import Juno.Runtime.Types
 
 
+-- TODO: There seems to be needless construction then destruction of the non-wire message types
+--       Not sure if that could impact performance or if it will be unrolled/magic-ified
 -- no state update, uses state
 sendAppendEntries :: Monad m => NodeID -> Raft m ()
 sendAppendEntries target = do
@@ -35,8 +36,8 @@ sendAppendEntries target = do
   nid <- view (cfg.nodeId)
   debug $ "sendAppendEntries: " ++ show ct
   qVoteList <- getVotesForNode target
-  sendSignedRPC target $ AE $
-    AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) qVoteList B.empty
+  sendRPC target $ AE' $
+    AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) qVoteList NewMsg
 
 getVotesForNode :: Monad m => NodeID -> Raft m (Set RequestVoteResponse)
 getVotesForNode target = do
@@ -50,28 +51,19 @@ sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
 sendAppendEntriesResponse target success convinced = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  debug $ "sendAppendEntriesResponse: " ++ show ct
+  debug $ "Sent AppendEntriesResponse: " ++ show ct
   (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success convinced lindex lhash B.empty
+  sendRPC target $ AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
 
 -- no state update but uses state
 sendAllAppendEntriesResponse :: Monad m => Raft m ()
 sendAllAppendEntriesResponse =
   traverse_ (\n -> sendAppendEntriesResponse n True True) =<< view (cfg.otherNodes)
 
-{-
-sendRequestVoteResponse :: Monad m => NodeID -> Bool -> Raft m ()
-sendRequestVoteResponse target vote = do
-  ct <- use term
-  nid <- view (cfg.nodeId)
-  debug $ "sendRequestVoteResponse: " ++ show ct
-  sendSignedRPC target $ RVR $ RequestVoteResponse ct nid vote target B.empty
--}
-
 createRequestVoteResponse :: MonadWriter [String] m => Term -> LogIndex -> NodeID -> NodeID -> Bool -> m RequestVoteResponse
 createRequestVoteResponse term' logIndex' myNodeId' target vote = do
-  tell ["createRequestVoteResponse: " ++ show term']
-  return $ RequestVoteResponse term' logIndex' myNodeId' vote target B.empty
+  tell ["Created RequestVoteResponse: " ++ show term']
+  return $ RequestVoteResponse term' logIndex' myNodeId' vote target NewMsg
 
 -- no state update
 sendAllAppendEntries :: Monad m => Raft m ()
@@ -79,7 +71,7 @@ sendAllAppendEntries = traverse_ sendAppendEntries =<< view (cfg.otherNodes)
 
 -- no state update
 sendResults :: Monad m => Seq (NodeID, CommandResponse) -> Raft m ()
-sendResults results = traverse_ (\(target,cmdr) -> sendSignedRPC target $ CMDR cmdr) results
+sendResults results = traverse_ (\(target,cmdr) -> sendRPC target $ CMDR' cmdr) results
 
 -- called by leaders sending appendEntries.
 -- given a replica's nextIndex, get the index and term to send as
@@ -95,23 +87,11 @@ logInfoForNextIndex mni es =
         Nothing -> (startIndex, startTerm)
     Nothing -> (startIndex, startTerm)
 
+
+-- TODO: figure out if there is a needless performance hit here (looking up these constants every time?)
 sendRPC :: Monad m => NodeID -> RPC -> Raft m ()
 sendRPC target rpc = do
   send <- view (rs.sendMessage)
-  ser <- view (rs.serializeRPC)
-  send target $ ser rpc
-
--- no state update
-sendSignedRPC :: Monad m => NodeID -> RPC -> Raft m ()
-sendSignedRPC target rpc = do
-  pk <- view (cfg.privateKey)
-  msg <- return $ case rpc of
-    AE ae          -> AE   $ signRPC pk ae
-    AER aer        -> AER  $ signRPC pk aer
-    RV rv          -> RV   $ signRPC pk rv
-    RVR rvr        -> RVR  $ signRPC pk rvr
-    CMD cmd        -> CMD  $ signRPC pk cmd
-    CMDR cmdr      -> CMDR $ signRPC pk cmdr
-    REVOLUTION rev -> REVOLUTION $ signRPC pk rev
-    _         -> rpc
-  sendRPC target msg
+  myNodeId <- view (cfg.nodeId)
+  privKey <- view (cfg.myPrivateKey)
+  send target $ encode $ rpcToSignedRPC myNodeId privKey rpc

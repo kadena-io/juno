@@ -7,9 +7,7 @@ module Juno.Consensus.Pure.Handle.AppendEntries
   (handle)
 where
 
-import Codec.Crypto.RSA
 import Control.Lens hiding (Index)
-import Control.Monad.Loops (allM)
 import Control.Monad.Reader
 import Control.Monad.State (get)
 import Control.Monad.Writer.Strict
@@ -25,7 +23,7 @@ import Juno.Consensus.ByzRaft.Log
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
-import Juno.Util.Util (seqIndex, debug, verifyRPCWithKey', updateTerm)
+import Juno.Util.Util (seqIndex, debug, updateTerm, getCmdSigOrInvariantError)
 import qualified Juno.Runtime.Types as JT
 
 data AppendEntriesEnv = AppendEntriesEnv {
@@ -36,7 +34,6 @@ data AppendEntriesEnv = AppendEntriesEnv {
   , _logEntries       :: Seq LogEntry
 -- New Constructors
   , _quorumSize       :: Int
-  , _publicKeys       :: Map NodeID PublicKey
   }
 makeLenses ''AppendEntriesEnv
 
@@ -123,16 +120,11 @@ confirmElection leader' term' votes = do
   quorumSize' <- view quorumSize
   tell ["confirming election of a new leader"]
   if Set.size votes >= quorumSize'
-    then allM (validateVote leader' term') (Set.toList votes)
+    then return $ all (validateVote leader' term') votes
     else return False
 
-validateVote :: (MonadWriter [String] m, MonadReader AppendEntriesEnv m) => NodeID -> Term -> RequestVoteResponse -> m Bool
-validateVote leader' term' vote@RequestVoteResponse{..} = do
-  pks <- view publicKeys
-  sigOkay <- return $ verifyRPCWithKey' pks (RVR vote)
-  case sigOkay of
-    Left err -> tell [err] >> return False
-    Right okay -> return (okay && _rvrCandidateId == leader' && _rvrTerm == term')
+validateVote :: NodeID -> Term -> RequestVoteResponse -> Bool
+validateVote leader' term' RequestVoteResponse{..} = (_rvrCandidateId == leader' && _rvrTerm == term')
 
 
 prevLogEntryMatches :: MonadReader AppendEntriesEnv m => LogIndex -> Term -> m Bool
@@ -151,7 +143,9 @@ appendLogEntries pli newEs = do
   logEntries' <- return . (Seq.>< newEs) . Seq.take (fromIntegral pli + 1) $ les
   tell ["replaying LogEntry: " ++ show newEs]
   replay <- return $
-            foldl (\m LogEntry{_leCommand = Command{..}} -> Map.insert (_cmdClientId, _cmdSig) Nothing m) Map.empty newEs
+    foldl (\m LogEntry{_leCommand = c@Command{..}} ->
+            Map.insert (_cmdClientId, getCmdSigOrInvariantError "appendLogEntries" c) Nothing m)
+    Map.empty newEs
   logEntries'' <- return $ updateLogHashesFromIndex' (pli + 1) logEntries'
   return $ Commit replay logEntries''
 
@@ -173,7 +167,6 @@ handle ae = do
               (JT._ignoreLeader s)
               (JT._logEntries s)
               (JT._quorumSize r)
-              (JT._publicKeys $ JT._cfg r)
   (AppendEntriesOut{..}, l) <- runReaderT (runWriterT (handleAppendEntries ae)) ape
   mapM_ debug l
   applyNewLeader _newLeaderAction

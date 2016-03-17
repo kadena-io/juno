@@ -15,7 +15,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 import Juno.Consensus.Pure.Types
-import Juno.Util.Util (debug)
+import Juno.Util.Util (debug, getRevSigOrInvariantError)
 import qualified Juno.Runtime.Types as JT
 
 data RevolutionEnv = RevolutionEnv {
@@ -34,18 +34,19 @@ data RevolutionOut =
     { _deleteReplayMapEntry :: (NodeID, ByteString) }
 
 handleRevolution :: (MonadReader RevolutionEnv m, MonadWriter [String] m) => Revolution -> m RevolutionOut
-handleRevolution Revolution{..} = do
+handleRevolution rev@Revolution{..} = do
   currentLeader' <- view currentLeader
   replayMap' <- view replayMap
-  if Map.notMember (_revClientId, _revSig) replayMap'
+  revSig <- return $ getRevSigOrInvariantError "handleRevolution" rev
+  if Map.notMember (_revClientId, revSig) replayMap'
   then
     case currentLeader' of
       Just l | l == _revLeaderId -> do
         -- clear our lazy vote if it was for this leader
         lazyVote' <- view lazyVote
         case lazyVote' of
-          Just (_, lvid, _) | lvid == _revLeaderId -> return $ IgnoreLeaderAndClearLazyVote (_revClientId, _revSig)
-          _ -> return $ IgnoreLeader (_revClientId, _revSig)
+          Just (_, lvid, _) | lvid == _revLeaderId -> return $ IgnoreLeaderAndClearLazyVote (_revClientId, revSig)
+          _ -> return $ IgnoreLeader (_revClientId, revSig)
       _ -> return RevolutionCalledOnNonLeader
   else return UnknownNode
 

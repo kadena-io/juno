@@ -2,7 +2,7 @@ name:                juno
 version:             0.0.0.1
 synopsis:            Bynzantine Fault Tolerant Raft
 description:         An implementation of a Byzantine Fault Tolerant Raft protocol.
-homepage:            https://github.com/chrisnc/tangaroa
+homepage:            https://github.com/buckie/juno
 author:              Chris Copeland, Will Martino
 maintainer:          chrisnc@cs.stanford.edu, wjmartino@gmail.com
 copyright:           Copyright (C) 2014-2015 Chris Copeland, Copyright 2015-2016 (C) Will Martino
@@ -90,6 +90,7 @@ library
                      , unagi-chan
                      , zeromq4-haskell >= 0.6.3
                      , zlib
+                     , hspec
   hs-source-dirs:      src
   ghc-options:         -Wall -fno-warn-unused-do-bind
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
@@ -133,6 +134,9 @@ test-suite hspec
   default-language: Haskell2010
   build-depends:
                 base
+              , RSA
+              , SHA
+              , containers
               , hspec
               , juno
               , hopper

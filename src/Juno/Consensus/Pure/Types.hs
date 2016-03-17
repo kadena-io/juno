@@ -1,11 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Juno.Consensus.Pure.Types (
     NodeID(..)
@@ -26,9 +21,9 @@ module Juno.Consensus.Pure.Types (
   , Revolution(..)
   , RPC(..)
   , Event(..)
-  , HasSig(..)
-  , signRPC
-  , verifyRPC
+  , MsgType(..), KeySet(..), Digest(..), Provenance(..), WireFormat(..)
+  , signedRPCtoRPC, rpcToSignedRPC
+  , SignedRPC(..)
   ) where
 
 
@@ -51,7 +46,7 @@ import Juno.Runtime.Types (
   , Revolution(..)
   , RPC(..)
   , Event(..)
-  , HasSig(..)
-  , signRPC
-  , verifyRPC
+  , MsgType(..), KeySet(..), Digest(..), Provenance(..), WireFormat(..)
+  , signedRPCtoRPC, rpcToSignedRPC
+  , SignedRPC(..)
   )

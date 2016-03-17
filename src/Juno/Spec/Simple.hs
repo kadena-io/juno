@@ -17,7 +17,7 @@ import Juno.Messaging.ZMQ
 import Control.Lens
 import Control.Concurrent.Chan.Unagi
 import Data.Word
-import Data.Serialize
+
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
@@ -81,15 +81,15 @@ defaultPortNum = 10000
 defaultConfig :: Config
 defaultConfig =
   Config
-    Set.empty                  -- other nodes
-    (NodeID localhost defaultPortNum) -- self address
-    Map.empty                  -- publicKeys
-    Map.empty                  -- clientPublicKeys
+    Set.empty                                  -- other nodes
+    (NodeID localhost defaultPortNum)          -- self address
+    Map.empty                                  -- publicKeys
+    Map.empty                                  -- clientPublicKeys
     (PrivateKey (PublicKey 0 0 0) 0 0 0 0 0 0) -- empty public key
-    (3000000,6000000)          -- election timeout range
-    1500000                    -- heartbeat timeout
-    False                      -- no debug
-    5                          -- client timeouts before revolution
+    (3000000,6000000)                          -- election timeout range
+    1500000                                    -- heartbeat timeout
+    False                                      -- no debug
+    5                                          -- client timeouts before revolution
 
 setSelf :: String -> Config -> IO Config
 setSelf s c = case readNodeID s of
@@ -116,7 +116,7 @@ getClientPublicKeys :: FilePath -> Config -> IO Config
 getClientPublicKeys = readFileOrDie clientPublicKeys
 
 getPrivateKey :: FilePath -> Config -> IO Config
-getPrivateKey = readFileOrDie privateKey
+getPrivateKey = readFileOrDie myPrivateKey
 
 
 showDebug :: NodeID -> String -> IO ()
@@ -151,12 +151,6 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn = Raft
     , _writeVotedFor   = return . const ()
       -- apply log entries to the state machine, given by caller
     , _applyLogEntry   = applyFn
-      -- serialize with cereal
-    , _serializeRPC    = encode
-      -- deserialize with cereal
-    , _deserializeRPC = \a -> either
-        (\err -> Left $ "Invalid RPC: " ++ err ++ "\n## MSG ##\n" ++ show a)
-         Right $ decode a
       -- send messages using msgSend
     , _sendMessage     = liftIO2 (sendMsg outboxWrite)
       -- get messages using getMsg

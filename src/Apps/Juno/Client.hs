@@ -91,7 +91,7 @@ createAccounts toCommand fromResult = do
    case maybeCreateAccount of
      Just (CreateAccountRequest (AccountPayload acct) _) -> do
          liftIO $ writeChan toCommand $ CommandEntry $ createAccountBS acct
-         res <- liftIO $ readChan fromResult -- cmdId should be in res?
+         _res <- liftIO $ readChan fromResult -- cmdId should be in res?
          (writeBS . BL.toStrict . JSON.encode . createAccountResponseSuccess . T.pack) "cmdIdTODO"
 
      Nothing ->

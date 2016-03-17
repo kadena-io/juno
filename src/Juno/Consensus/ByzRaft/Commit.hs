@@ -12,13 +12,10 @@ import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as LB
-import Control.Monad.Loops (allM)
 
 import Juno.Runtime.Types
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendResults)
-
 
 -- THREAD: SERVER MAIN.
 doCommit :: Monad m => Raft m ()
@@ -41,12 +38,11 @@ applyLogEntries = do
   when (r == Leader) $ sendResults results
   lastApplied .= ci
 
-
 applyCommand :: Monad m => Command -> Raft m (NodeID, CommandResponse)
 applyCommand cmd@Command{..} = do
   apply <- view (rs.applyLogEntry)
   result <- apply _cmdEntry
-  replayMap %= Map.insert (_cmdClientId, _cmdSig) (Just result)
+  replayMap %= Map.insert (_cmdClientId, getCmdSigOrInvariantError "applyCommand" cmd) (Just result)
   ((,) _cmdClientId) <$> makeCommandResponse cmd result
 
 makeCommandResponse :: Monad m => Command -> CommandResult -> Raft m CommandResponse
@@ -61,9 +57,7 @@ makeCommandResponse' nid mlid Command{..} result = CommandResponse
              (maybe nid id mlid)
              nid
              _cmdRequestId
-             LB.empty
-
-
+             NewMsg
 
 -- checks to see what the largest N where a quorum of nodes
 -- has sent us proof of a commit up to that index
@@ -90,18 +84,16 @@ updateCommitIndex = do
       case Map.lookup qci proof of
         Just s -> do
           let lhash = _leHash (Seq.index es $ fromIntegral qci)
-          valid <- checkCommitProof qci lhash s
+          valid <- return $ checkCommitProof qci lhash s
           if valid
             then do
               commitIndex .= qci
               commitProof %= Map.filterWithKey (\k _ -> k >= qci)
-              debug $ "commit index is now: " ++ show qci
+              debug $ "Commit index is now: " ++ show qci
               return True
             else
               return False
         Nothing -> return False
 
-checkCommitProof :: Monad m => LogIndex -> B.ByteString -> Set.Set AppendEntriesResponse -> Raft m Bool
-checkCommitProof ci lhash aers = do
-  sigsOkay <- allM (verifyRPCWithKey . AER) (Set.toList aers)
-  return $ sigsOkay && all (\AppendEntriesResponse{..} -> _aerHash == lhash && _aerIndex == ci) aers
+checkCommitProof :: LogIndex -> B.ByteString -> Set.Set AppendEntriesResponse -> Bool
+checkCommitProof ci lhash aers = all (\AppendEntriesResponse{..} -> _aerHash == lhash && _aerIndex == ci) aers

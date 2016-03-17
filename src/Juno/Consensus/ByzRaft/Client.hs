@@ -8,7 +8,6 @@ import Control.Lens hiding (Index)
 import Control.Monad.RWS
 
 import Data.Foldable (traverse_)
-import qualified Data.ByteString.Lazy as B
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Thyme.Clock
@@ -17,7 +16,7 @@ import Data.Thyme.Time.Core (unUTCTime, toMicroseconds)
 import Juno.Runtime.Timer
 import Juno.Runtime.Types
 import Juno.Util.Util
-import Juno.Runtime.Sender (sendSignedRPC)
+import Juno.Runtime.Sender (sendRPC)
 
 import qualified Control.Concurrent.Lifted as CL
 
@@ -49,7 +48,7 @@ commandGetter getEntry = do
   forever $ do
     entry <- getEntry
     rid <- nextRequestId
-    enqueueEvent $ ERPC $ CMD $ Command entry nid rid B.empty
+    enqueueEvent $ ERPC $ CMD' $ Command entry nid rid NewMsg
 
 -- THREAD: CLIENT COMMAND. updates state!
 nextRequestId :: Monad m => Raft m RequestId
@@ -62,8 +61,8 @@ clientHandleEvents :: Monad m => (CommandResult -> Raft m ()) -> Raft m ()
 clientHandleEvents useResult = forever $ do
   e <- dequeueEvent
   case e of
-    ERPC (CMD cmd)     -> clientSendCommand cmd -- these are commands coming from the commandGetter thread
-    ERPC (CMDR cmdr)   -> clientHandleCommandResponse useResult cmdr
+    ERPC (CMD' cmd)     -> clientSendCommand cmd -- these are commands coming from the commandGetter thread
+    ERPC (CMDR' cmdr)   -> clientHandleCommandResponse useResult cmdr
     HeartbeatTimeout _ -> do
       timeouts <- use numTimeouts
       limit <- view (cfg.clientTimeoutLimit)
@@ -83,7 +82,7 @@ clientHandleEvents useResult = forever $ do
             Just lid -> do
               rid <- nextRequestId
               view (cfg.otherNodes) >>=
-                traverse_ (\n -> sendSignedRPC n (REVOLUTION (Revolution nid lid rid B.empty)))
+                traverse_ (\n -> sendRPC n (REV' (Revolution nid lid rid NewMsg)))
               numTimeouts .= 0
               resetHeartbeatTimer
             _ -> do
@@ -115,7 +114,7 @@ clientSendCommand cmd@Command{..} = do
   mlid <- use currentLeader
   case mlid of
     Just lid -> do
-      sendSignedRPC lid $ CMD cmd
+      sendRPC lid $ CMD' cmd
       prcount <- fmap Map.size (use pendingRequests)
       -- if this will be our only pending request, start the timer
       -- otherwise, it should already be running
@@ -127,10 +126,9 @@ clientSendCommand cmd@Command{..} = do
 
 -- THREAD: CLIENT MAIN. updates state
 clientHandleCommandResponse :: Monad m => (CommandResult -> Raft m ()) -> CommandResponse -> Raft m ()
-clientHandleCommandResponse useResult cmdr@CommandResponse{..} = do
+clientHandleCommandResponse useResult CommandResponse{..} = do
   prs <- use pendingRequests
-  valid <- verifyRPCWithKey (CMDR cmdr)
-  when (valid && Map.member _cmdrRequestId prs) $ do
+  when (Map.member _cmdrRequestId prs) $ do
     useResult _cmdrResult
     currentLeader .= Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId

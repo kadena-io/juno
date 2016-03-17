@@ -59,6 +59,15 @@ instance (Ord a, Typeable a, Serialize a) => FromField (Set a) where
       Left err -> returnError ConversionFailed f ("Couldn't deserialize sequence: " ++ err)
       Right v -> Ok v
 
+instance ToField Provenance where
+  toField = toField . encode
+instance FromField Provenance where
+  fromField f = do
+    s :: ByteString <- fromField f
+    case decode s of
+      Left err -> returnError ConversionFailed f ("Couldn't deserialize sequence: " ++ err)
+      Right v -> Ok v
+
 instance ToRow AppendEntries where
   toRow AppendEntries{..} = [toField _aeTerm
                             ,toField _leaderId
@@ -66,7 +75,7 @@ instance ToRow AppendEntries where
                             ,toField _prevLogTerm
                             ,toField _aeEntries
                             ,toField _aeQuorumVotes
-                            ,toField _aeSig ]
+                            ,toField _aeProvenance ]
 
 
 
