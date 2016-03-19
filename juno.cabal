@@ -134,10 +134,22 @@ executable serialization
   build-depends:       base < 5
                      , RSA
                      , containers
+                     , bytestring
                      , juno
                      , cereal
                      , criterion
                      , binary-serialise-cbor
+  hs-source-dirs:      criterion
+  ghc-options:         -Wall -threaded -rtsopts -O2
+  ghc-prof-options:    -fprof-auto -fprof-auto-calls
+  default-language:    Haskell2010
+
+executable crypto
+  main-is:             Crypto.hs
+  build-depends:       base < 5
+                     , RSA
+                     , bytestring
+                     , criterion
   hs-source-dirs:      criterion
   ghc-options:         -Wall -threaded -rtsopts -O2
   ghc-prof-options:    -fprof-auto -fprof-auto-calls

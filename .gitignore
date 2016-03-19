@@ -10,6 +10,7 @@ datadump
 cabal.sandbox.config
 datadump.json
 simplerdump.json
+*.html
 simple.conf
 fakepayments.json
 paymentsquery-07-28.json
