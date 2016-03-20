@@ -55,6 +55,7 @@ library
 
   build-depends:       RSA
                      , SHA2
+                     , ed25519
                      , attoparsec
                      , aeson
                      , aeson-pretty
@@ -101,7 +102,8 @@ library
 executable genkeys
   main-is:             GenerateKeys.hs
   build-depends:       base < 5
-                     , RSA
+                     , juno
+                     , ed25519
                      , containers
                      , crypto-api
                      , network
@@ -129,21 +131,22 @@ executable junoclient
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
-executable serialization
-  main-is:             Serialization.hs
-  build-depends:       base < 5
-                     , RSA
-                     , containers
-                     , bytestring
-                     , juno
-                     , cereal
-                     , criterion
-                     , binary-serialise-cbor
-  hs-source-dirs:      criterion
-  ghc-options:         -Wall -threaded -rtsopts -O2
-  ghc-prof-options:    -fprof-auto -fprof-auto-calls
-  default-language:    Haskell2010
-
+--executable serialization
+--  main-is:             Serialization.hs
+--  build-depends:       base < 5
+--                     , RSA
+--                     , ed25519
+--                     , containers
+--                     , bytestring
+--                     , juno
+--                     , cereal
+--                     , criterion
+--                     , binary-serialise-cbor
+--  hs-source-dirs:      criterion
+--  ghc-options:         -Wall -threaded -rtsopts -O2
+--  ghc-prof-options:    -fprof-auto -fprof-auto-calls
+--  default-language:    Haskell2010
+--
 executable crypto
   main-is:             Crypto.hs
   build-depends:       base < 5

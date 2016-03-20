@@ -6,7 +6,7 @@ module Juno.Consensus.Pure.Handle.ElectionTimeout
     (handle)
     where
 
-import Codec.Crypto.RSA (PrivateKey)
+
 import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.State
@@ -30,7 +30,8 @@ data ElectionTimeoutEnv = ElectionTimeoutEnv {
     , _otherNodes :: Set.Set NodeID
     , _logEntries :: Seq LogEntry
     , _leaderWithoutFollowers :: Bool
-    , _myPrivateKey :: PrivateKey
+    , _myPrivateKey :: SecretKey
+    , _myPublicKey :: PublicKey
     }
 makeLenses ''ElectionTimeoutEnv
 
@@ -97,7 +98,8 @@ selfVoteProvenance :: (MonadReader ElectionTimeoutEnv m, MonadWriter [String] m)
 selfVoteProvenance rvr = do
   nodeId' <- view nodeId
   myPrivateKey' <- view myPrivateKey
-  (SignedRPC dig bdy) <- return $ toWire nodeId' myPrivateKey' rvr
+  myPublicKey' <- view myPublicKey
+  (SignedRPC dig bdy) <- return $ toWire nodeId' myPublicKey' myPrivateKey' rvr
   return $ ReceivedMsg dig bdy
 
 handle :: Monad m => String -> JT.Raft m ()
@@ -115,6 +117,7 @@ handle msg = do
              (JT._logEntries s)
              leaderWithoutFollowers'
              (JT._myPrivateKey c)
+             (JT._myPublicKey c)
   mapM_ debug l
   case out of
     AlreadyLeader -> return ()

@@ -1,40 +1,29 @@
 module Main (main) where
 
-import Codec.Crypto.RSA
-import Crypto.Random
+import Crypto.Sign.Ed25519
+import Control.Monad
 import Text.Read
-import Network.Socket
-import Data.Word
+import Juno.Runtime.Types (NodeID(..))
 import System.Directory
 import System.IO
 import System.FilePath
 
 import qualified Data.Map as Map
 
-portnums :: [Word16]
-portnums = iterate (+ 1) 10000
+nodes :: [NodeID]
+nodes = iterate (\n@(NodeID _ p) -> n {_port = p + 1}) (NodeID "127.0.0.1" 10000)
 
 main :: IO ()
 main = do
-  g <- newGenIO :: IO SystemRandom
   putStrLn "Number of keys to generate? "
   hFlush stdout
   mn <- fmap readMaybe getLine
   case mn of
     Just n  -> do
-      let keys = generateKeys g 1024 n
+      keys <- replicateM n createKeypair
       writePublicKeys $ map fst keys
-      writePrivateKeys $ zip portnums $ map snd keys
+      writePrivateKeys $ zip nodes $ map snd keys
     Nothing -> putStrLn "Please specify a number of keys to generate."
-
-generateKeys :: CryptoRandomGen g => g -> Int -> Int -> [(PublicKey, PrivateKey)]
-generateKeys g nbits nkeys = case nkeys of
-  0 -> []
-  n -> (pubkey, privkey) : generateKeys ng nbits (n - 1) where
-    (pubkey, privkey, ng) = generateKeyPair g nbits
-
-localhost :: HostAddress
-localhost = 0x0100007f
 
 writePublicKeys :: Show a => [a] -> IO ()
 writePublicKeys xs = do
@@ -43,16 +32,12 @@ writePublicKeys xs = do
   filename <- getLine
   writeFile filename $
     show $ Map.fromList $
-      zip
-        (zip
-          (repeat localhost)
-          portnums)
-        xs
+      zip nodes xs
 
-writePrivateKeys :: (Show name, Show a) => [(name,a)] -> IO ()
+writePrivateKeys :: (Show a) => [(NodeID,a)] -> IO ()
 writePrivateKeys xs = do
   putStrLn "Folder for private keys? "
   hFlush stdout
   dirname <- getLine
   createDirectory dirname
-  mapM_ (\(fn, x) -> writeFile (dirname </> show fn ++ ".txt") (show x)) xs
+  mapM_ (\(NodeID _ fn, x) -> writeFile (dirname </> show fn ++ ".txt") (show x)) xs

@@ -14,7 +14,6 @@ import Control.Monad.Writer.Strict
 import Data.Map (Map)
 import Data.Sequence (Seq)
 import Data.Set (Set)
-import qualified Data.ByteString.Lazy as LB
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
@@ -62,7 +61,7 @@ data AppendEntriesResult =
 data ValidResponse =
     SendFailureResponse |
     Commit {
-        _replay :: Map (NodeID, LB.ByteString) (Maybe CommandResult)
+        _replay :: Map (NodeID, Signature) (Maybe CommandResult)
       , _updatedLog :: Seq LogEntry }
 
 -- THREAD: SERVER MAIN. updates state

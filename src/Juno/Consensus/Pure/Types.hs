@@ -24,6 +24,7 @@ module Juno.Consensus.Pure.Types (
   , MsgType(..), KeySet(..), Digest(..), Provenance(..), WireFormat(..)
   , signedRPCtoRPC, rpcToSignedRPC
   , SignedRPC(..)
+  , SecretKey(..), PublicKey(..), Signature(..)
   ) where
 
 
@@ -49,4 +50,5 @@ import Juno.Runtime.Types (
   , MsgType(..), KeySet(..), Digest(..), Provenance(..), WireFormat(..)
   , signedRPCtoRPC, rpcToSignedRPC
   , SignedRPC(..)
+  , SecretKey(..), PublicKey(..), Signature(..)
   )

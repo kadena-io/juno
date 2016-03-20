@@ -94,4 +94,5 @@ sendRPC target rpc = do
   send <- view (rs.sendMessage)
   myNodeId <- view (cfg.nodeId)
   privKey <- view (cfg.myPrivateKey)
-  send target $ encode $ rpcToSignedRPC myNodeId privKey rpc
+  pubKey <- view (cfg.myPublicKey)
+  send target $ encode $ rpcToSignedRPC myNodeId pubKey privKey rpc

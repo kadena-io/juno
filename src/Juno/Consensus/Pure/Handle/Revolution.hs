@@ -10,10 +10,9 @@ import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.ByteString.Lazy (ByteString)
+
 import Data.Map (Map)
 import qualified Data.Map as Map
-
 import Juno.Consensus.Pure.Types
 import Juno.Util.Util (debug, getRevSigOrInvariantError)
 import qualified Juno.Runtime.Types as JT
@@ -21,7 +20,7 @@ import qualified Juno.Runtime.Types as JT
 data RevolutionEnv = RevolutionEnv {
     _lazyVote         :: Maybe (Term, NodeID, LogIndex) -- Handler
   , _currentLeader    :: Maybe NodeID -- Client,Handler,Role
-  , _replayMap        :: Map (NodeID, ByteString) (Maybe CommandResult) -- Handler
+  , _replayMap        :: Map (NodeID, Signature) (Maybe CommandResult) -- Handler
 }
 makeLenses ''RevolutionEnv
 
@@ -29,9 +28,9 @@ data RevolutionOut =
   UnknownNode |
   RevolutionCalledOnNonLeader |
   IgnoreLeader
-    { _deleteReplayMapEntry :: (NodeID, ByteString) } |
+    { _deleteReplayMapEntry :: (NodeID, Signature) } |
   IgnoreLeaderAndClearLazyVote
-    { _deleteReplayMapEntry :: (NodeID, ByteString) }
+    { _deleteReplayMapEntry :: (NodeID, Signature) }
 
 handleRevolution :: (MonadReader RevolutionEnv m, MonadWriter [String] m) => Revolution -> m RevolutionOut
 handleRevolution rev@Revolution{..} = do

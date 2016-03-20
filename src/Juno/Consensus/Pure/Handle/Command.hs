@@ -10,7 +10,6 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.ByteString as B
-import Data.ByteString.Lazy as LB
 import qualified Data.Map as Map
 
 import Juno.Consensus.ByzRaft.Commit (doCommit,makeCommandResponse')
@@ -26,7 +25,7 @@ data CommandEnv = CommandEnv {
       _role :: Role
     , _term :: Term
     , _currentLeader :: Maybe NodeID
-    , _replayMap :: Map.Map (NodeID, LB.ByteString) (Maybe CommandResult)
+    , _replayMap :: Map.Map (NodeID, Signature) (Maybe CommandResult)
     , _nodeId :: NodeID
 }
 makeLenses ''CommandEnv
@@ -38,7 +37,7 @@ data CommandOut =
     , _cmd :: RPC } |
     CommitAndPropagate {
       _newEntry :: LogEntry
-    , _replayKey :: (NodeID, LB.ByteString)
+    , _replayKey :: (NodeID, Signature)
     } |
     AlreadySeen |
     SendCommandResponse {

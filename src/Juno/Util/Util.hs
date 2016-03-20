@@ -25,7 +25,6 @@ import Control.Monad.RWS
 import qualified Control.Concurrent.Lifted as CL
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as LB
 import qualified Data.Sequence as Seq
 import qualified System.Random as R
 import Data.Serialize
@@ -94,13 +93,13 @@ updateTerm t = do
   void $ rs.writeTermNumber ^$ t
   term .= t
 
-getCmdSigOrInvariantError :: String -> Command -> LB.ByteString
+getCmdSigOrInvariantError :: String -> Command -> Signature
 getCmdSigOrInvariantError where' s@Command{..} = case _cmdProvenance of
   NewMsg -> error $ where'
     ++ ": This should be unreachable, somehow an AE got through with a LogEntry that contained an unsigned Command" ++ show s
   ReceivedMsg{..} -> _digSig _pDig
 
-getRevSigOrInvariantError :: String -> Revolution -> LB.ByteString
+getRevSigOrInvariantError :: String -> Revolution -> Signature
 getRevSigOrInvariantError where' s@Revolution{..} = case _revProvenance of
   NewMsg -> error $ where'
     ++ ": This should be unreachable, got an unsigned Revolution" ++ show s
