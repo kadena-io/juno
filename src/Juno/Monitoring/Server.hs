@@ -6,12 +6,11 @@ module Juno.Monitoring.Server
 
 import Juno.Runtime.Types (Config, nodeId, _port)
 
-import System.Remote.Monitoring (forkServer)
-import Control.Monad (void)
+import System.Remote.Monitoring (Server, forkServer)
 import Control.Lens ((^.), to)
 
-runMonitoringApi :: Config -> IO ()
-runMonitoringApi config = void $ forkServer "localhost" port
+runMonitoringApi :: Config -> IO Server
+runMonitoringApi config = forkServer "localhost" port
   where
     -- TODO: change this port / load it from config
     port = 80 + fromIntegral (config ^. nodeId . to _port)

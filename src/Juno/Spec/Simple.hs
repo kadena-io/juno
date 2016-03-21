@@ -198,10 +198,10 @@ runServer applyFn = do
   (outboxWrite, outboxRead) <- newChan
   (eventWrite, eventRead) <- newChan
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  -- TODO: wire up monitoring to Raft data
-  runMonitoringApi rconf
+  ekgServer <- runMonitoringApi rconf
   runMsgServer inboxWrite outboxRead me []
-  runRaftServer rconf $ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
+  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
+  runRaftServer rconf raftSpec ekgServer
 
 runClient :: (CommandEntry -> IO CommandResult) -> IO CommandEntry -> (CommandResult -> IO ()) -> IO ()
 runClient applyFn getEntry useResult = do
@@ -210,9 +210,11 @@ runClient applyFn getEntry useResult = do
   (inboxWrite, inboxRead) <- newChan
   (outboxWrite, outboxRead) <- newChan
   (eventWrite, eventRead) <- newChan
+  ekgServer <- runMonitoringApi rconf
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
   runMsgServer inboxWrite outboxRead me []
-  runRaftClient getEntry useResult rconf (simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn))
+  let raftSpec = (simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn))
+  runRaftClient getEntry useResult rconf raftSpec ekgServer
 
 
 -- | lift a two-arg action into MonadIO
