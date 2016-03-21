@@ -92,6 +92,7 @@ library
                      , zeromq4-haskell >= 0.6.3
                      , zlib
                      , ekg >= 0.4 && < 0.5
+                     , ekg-core >= 0.1.1.0 && < 0.2
   hs-source-dirs:      src
   ghc-options:         -Wall -fno-warn-unused-do-bind
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
