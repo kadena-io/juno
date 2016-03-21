@@ -6,8 +6,6 @@
 module Juno.Spec.Simple
   ( runServer
   , runClient
-  , RequestId
-  , CommandStatus
   ) where
 
 import Juno.Consensus.ByzRaft.Server
@@ -15,15 +13,12 @@ import Juno.Consensus.ByzRaft.Client
 import Juno.Runtime.Types
 import Juno.Messaging.Types
 import Juno.Messaging.ZMQ
-import Juno.Monitoring.Server (startMonitoring)
+import Juno.Monitoring.Server (runMonitoringApi)
 
 import Control.Lens
-import Control.Concurrent (yield)
-import qualified Control.Concurrent.Lifted as CL
 import Control.Concurrent.Chan.Unagi
 import Data.Word
-import Data.Thyme.Clock (getCurrentTime)
-
+import Data.Serialize
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
@@ -31,10 +26,11 @@ import Data.Thyme.LocalTime
 import Text.Read
 import qualified Data.Set as Set
 import Data.ByteString (ByteString)
-
+import Codec.Crypto.RSA
 import Control.Monad.IO.Class
 import qualified Data.Map as Map
 
+import qualified Control.Concurrent.Lifted as CL
 import System.Random
 
 
@@ -86,16 +82,15 @@ defaultPortNum = 10000
 defaultConfig :: Config
 defaultConfig =
   Config
-    Set.empty                                  -- other nodes
-    (NodeID localhost defaultPortNum)          -- self address
-    Map.empty                                  -- publicKeys
-    Map.empty                                  -- clientPublicKeys
-    (SecretKey "") -- empty public key
-    (PublicKey "") -- empty public key
-    (3000000,6000000)                          -- election timeout range
-    1500000                                    -- heartbeat timeout
-    False                                      -- no debug
-    5                                          -- client timeouts before revolution
+    Set.empty                  -- other nodes
+    (NodeID localhost defaultPortNum) -- self address
+    Map.empty                  -- publicKeys
+    Map.empty                  -- clientPublicKeys
+    (PrivateKey (PublicKey 0 0 0) 0 0 0 0 0 0) -- empty public key
+    (3000000,6000000)          -- election timeout range
+    1500000                    -- heartbeat timeout
+    False                      -- no debug
+    5                          -- client timeouts before revolution
 
 setSelf :: String -> Config -> IO Config
 setSelf s c = case readNodeID s of
@@ -122,9 +117,8 @@ getClientPublicKeys :: FilePath -> Config -> IO Config
 getClientPublicKeys = readFileOrDie clientPublicKeys
 
 getPrivateKey :: FilePath -> Config -> IO Config
-getPrivateKey fp c = do
-  c' <- readFileOrDie myPrivateKey fp c
-  return $ c' { _myPublicKey = toPublicKey $ c' ^. myPrivateKey }
+getPrivateKey = readFileOrDie privateKey
+
 
 showDebug :: NodeID -> String -> IO ()
 showDebug _ msg = do
@@ -141,9 +135,8 @@ simpleRaftSpec :: MonadIO m
                -> InChan Event
                -> (CommandEntry -> m CommandResult)
                -> (NodeID -> String -> m ())
-               -> (Metric -> m ())
                -> RaftSpec m
-simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMetricFn = RaftSpec
+simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn = RaftSpec
     {
       -- TODO don't read log entries
       _readLogEntry    = return . const Nothing
@@ -159,20 +152,23 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
     , _writeVotedFor   = return . const ()
       -- apply log entries to the state machine, given by caller
     , _applyLogEntry   = applyFn
+      -- serialize with cereal
+    , _serializeRPC    = encode
+      -- deserialize with cereal
+    , _deserializeRPC = \a -> either
+        (\err -> Left $ "Invalid RPC: " ++ err ++ "\n## MSG ##\n" ++ show a)
+         Right $ decode a
       -- send messages using msgSend
     , _sendMessage     = liftIO2 (sendMsg outboxWrite)
       -- get messages using getMsg
     , _getMessage      = liftIO $ readChan inboxRead
       -- use the debug function given by the caller
     , _debugPrint      = debugFn
-      -- publish a 'Metric' to EKG
-    , _publishMetric   = pubMetricFn
-      -- get the current time in UTC
-    , _getTimestamp = liftIO getCurrentTime
-     -- _random :: forall a . Random a => (a, a) -> m a
+
+    -- _random :: forall a . Random a => (a, a) -> m a
     , _random = liftIO . randomRIO
     -- _enqueue :: InChan (Event nt et rt) -> Event nt et rt -> m ()
-    , _enqueue = \e -> liftIO $ writeChan eventWrite e >> yield
+    , _enqueue = liftIO . writeChan eventWrite
 
     -- _enqueueLater :: Int -> InChan (Event nt et rt) -> Event nt et rt -> m ThreadId
     , _enqueueLater = \t e -> liftIO $ CL.fork (CL.threadDelay t >> liftIO (writeChan eventWrite e))
@@ -192,7 +188,7 @@ sendMsg outboxWrite n s = do
   let addr = ROne $ nodeIDtoAddr n
       msg = OutBoundMsg addr s
   writeChan outboxWrite msg
-  yield
+
 
 runServer :: (CommandEntry -> IO CommandResult) -> IO ()
 runServer applyFn = do
@@ -202,23 +198,21 @@ runServer applyFn = do
   (outboxWrite, outboxRead) <- newChan
   (eventWrite, eventRead) <- newChan
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  pubMetric <- startMonitoring rconf
+  -- TODO: wire up monitoring to Raft data
+  runMonitoringApi rconf
   runMsgServer inboxWrite outboxRead me []
-  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
-  runRaftServer rconf raftSpec
+  runRaftServer rconf $ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
 
-runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, CommandEntry) -> CommandMVarMap -> IO ()
-runClient applyFn getEntry cmdStatusMap = do
+runClient :: (CommandEntry -> IO CommandResult) -> IO CommandEntry -> (CommandResult -> IO ()) -> IO ()
+runClient applyFn getEntry useResult = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
-  (inboxWrite, inboxRead) <- newChan -- client writes to inbox, raft reads
-  (outboxWrite, outboxRead) <- newChan -- raft writes to outbox, client reads
-  (eventWrite, eventRead) <- newChan -- timer events
+  (inboxWrite, inboxRead) <- newChan
+  (outboxWrite, outboxRead) <- newChan
+  (eventWrite, eventRead) <- newChan
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  pubMetric <- startMonitoring rconf
-  runMsgServer inboxWrite outboxRead me [] -- ZMQ
-  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
-  runRaftClient getEntry cmdStatusMap rconf raftSpec
+  runMsgServer inboxWrite outboxRead me []
+  runRaftClient getEntry useResult rconf (simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn))
 
 
 -- | lift a two-arg action into MonadIO
