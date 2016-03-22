@@ -11,5 +11,5 @@ import Juno.Util.Util
 becomeFollower :: Monad m => Raft m ()
 becomeFollower = do
   debug "becoming follower"
-  setRole Follower
+  updateRole Follower
   resetElectionTimer

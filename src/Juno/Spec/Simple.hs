@@ -165,6 +165,7 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
     , _getMessage      = liftIO $ readChan inboxRead
       -- use the debug function given by the caller
     , _debugPrint      = debugFn
+      -- publish a 'Metric' to EKG
     , _publishMetric   = pubMetricFn
     -- _random :: forall a . Random a => (a, a) -> m a
     , _random = liftIO . randomRIO

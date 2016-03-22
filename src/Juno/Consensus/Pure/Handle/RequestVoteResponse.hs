@@ -16,10 +16,8 @@ import qualified Data.Sequence as Seq
 
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntries)
-import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader,
-                           resetElectionTimer)
-import Juno.Util.Util (debug, lastLogInfo, setRole, setTerm, setCurrentLeader,
-                       setLNextIndex)
+import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader, resetElectionTimer)
+import Juno.Util.Util (debug, lastLogInfo, updateRole)
 import qualified Juno.Runtime.Types as JT
 
 data RequestVoteResponseEnv = RequestVoteResponseEnv {
@@ -104,10 +102,10 @@ handle m = do
 -- THREAD: SERVER MAIN. updates state
 becomeLeader :: Monad m => JT.Raft m ()
 becomeLeader = do
-  setRole Leader
-  setCurrentLeader . Just =<< view (JT.cfg.JT.nodeId)
+  updateRole Leader
+  (JT.currentLeader .=) . Just =<< view (JT.cfg.JT.nodeId)
   ni <- Seq.length <$> use JT.logEntries
-  setLNextIndex =<< Map.fromSet (const $ LogIndex ni) <$> view (JT.cfg.JT.otherNodes)
+  (JT.lNextIndex  .=) =<< Map.fromSet (const $ LogIndex ni) <$> view (JT.cfg.JT.otherNodes)
   (JT.lMatchIndex .=) =<< Map.fromSet (const startIndex) <$> view (JT.cfg.JT.otherNodes)
   JT.lConvinced .= Set.empty
   sendAllAppendEntries
@@ -118,12 +116,12 @@ revertToLastQuorumState :: Monad m => JT.Raft m ()
 revertToLastQuorumState = do
   es <- use JT.logEntries
   (lastGoodTerm',_,_) <- return $ lastLogInfo es
-  setRole Follower
+  updateRole Follower
   -- We don't persist this info and don't want to trust the RVR send's
   -- word so we set it to nothing an await an AE from some Leader of a higher term, then validate the votes
-  setCurrentLeader Nothing
+  JT.currentLeader .= Nothing
   JT.ignoreLeader .= False
-  setTerm lastGoodTerm'
+  JT.term .= lastGoodTerm'
   JT.votedFor .= Nothing
   JT.cYesVotes .= Set.empty
   JT.cPotentialVotes .= Set.empty

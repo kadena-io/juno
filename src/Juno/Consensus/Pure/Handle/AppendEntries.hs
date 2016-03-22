@@ -22,8 +22,8 @@ import Juno.Consensus.ByzRaft.Log
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
-import Juno.Util.Util (seqIndex, debug, setTerm, setRole, setCurrentLeader,
-                       getCmdSigOrInvariantError, logMetric)
+import Juno.Util.Util (seqIndex, debug, updateTerm, updateRole,
+                       getCmdSigOrInvariantError)
 import qualified Juno.Runtime.Types as JT
 
 data AppendEntriesEnv = AppendEntriesEnv {
@@ -92,7 +92,7 @@ handleAppendEntries ae@AppendEntries{..} = do
             then sendAllAppendEntriesResponse
             else sendAppendEntriesResponse _leaderId True True
           --}
-    _ | not ignoreLeader' && _aeTerm >= currentTerm' -> do -- see TODO about setTerm
+    _ | not ignoreLeader' && _aeTerm >= currentTerm' -> do -- see TODO about updateTerm
       tell ["sending unconvinced response"]
       return $ AppendEntriesOut nlo $ SendUnconvincedResponse _leaderId
     _ -> return $ AppendEntriesOut nlo Ignore
@@ -141,28 +141,21 @@ appendLogEntries :: (MonadWriter [String] m, MonadReader AppendEntriesEnv m)
 appendLogEntries pli newEs = do
   les <- view logEntries
   logEntries' <- return . (Seq.>< newEs) . Seq.take (fromIntegral pli + 1) $ les
+  tell ["replaying LogEntry: " ++ show newEs]
   replay <- return $
     foldl (\m LogEntry{_leCommand = c@Command{..}} ->
             Map.insert (_cmdClientId, getCmdSigOrInvariantError "appendLogEntries" c) Nothing m)
     Map.empty newEs
-  logEntries'' <- return $ updateLogHashesFromIndex (pli + 1) logEntries'
-  tell ["replaying LogEntry(s): " ++ show (Seq.length les) ++ " through " ++ show (Seq.length logEntries'') ]
+  logEntries'' <- return $ updateLogHashesFromIndex' (pli + 1) logEntries'
   return $ Commit replay logEntries''
 
 applyNewLeader :: Monad m => CheckForNewLeaderOut -> JT.Raft m ()
 applyNewLeader LeaderUnchanged = return ()
 applyNewLeader NewLeaderConfirmed{..} = do
-  setTerm _stateRsUpdateTerm
+  updateTerm _stateRsUpdateTerm
   JT.ignoreLeader .= _stateIgnoreLeader
-  setCurrentLeader $ Just _stateCurrentLeader
-  setRole _stateRole
-
-logHashChange :: Monad m => JT.Raft m ()
-logHashChange = do
-  mLastHash <- firstOf (_last.JT.leHash) <$> use JT.logEntries
-  case mLastHash of
-    Just lastHash -> logMetric $ JT.MetricHash lastHash
-    Nothing -> return ()
+  JT.currentLeader .= Just _stateCurrentLeader
+  updateRole _stateRole
 
 handle :: Monad m => AppendEntries -> JT.Raft m ()
 handle ae = do
@@ -187,6 +180,5 @@ handle ae = do
         SendFailureResponse -> sendAppendEntriesResponse _responseLeaderId False True
         (Commit rMap updatedLog') -> do
           JT.logEntries .= updatedLog'
-          logHashChange
           JT.replayMap %= Map.union rMap
           sendAllAppendEntriesResponse

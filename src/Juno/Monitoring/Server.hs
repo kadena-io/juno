@@ -25,6 +25,7 @@ startApi config = forkServer "localhost" port
 startMonitoring :: Config -> IO (Metric -> IO ())
 startMonitoring config = do
   ekg <- startApi config
+
   roleLabel <- getLabel "juno.node.role" ekg
   logIndexGauge <- getGauge "juno.consensus.log_index" ekg
 
