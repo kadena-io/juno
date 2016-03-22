@@ -83,7 +83,11 @@ messageReceiver = do
   forever $ do
     msg <- gm
     case decode msg of
-      Left err -> debug $ "Failed to deserialize to SignedRPC: " ++ err
+      Left err -> do
+        -- two debugs here because... when the system is streaming you may miss the error & you want the message.
+        -- So print the msg (to get your attention) and then print the error under it... TODO: better logging
+        debug $ "Failed to deserialize to SignedRPC [Msg]: " ++ show msg
+        debug $ "Failed to deserialize to SignedRPC [Error]: " ++ err
       Right v -> case signedRPCtoRPC ks v of
         Left err -> debug err
         Right rpc -> enqueueEvent $ ERPC rpc

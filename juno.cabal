@@ -52,7 +52,6 @@ library
                      , Juno.Util.Util
                      , Schwifty.Swift.M105.Types
                      , Schwifty.Swift.M105.Parser
-
   build-depends:       SHA2
                      , ed25519
                      , attoparsec
@@ -157,6 +156,8 @@ executable crypto
   default-language:    Haskell2010
 
 test-suite hspec
+  other-modules:       ParserSpec
+                     , WireFormatSpec
   type: exitcode-stdio-1.0
   main-is: hspec.hs
   hs-source-dirs: tests

@@ -140,12 +140,12 @@ appendLogEntries :: (MonadWriter [String] m, MonadReader AppendEntriesEnv m)
 appendLogEntries pli newEs = do
   les <- view logEntries
   logEntries' <- return . (Seq.>< newEs) . Seq.take (fromIntegral pli + 1) $ les
-  tell ["replaying LogEntry: " ++ show newEs]
   replay <- return $
     foldl (\m LogEntry{_leCommand = c@Command{..}} ->
             Map.insert (_cmdClientId, getCmdSigOrInvariantError "appendLogEntries" c) Nothing m)
     Map.empty newEs
   logEntries'' <- return $ updateLogHashesFromIndex' (pli + 1) logEntries'
+  tell ["replaying LogEntry(s): " ++ show (Seq.length les) ++ " through " ++ show (Seq.length logEntries'') ]
   return $ Commit replay logEntries''
 
 applyNewLeader :: Monad m => CheckForNewLeaderOut -> JT.Raft m ()
