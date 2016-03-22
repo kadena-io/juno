@@ -5,7 +5,8 @@ module Juno.Monitoring.Server
   ( startMonitoring
   ) where
 
-import Juno.Runtime.Types (Config, Metric(..), LogIndex(..), nodeId, _port)
+import Juno.Runtime.Types (Config, Metric(..), LogIndex(..), Term(..), nodeId,
+                           _port)
 
 import System.Remote.Monitoring (Server, forkServer, getLabel, getGauge)
 import Control.Lens ((^.), to)
@@ -28,9 +29,12 @@ startMonitoring config = do
 
   roleLabel <- getLabel "juno.node.role" ekg
   logIndexGauge <- getGauge "juno.consensus.log_index" ekg
+  termGauge <- getGauge "juno.consensus.term" ekg
 
   return $ \case
     MetricRole role ->
       Label.set roleLabel $ T.pack $ show role
     MetricLogIndex (LogIndex idx) ->
       Gauge.set logIndexGauge $ fromIntegral idx
+    MetricTerm (Term t) ->
+      Gauge.set termGauge $ fromIntegral t

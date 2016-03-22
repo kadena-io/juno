@@ -97,6 +97,7 @@ updateTerm :: Monad m => Term -> Raft m ()
 updateTerm t = do
   void $ rs.writeTermNumber ^$ t
   term .= t
+  logMetric $ MetricTerm t
 
 updateRole :: Monad m => Role -> Raft m ()
 updateRole newRole = do

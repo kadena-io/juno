@@ -513,6 +513,7 @@ data Role = Follower
 
 data Metric = MetricRole Role
             | MetricLogIndex LogIndex
+            | MetricTerm Term
             -- TODO: more
 
 -- | A structure containing all the implementation details for running

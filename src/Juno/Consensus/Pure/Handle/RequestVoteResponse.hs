@@ -17,7 +17,7 @@ import qualified Data.Sequence as Seq
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntries)
 import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader, resetElectionTimer)
-import Juno.Util.Util (debug, lastLogInfo, updateRole)
+import Juno.Util.Util (debug, lastLogInfo, updateRole, updateTerm)
 import qualified Juno.Runtime.Types as JT
 
 data RequestVoteResponseEnv = RequestVoteResponseEnv {
@@ -121,7 +121,7 @@ revertToLastQuorumState = do
   -- word so we set it to nothing an await an AE from some Leader of a higher term, then validate the votes
   JT.currentLeader .= Nothing
   JT.ignoreLeader .= False
-  JT.term .= lastGoodTerm'
+  updateTerm lastGoodTerm'
   JT.votedFor .= Nothing
   JT.cYesVotes .= Set.empty
   JT.cPotentialVotes .= Set.empty
