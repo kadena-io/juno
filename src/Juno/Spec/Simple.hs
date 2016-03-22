@@ -17,7 +17,6 @@ import Juno.Messaging.ZMQ
 import Control.Lens
 import Control.Concurrent (yield)
 import Control.Concurrent.Chan.Unagi
-import Crypto.Sign.Ed25519 (toPublicKey)
 import Data.Word
 
 import System.Console.GetOpt

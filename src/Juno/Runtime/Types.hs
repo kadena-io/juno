@@ -47,7 +47,7 @@ module Juno.Runtime.Types
   , signedRPCtoRPC, rpcToSignedRPC
   , SignedRPC(..)
   -- for simplicity, re-export the crypto types
-  , PublicKey(..), SecretKey(..), Signature(..)
+  , PublicKey(..), SecretKey(..), Signature(..), dsign, dverify, toPublicKey
   -- for testing & benchmarks
   , LEWire(..), encodeLEWire, decodeLEWire, decodeRVRWire
   , verifySignedRPC, CMDWire(..)
@@ -56,7 +56,7 @@ module Juno.Runtime.Types
 import Control.Concurrent (ThreadId)
 import Control.Lens hiding (Index, (|>))
 import Control.Monad.RWS (RWST)
-import Crypto.Sign.Ed25519 (PublicKey(..), SecretKey(..), Signature(..), dsign, dverify)
+import Crypto.Sign.Ed25519 (PublicKey(..), SecretKey(..), Signature(..), dsign, dverify, toPublicKey)
 import Data.Sequence (Seq, (|>))
 import qualified Data.Sequence as Seq
 import Data.Map (Map)
