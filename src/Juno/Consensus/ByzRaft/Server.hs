@@ -12,14 +12,13 @@ import Juno.Runtime.Timer
 
 import qualified Control.Concurrent.Lifted as CL
 import Control.Monad
-import qualified System.Remote.Monitoring as EKG
 
-runRaftServer :: Config -> RaftSpec (Raft IO) -> EKG.Server -> IO ()
-runRaftServer rconf spec ekgServer = do
+runRaftServer :: Config -> RaftSpec (Raft IO) -> IO ()
+runRaftServer rconf spec = do
   let qsize = getQuorumSize $ 1 + (Set.size $ rconf ^. otherNodes)
   runRWS_
     raft
-    (RaftEnv rconf qsize spec ekgServer)
+    (RaftEnv rconf qsize spec)
     initialRaftState
 
 -- THREAD: SERVER MAIN

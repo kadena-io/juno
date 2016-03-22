@@ -20,20 +20,18 @@ import Juno.Util.Util
 import Juno.Runtime.Sender (sendSignedRPC)
 
 import qualified Control.Concurrent.Lifted as CL
-import qualified System.Remote.Monitoring as EKG
 
 runRaftClient :: IO CommandEntry
               -> (CommandResult -> IO ())
               -> Config
               -> RaftSpec (Raft IO)
-              -> EKG.Server
               -> IO ()
-runRaftClient getEntry useResult rconf spec@RaftSpec{..} ekgServer = do
+runRaftClient getEntry useResult rconf spec@RaftSpec{..} = do
   let qsize = getQuorumSize $ Set.size $ rconf ^. otherNodes
   UTCTime _ time <- liftIO $ unUTCTime <$> getCurrentTime
   runRWS_
     (raftClient (lift getEntry) (lift . useResult))
-    (RaftEnv rconf qsize spec ekgServer)
+    (RaftEnv rconf qsize spec)
     initialRaftState {_currentRequestId = toRequestId $ toMicroseconds time }-- only use currentLeader and logEntries
 
 -- THREAD: CLIENT MAIN

@@ -13,7 +13,7 @@ import Juno.Consensus.ByzRaft.Client
 import Juno.Runtime.Types
 import Juno.Messaging.Types
 import Juno.Messaging.ZMQ
-import Juno.Monitoring.Server (runMonitoringApi)
+import Juno.Monitoring.Server (startMonitoring)
 
 import Control.Lens
 import Control.Concurrent.Chan.Unagi
@@ -135,8 +135,9 @@ simpleRaftSpec :: MonadIO m
                -> InChan Event
                -> (CommandEntry -> m CommandResult)
                -> (NodeID -> String -> m ())
+               -> (Metric -> m ())
                -> RaftSpec m
-simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn = RaftSpec
+simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMetricFn = RaftSpec
     {
       -- TODO don't read log entries
       _readLogEntry    = return . const Nothing
@@ -164,7 +165,7 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn = Raft
     , _getMessage      = liftIO $ readChan inboxRead
       -- use the debug function given by the caller
     , _debugPrint      = debugFn
-
+    , _publishMetric   = pubMetricFn
     -- _random :: forall a . Random a => (a, a) -> m a
     , _random = liftIO . randomRIO
     -- _enqueue :: InChan (Event nt et rt) -> Event nt et rt -> m ()
@@ -198,10 +199,10 @@ runServer applyFn = do
   (outboxWrite, outboxRead) <- newChan
   (eventWrite, eventRead) <- newChan
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  ekgServer <- runMonitoringApi rconf
+  pubMetric <- startMonitoring rconf
   runMsgServer inboxWrite outboxRead me []
-  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
-  runRaftServer rconf raftSpec ekgServer
+  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
+  runRaftServer rconf raftSpec
 
 runClient :: (CommandEntry -> IO CommandResult) -> IO CommandEntry -> (CommandResult -> IO ()) -> IO ()
 runClient applyFn getEntry useResult = do
@@ -210,11 +211,11 @@ runClient applyFn getEntry useResult = do
   (inboxWrite, inboxRead) <- newChan
   (outboxWrite, outboxRead) <- newChan
   (eventWrite, eventRead) <- newChan
-  ekgServer <- runMonitoringApi rconf
+  pubMetric <- startMonitoring rconf
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
   runMsgServer inboxWrite outboxRead me []
-  let raftSpec = (simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn))
-  runRaftClient getEntry useResult rconf raftSpec ekgServer
+  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
+  runRaftClient getEntry useResult rconf raftSpec
 
 
 -- | lift a two-arg action into MonadIO
