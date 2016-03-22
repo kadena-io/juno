@@ -15,6 +15,7 @@ import Juno.Messaging.Types
 import Juno.Messaging.ZMQ
 
 import Control.Lens
+import Control.Concurrent (yield)
 import Control.Concurrent.Chan.Unagi
 import Crypto.Sign.Ed25519 (toPublicKey)
 import Data.Word
@@ -164,7 +165,7 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn = Raft
     -- _random :: forall a . Random a => (a, a) -> m a
     , _random = liftIO . randomRIO
     -- _enqueue :: InChan (Event nt et rt) -> Event nt et rt -> m ()
-    , _enqueue = liftIO . writeChan eventWrite
+    , _enqueue = \e -> liftIO $ writeChan eventWrite e >> yield
 
     -- _enqueueLater :: Int -> InChan (Event nt et rt) -> Event nt et rt -> m ThreadId
     , _enqueueLater = \t e -> liftIO $ CL.fork (CL.threadDelay t >> liftIO (writeChan eventWrite e))
@@ -184,6 +185,7 @@ sendMsg outboxWrite n s = do
   let addr = ROne $ nodeIDtoAddr n
       msg = OutBoundMsg addr s
   writeChan outboxWrite msg
+  yield
 
 runServer :: (CommandEntry -> IO CommandResult) -> IO ()
 runServer applyFn = do

@@ -7,7 +7,7 @@ module Juno.Messaging.ZMQ (
   runMsgServer
   ) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, threadDelay, yield)
 import Control.Concurrent.Chan.Unagi
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as Map
@@ -69,9 +69,8 @@ runMsgServer inboxWrite outboxRead me addrList = void $ do
       forever $ do
         newMsg <- receive sock
         case decode newMsg of
-          Left err -> liftIO $ putStrLn $ "Failure to decode: " ++ err
-          Right v -> liftIO $ writeChan inboxWrite v
-        liftIO $ threadDelay 1000
+          Left err -> liftIO $ putStrLn ("Failure to decode: " ++ err) >> yield
+          Right v -> liftIO $ writeChan inboxWrite v >> yield
     threadDelay 100000 -- to be sure that the recieve side is up first
     forkIO $ runZMQ $ do
       rolodex <- addNewAddrs (Rolodex Map.empty) addrList
