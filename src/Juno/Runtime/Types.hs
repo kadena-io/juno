@@ -511,10 +511,13 @@ data Role = Follower
           | Leader
   deriving (Show, Generic, Eq)
 
-data Metric = MetricRole Role
+data Metric -- Consensus metrics:
+            = MetricTerm Term
             | MetricLogIndex LogIndex
-            | MetricTerm Term
-            -- TODO: more
+            | MetricCommitIndex LogIndex
+            -- Node metrics:
+            | MetricRole Role
+            | MetricAppliedIndex LogIndex
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.

@@ -27,14 +27,24 @@ startMonitoring :: Config -> IO (Metric -> IO ())
 startMonitoring config = do
   ekg <- startApi config
 
-  roleLabel <- getLabel "juno.node.role" ekg
-  logIndexGauge <- getGauge "juno.consensus.log_index" ekg
+  -- Consensus
   termGauge <- getGauge "juno.consensus.term" ekg
+  logIndexGauge <- getGauge "juno.consensus.log_index" ekg
+  commitIndexGauge <- getGauge "juno.consensus.commit_index" ekg
+  -- Node
+  roleLabel <- getLabel "juno.node.role" ekg
+  appliedIndexGauge <- getGauge "juno.node.applied_index" ekg
 
   return $ \case
-    MetricRole role ->
-      Label.set roleLabel $ T.pack $ show role
-    MetricLogIndex (LogIndex idx) ->
-      Gauge.set logIndexGauge $ fromIntegral idx
+    -- Consensus
     MetricTerm (Term t) ->
       Gauge.set termGauge $ fromIntegral t
+    MetricLogIndex (LogIndex idx) ->
+      Gauge.set logIndexGauge $ fromIntegral idx
+    MetricCommitIndex (LogIndex idx) ->
+      Gauge.set commitIndexGauge $ fromIntegral idx
+    -- Node
+    MetricRole role ->
+       Label.set roleLabel $ T.pack $ show role
+    MetricAppliedIndex (LogIndex idx) ->
+      Gauge.set appliedIndexGauge $ fromIntegral idx

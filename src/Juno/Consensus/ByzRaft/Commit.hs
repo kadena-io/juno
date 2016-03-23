@@ -8,8 +8,6 @@ where
 
 import Control.Lens
 import Control.Monad
-import Data.AffineSpace ((.-.))
-import Data.Thyme.Clock (microseconds)
 import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
@@ -40,9 +38,6 @@ applyLogEntries = do
   when (r == Leader) $ sendResults results
   lastApplied .= ci
   logMetric $ MetricAppliedIndex ci
-  if length results > 0
-    then debug $ "Sent " ++ show (length results) ++ " CMDRs"
-    else debug $ "Applied log entries but did not send results?"
 
 applyCommand :: Monad m => Command -> Raft m (NodeID, CommandResponse)
 applyCommand cmd@Command{..} = do
@@ -65,22 +60,6 @@ makeCommandResponse' nid mlid Command{..} result = CommandResponse
              _cmdRequestId
              NewMsg
 
-logCommitChange :: Monad m => LogIndex -> LogIndex -> Raft m ()
-logCommitChange before after
-  | after > before = do
-      logMetric $ MetricCommitIndex after
-      mLastTime <- use lastCommitTime
-      now <- join $ view (rs.getTimestamp)
-      case mLastTime of
-        Nothing -> return ()
-        Just lastTime ->
-          let duration = view microseconds $ now .-. lastTime
-              (LogIndex numCommits) = after - before
-              period = fromIntegral duration / fromIntegral numCommits
-          in logMetric $ MetricCommitPeriod period
-      lastCommitTime ?= now
-  | otherwise = return ()
-
 -- checks to see what the largest N where a quorum of nodes
 -- has sent us proof of a commit up to that index
 -- THREAD: SERVER MAIN. updates state
@@ -100,12 +79,9 @@ updateCommitIndex = do
   let qcinds = takeWhile (\i -> (not . Map.null) (Map.filterWithKey (\k s -> k >= i && Set.size s + 1 >= qsize) proof)) inds
 
   case qcinds of
-    [] -> do
-      debug "No new commit proof to check"
-      return False
+    [] -> return False
     _  -> do
       let qci = last qcinds
-      debug $ "checking commit proof for: " ++ show qci
       case Map.lookup qci proof of
         Just s -> do
           let lhash = _leHash (Seq.index es $ fromIntegral qci)
@@ -113,17 +89,13 @@ updateCommitIndex = do
           if valid
             then do
               commitIndex .= qci
-              logCommitChange ci qci
+              logMetric $ MetricCommitIndex qci
               commitProof %= Map.filterWithKey (\k _ -> k >= qci)
               debug $ "Commit index is now: " ++ show qci
               return True
-            else do
-              debug $ "Invalid Commit Proof found for " ++ show qci ++ " and " ++ show lhash
-              debug $ "Evidence was: " ++ show ((\a -> (_aerIndex a, _aerHash a)) <$> Set.toList s)
+            else
               return False
-        Nothing -> do
-          debug $ "No proof found at: " ++ show qci
-          return False
+        Nothing -> return False
 
 checkCommitProof :: LogIndex -> B.ByteString -> Set.Set AppendEntriesResponse -> Bool
 checkCommitProof ci lhash aers = all (\AppendEntriesResponse{..} -> _aerHash == lhash && _aerIndex == ci) aers
