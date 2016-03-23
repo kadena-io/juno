@@ -33,6 +33,7 @@ runRaftClient getEntry useResult rconf spec@RaftSpec{..} = do
   runRWS_
     (raftClient (lift getEntry) (lift . useResult))
     (RaftEnv rconf csize qsize spec)
+    -- TODO: because UTC can flow backwards, this request ID is problematic:
     initialRaftState {_currentRequestId = toRequestId $ toMicroseconds time }-- only use currentLeader and logEntries
 
 -- THREAD: CLIENT MAIN
