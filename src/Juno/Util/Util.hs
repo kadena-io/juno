@@ -11,6 +11,7 @@ module Juno.Util.Util
   , enqueueEvent, enqueueEventLater
   , dequeueEvent
   , logMetric
+  , logStaticMetrics
   , messageReceiver
   , updateTerm
   , updateRole
@@ -78,6 +79,12 @@ dequeueEvent = join $ view (rs.dequeue)
 
 logMetric :: Monad m => Metric -> Raft m ()
 logMetric metric = view (rs.publishMetric) >>= \f -> f metric
+
+logStaticMetrics :: Monad m => Raft m ()
+logStaticMetrics = do
+  logMetric . MetricNodeId =<< view (cfg.nodeId)
+  logMetric . MetricClusterSize =<< view clusterSize
+  logMetric . MetricQuorumSize =<< view quorumSize
 
 -- | Thread to take incoming messages and write them to the event queue.
 -- THREAD: MESSAGE RECEIVER (client and server), no state updates

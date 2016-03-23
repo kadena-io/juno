@@ -5,8 +5,8 @@ module Juno.Monitoring.Server
   ( startMonitoring
   ) where
 
-import Juno.Runtime.Types (Config, Metric(..), LogIndex(..), Term(..), nodeId,
-                           _port)
+import Juno.Runtime.Types (Config, Metric(..), LogIndex(..), Term(..),
+                           NodeID(..), nodeId, _port)
 
 import System.Remote.Monitoring (Server, forkServer, getLabel, getGauge)
 import Control.Lens ((^.), to)
@@ -32,8 +32,14 @@ startMonitoring config = do
   logIndexGauge <- getGauge "juno.consensus.log_index" ekg
   commitIndexGauge <- getGauge "juno.consensus.commit_index" ekg
   -- Node
+  nodeIdLabel <- getLabel "juno.node.id" ekg
+  hostLabel <- getLabel "juno.node.host" ekg
+  portGauge <- getGauge "juno.node.port" ekg
   roleLabel <- getLabel "juno.node.role" ekg
   appliedIndexGauge <- getGauge "juno.node.applied_index" ekg
+  -- Cluster
+  clusterSizeGauge <- getGauge "juno.cluster.size" ekg
+  quorumSizeGauge <- getGauge "juno.cluster.quorum_size" ekg
 
   return $ \case
     -- Consensus
@@ -44,7 +50,16 @@ startMonitoring config = do
     MetricCommitIndex (LogIndex idx) ->
       Gauge.set commitIndexGauge $ fromIntegral idx
     -- Node
+    MetricNodeId (NodeID host port) -> do
+      Label.set nodeIdLabel $ T.pack $ host ++ ":" ++ show port
+      Label.set hostLabel $ T.pack host
+      Gauge.set portGauge $ fromIntegral port
     MetricRole role ->
-       Label.set roleLabel $ T.pack $ show role
+      Label.set roleLabel $ T.pack $ show role
     MetricAppliedIndex (LogIndex idx) ->
       Gauge.set appliedIndexGauge $ fromIntegral idx
+    -- Cluster
+    MetricClusterSize size ->
+      Gauge.set clusterSizeGauge $ fromIntegral size
+    MetricQuorumSize size ->
+      Gauge.set quorumSizeGauge $ fromIntegral size

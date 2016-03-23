@@ -38,6 +38,7 @@ runRaftClient getEntry useResult rconf spec@RaftSpec{..} = do
 -- THREAD: CLIENT MAIN
 raftClient :: Raft IO CommandEntry -> (CommandResult -> Raft IO ()) -> Raft IO ()
 raftClient getEntry useResult = do
+  logStaticMetrics
   nodes <- view (cfg.otherNodes)
   when (Set.null nodes) $ error "The client has no nodes to send requests to."
   currentLeader .= (Just $ Set.findMin nodes)

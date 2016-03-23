@@ -25,6 +25,7 @@ runRaftServer rconf spec = do
 -- THREAD: SERVER MAIN
 raft :: Raft IO ()
 raft = do
+  logStaticMetrics
   void $ CL.fork messageReceiver -- THREAD: SERVER MESSAGE RECEIVER
   resetElectionTimer
   handleEvents

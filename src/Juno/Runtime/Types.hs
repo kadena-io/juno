@@ -516,8 +516,12 @@ data Metric -- Consensus metrics:
             | MetricLogIndex LogIndex
             | MetricCommitIndex LogIndex
             -- Node metrics:
+            | MetricNodeId NodeID
             | MetricRole Role
             | MetricAppliedIndex LogIndex
+            -- Cluster metrics:
+            | MetricClusterSize Int
+            | MetricQuorumSize Int
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
