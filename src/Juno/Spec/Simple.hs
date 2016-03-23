@@ -131,7 +131,7 @@ noDebug :: NodeID -> String -> IO ()
 noDebug _ _ = return ()
 
 simpleRaftSpec :: MonadIO m
-               => OutChan ByteString
+               => OutChan (ReceivedAt, ByteString)
                -> InChan (OutBoundMsg String ByteString)
                -> OutChan Event
                -> InChan Event

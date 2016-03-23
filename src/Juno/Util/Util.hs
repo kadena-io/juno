@@ -81,14 +81,14 @@ messageReceiver = do
   gm <- view (rs.getMessage)
   ks <- KeySet <$> view (cfg.publicKeys) <*> view (cfg.clientPublicKeys)
   forever $ do
-    msg <- gm
+    (ts, msg) <- gm
     case decode msg of
       Left err -> do
         -- two debugs here because... when the system is streaming you may miss the error & you want the message.
         -- So print the msg (to get your attention) and then print the error under it... TODO: better logging
         debug $ "Failed to deserialize to SignedRPC [Msg]: " ++ show msg
         debug $ "Failed to deserialize to SignedRPC [Error]: " ++ err
-      Right v -> case signedRPCtoRPC ks v of
+      Right v -> case signedRPCtoRPC ts ks v of
         Left err -> debug err
         Right rpc -> enqueueEvent $ ERPC rpc
 

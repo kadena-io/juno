@@ -14,8 +14,10 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.Serialize
 import System.ZMQ4.Monadic
+import Data.Thyme.Clock
 
 import Juno.Messaging.Types
+import Juno.Runtime.Types (ReceivedAt(..))
 
 sendProcess :: Serialize a
             => OutChan (OutBoundMsg String a)
@@ -53,11 +55,11 @@ addNewAddrs (Rolodex r) (x:xs) = do
 
 recipList :: Rolodex String (Socket z Push) -> Recipients String -> ZMQ z [Socket z Push]
 recipList (Rolodex r) RAll = return $ _unListenOn <$> Map.elems r
-recipList (Rolodex r) (RSome addrs) = return $ _unListenOn <$> (r Map.!) <$> Set.toList addrs
+recipList (Rolodex r) (RSome addrs) = return $ _unListenOn . (r Map.!) <$> Set.toList addrs
 recipList (Rolodex r) (ROne addr) = return $ _unListenOn <$> [r Map.! addr]
 
 runMsgServer :: Serialize m
-             => InChan m
+             => InChan (ReceivedAt, m)
              -> OutChan (OutBoundMsg String m)
              -> Addr String
              -> [Addr String]
@@ -70,7 +72,9 @@ runMsgServer inboxWrite outboxRead me addrList = void $ do
         newMsg <- receive sock
         case decode newMsg of
           Left err -> liftIO $ putStrLn ("Failure to decode: " ++ err) >> yield
-          Right v -> liftIO $ writeChan inboxWrite v >> yield
+          Right v -> do
+            ts <- liftIO getCurrentTime
+            liftIO $ writeChan inboxWrite (ReceivedAt ts, v) >> yield
     threadDelay 100000 -- to be sure that the recieve side is up first
     forkIO $ runZMQ $ do
       rolodex <- addNewAddrs (Rolodex Map.empty) addrList

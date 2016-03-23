@@ -17,10 +17,11 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.Serialize
 import GHC.Generics (Generic)
+import Juno.Runtime.Types (ReceivedAt)
 
 data Spec addr msg sock = Spec {
   -- | Messages for you
-  _sInbox   :: Serialize msg => InChan msg
+  _sInbox   :: Serialize msg => InChan (ReceivedAt, msg)
   -- | Messages that you want to send
   ,_sOutbox :: Serialize addr => OutChan (OutBoundMsg addr msg)
   -- | What the receiver listens on

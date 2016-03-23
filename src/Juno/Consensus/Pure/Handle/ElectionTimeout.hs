@@ -100,7 +100,7 @@ selfVoteProvenance rvr = do
   myPrivateKey' <- view myPrivateKey
   myPublicKey' <- view myPublicKey
   (SignedRPC dig bdy) <- return $ toWire nodeId' myPublicKey' myPrivateKey' rvr
-  return $ ReceivedMsg dig bdy
+  return $ ReceivedMsg dig bdy defaultReceivedAt
 
 handle :: Monad m => String -> JT.Raft m ()
 handle msg = do
