@@ -14,8 +14,8 @@ module Juno.Runtime.Types
   , RaftSpec(..)
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
   , readVotedFor, writeVotedFor, applyLogEntry
-  , sendMessage, getMessage, debugPrint, publishMetric
-  , random, enqueue, dequeue, enqueueLater, killEnqueued
+  , sendMessage, getMessage, debugPrint, publishMetric, getTimestamp, random
+  , enqueue, dequeue, enqueueLater, killEnqueued
   , NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
@@ -32,7 +32,8 @@ module Juno.Runtime.Types
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
-  , numTimeouts, pendingRequests, currentRequestId, timeSinceLastAER
+  , lastCommitTime, numTimeouts, pendingRequests, currentRequestId
+  , timeSinceLastAER
   , initialRaftState
   -- * RPC
   , AppendEntries(..)
@@ -70,6 +71,7 @@ import Data.Serialize (Serialize)
 import qualified Data.Serialize as S
 import Data.Word (Word64)
 import Data.Foldable
+import Data.Thyme.Clock (UTCTime)
 
 import qualified Data.Binary.Serialise.CBOR.Class as CBC
 
@@ -514,6 +516,7 @@ data Role = Follower
 data Metric -- Consensus metrics:
             = MetricTerm Term
             | MetricCommitIndex LogIndex
+            | MetricCommitPeriod Double
             | MetricCurrentLeader (Maybe NodeID)
             -- Node metrics:
             | MetricNodeId NodeID
@@ -564,6 +567,8 @@ data RaftSpec m = RaftSpec
 
   , _publishMetric    :: Metric -> m ()
 
+  , _getTimestamp     :: m UTCTime
+
   , _random           :: forall a . Random a => (a, a) -> m a -- Simple,Util(randomRIO[timer])
 
   , _enqueue          :: Event -> m () -- Simple,Util(enqueueEvent)
@@ -596,6 +601,9 @@ data RaftState = RaftState
   , _lMatchIndex      :: Map NodeID LogIndex -- Role (never read?)
   , _lConvinced       :: Set NodeID -- Handler,Role,Sender
 
+  -- used for metrics
+  , _lastCommitTime   :: Maybe UTCTime
+
   -- used by clients
   , _pendingRequests  :: Map RequestId Command -- Client
   , _currentRequestId :: RequestId -- Client
@@ -623,6 +631,7 @@ initialRaftState = RaftState
   Map.empty  -- lNextIndex
   Map.empty  -- lMatchIndex
   Set.empty  -- lConvinced
+  Nothing    -- lastCommitTime
   Map.empty  -- pendingRequests
   0          -- nextRequestId
   0          -- numTimeouts

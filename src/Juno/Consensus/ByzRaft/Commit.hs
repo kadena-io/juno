@@ -8,6 +8,8 @@ where
 
 import Control.Lens
 import Control.Monad
+import Data.AffineSpace ((.-.))
+import Data.Thyme.Clock (microseconds)
 import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
@@ -60,6 +62,22 @@ makeCommandResponse' nid mlid Command{..} result = CommandResponse
              _cmdRequestId
              NewMsg
 
+logCommitChange :: Monad m => LogIndex -> LogIndex -> Raft m ()
+logCommitChange before after
+  | after > before = do
+      logMetric $ MetricCommitIndex after
+      mLastTime <- use lastCommitTime
+      now <- join $ view (rs.getTimestamp)
+      case mLastTime of
+        Nothing -> return ()
+        Just lastTime ->
+          let duration = view microseconds $ now .-. lastTime
+              (LogIndex numCommits) = after - before
+              period = fromIntegral duration / fromIntegral numCommits
+          in logMetric $ MetricCommitPeriod period
+      lastCommitTime ?= now
+  | otherwise = return ()
+
 -- checks to see what the largest N where a quorum of nodes
 -- has sent us proof of a commit up to that index
 -- THREAD: SERVER MAIN. updates state
@@ -89,7 +107,7 @@ updateCommitIndex = do
           if valid
             then do
               commitIndex .= qci
-              logMetric $ MetricCommitIndex qci
+              logCommitChange ci qci
               commitProof %= Map.filterWithKey (\k _ -> k >= qci)
               debug $ "Commit index is now: " ++ show qci
               return True

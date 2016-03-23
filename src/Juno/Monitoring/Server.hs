@@ -8,12 +8,14 @@ module Juno.Monitoring.Server
 import Juno.Runtime.Types (Config, Metric(..), LogIndex(..), Term(..),
                            NodeID(..), nodeId, _port)
 
-import System.Remote.Monitoring (Server, forkServer, getLabel, getGauge)
+import System.Remote.Monitoring (Server, forkServer, getLabel, getGauge,
+                                 getDistribution)
 import Control.Lens ((^.), to)
 
 import qualified Data.Text as T
 import qualified System.Metrics.Label as Label
 import qualified System.Metrics.Gauge as Gauge
+import qualified System.Metrics.Distribution as Distribution
 
 -- TODO: possibly switch to 'newStore' API. this allows us to use groups.
 
@@ -29,6 +31,7 @@ startMonitoring config = do
   -- Consensus
   termGauge <- getGauge "juno.consensus.term" ekg
   commitIndexGauge <- getGauge "juno.consensus.commit_index" ekg
+  commitPeriodDist <- getDistribution "juno.consensus.commit_period" ekg
   currentLeaderLabel <- getLabel "juno.consensus.current_leader" ekg
   -- Node
   nodeIdLabel <- getLabel "juno.node.id" ekg
@@ -46,6 +49,8 @@ startMonitoring config = do
       Gauge.set termGauge $ fromIntegral t
     MetricCommitIndex (LogIndex idx) ->
       Gauge.set commitIndexGauge $ fromIntegral idx
+    MetricCommitPeriod p ->
+      Distribution.add commitPeriodDist p
     MetricCurrentLeader mNode ->
       case mNode of
         Just node -> Label.set currentLeaderLabel $ nodeDescription node

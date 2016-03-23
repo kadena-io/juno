@@ -17,8 +17,10 @@ import Juno.Monitoring.Server (startMonitoring)
 
 import Control.Lens
 import Control.Concurrent.Chan.Unagi
+import Crypto.Sign.Ed25519 (toPublicKey)
 import Data.Word
-import Data.Serialize
+import Data.Thyme.Clock (getCurrentTime)
+
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
@@ -26,7 +28,7 @@ import Data.Thyme.LocalTime
 import Text.Read
 import qualified Data.Set as Set
 import Data.ByteString (ByteString)
-import Codec.Crypto.RSA
+
 import Control.Monad.IO.Class
 import qualified Data.Map as Map
 
@@ -82,15 +84,16 @@ defaultPortNum = 10000
 defaultConfig :: Config
 defaultConfig =
   Config
-    Set.empty                  -- other nodes
-    (NodeID localhost defaultPortNum) -- self address
-    Map.empty                  -- publicKeys
-    Map.empty                  -- clientPublicKeys
-    (PrivateKey (PublicKey 0 0 0) 0 0 0 0 0 0) -- empty public key
-    (3000000,6000000)          -- election timeout range
-    1500000                    -- heartbeat timeout
-    False                      -- no debug
-    5                          -- client timeouts before revolution
+    Set.empty                                  -- other nodes
+    (NodeID localhost defaultPortNum)          -- self address
+    Map.empty                                  -- publicKeys
+    Map.empty                                  -- clientPublicKeys
+    (SecretKey "") -- empty public key
+    (PublicKey "") -- empty public key
+    (3000000,6000000)                          -- election timeout range
+    1500000                                    -- heartbeat timeout
+    False                                      -- no debug
+    5                                          -- client timeouts before revolution
 
 setSelf :: String -> Config -> IO Config
 setSelf s c = case readNodeID s of
@@ -117,8 +120,9 @@ getClientPublicKeys :: FilePath -> Config -> IO Config
 getClientPublicKeys = readFileOrDie clientPublicKeys
 
 getPrivateKey :: FilePath -> Config -> IO Config
-getPrivateKey = readFileOrDie privateKey
-
+getPrivateKey fp c = do
+  c' <- readFileOrDie myPrivateKey fp c
+  return $ c' { _myPublicKey = toPublicKey $ c' ^. myPrivateKey }
 
 showDebug :: NodeID -> String -> IO ()
 showDebug _ msg = do
@@ -153,21 +157,17 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
     , _writeVotedFor   = return . const ()
       -- apply log entries to the state machine, given by caller
     , _applyLogEntry   = applyFn
-      -- serialize with cereal
-    , _serializeRPC    = encode
-      -- deserialize with cereal
-    , _deserializeRPC = \a -> either
-        (\err -> Left $ "Invalid RPC: " ++ err ++ "\n## MSG ##\n" ++ show a)
-         Right $ decode a
       -- send messages using msgSend
     , _sendMessage     = liftIO2 (sendMsg outboxWrite)
       -- get messages using getMsg
-    , _getMessage      = liftIO $ readChan inboxRead
+    , _getMessage      = liftIO $ readChan inboxRead -- TODO: timestamp here?
       -- use the debug function given by the caller
     , _debugPrint      = debugFn
       -- publish a 'Metric' to EKG
     , _publishMetric   = pubMetricFn
-    -- _random :: forall a . Random a => (a, a) -> m a
+      -- get the current time in UTC
+    , _getTimestamp = liftIO getCurrentTime
+     -- _random :: forall a . Random a => (a, a) -> m a
     , _random = liftIO . randomRIO
     -- _enqueue :: InChan (Event nt et rt) -> Event nt et rt -> m ()
     , _enqueue = liftIO . writeChan eventWrite
@@ -190,7 +190,6 @@ sendMsg outboxWrite n s = do
   let addr = ROne $ nodeIDtoAddr n
       msg = OutBoundMsg addr s
   writeChan outboxWrite msg
-
 
 runServer :: (CommandEntry -> IO CommandResult) -> IO ()
 runServer applyFn = do
