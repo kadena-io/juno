@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Apps.Juno.Client
   ( main
@@ -26,15 +25,6 @@ import Data.Ratio
 import Data.Aeson (encode, object, (.=))
 import qualified Data.Aeson as JSON
 
-import Juno.Spec.Simple
-import Juno.Runtime.Types (CommandEntry(..), CommandResult(..))
-
-import Schwifty.Swift.M105.Types
-import Schwifty.Swift.M105.Parser
-
-import Apps.Juno.Parser
-import Apps.Juno.Ledger
-
 import Snap.CORS
 import Data.List
 import Data.Monoid
@@ -42,10 +32,17 @@ import qualified Data.Map as Map
 import           Control.Concurrent.MVar
 import qualified Control.Concurrent.Lifted as CL
 import Control.Monad
-import Apps.Juno.JsonTypes
 
-import Juno.Runtime.Types (CommandStatus(..))
-import Juno.Consensus.ByzRaft.Client (CommandMVarMap, setNextCmdRequestId)
+import Schwifty.Swift.M105.Types
+import Schwifty.Swift.M105.Parser
+
+import Juno.Spec.Simple
+import Juno.Runtime.Types (CommandEntry(..), CommandResult(..),CommandStatus(..))
+import Juno.Consensus.ByzRaft.Client (CommandMVarMap, CommandMap(..), initCommandMap, setNextCmdRequestId)
+
+import Apps.Juno.JsonTypes
+import Apps.Juno.Parser
+import Apps.Juno.Ledger
 
 prompt :: String
 prompt = "\ESC[0;31mhopper>> \ESC[0m"
@@ -62,14 +59,13 @@ readPrompt = flushStr prompt >> getLine
 -- should we poll here till we get a result?
 showResult :: CommandMVarMap -> RequestId -> IO ()
 showResult cmdStatusMap rId =
-    threadDelay 1000 >> displayIfApplied
-    where displayIfApplied = do
-            m <- readMVar cmdStatusMap
-            case Map.lookup rId m of
-              Nothing -> putStrLn "Sorry, something went wrong"
-              Just (CmdApplied (CommandResult x)) -> putStrLn $ promptGreen ++ (BSC.unpack x)
-              Just _ -> -- not applied yet, loop and wait
-                 showResult cmdStatusMap rId
+  threadDelay 1000 >> do
+    (CommandMap _ m) <- readMVar cmdStatusMap
+    case Map.lookup rId m of
+      Nothing -> putStrLn "Sorry, something went wrong"
+      Just (CmdApplied (CommandResult x)) -> putStrLn $ promptGreen ++ BSC.unpack x
+      Just _ -> -- not applied yet, loop and wait
+        showResult cmdStatusMap rId
 
 --  -> OutChan CommandResult
 runREPL :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> IO ()
@@ -83,7 +79,7 @@ runREPL toCommand cmdStatusMap = do
         Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommand cmdStatusMap
         Right _ -> do
             (rId, mvarMap) <- liftIO $ setNextCmdRequestId cmdStatusMap
-            writeChan toCommand (rId, (CommandEntry cmd'))
+            writeChan toCommand (rId, CommandEntry cmd')
             showResult mvarMap rId
             runREPL toCommand mvarMap
 
@@ -106,22 +102,16 @@ snapServer toCommand fromResult cmdStatusMap = httpServe serverConf $
 -- bad: curl -H "Content-Type: application/json" -X POST -d '{ "payloadGarb" : { "account": "KALE" }, "digest": { "hash" : "mhash", "key" : "mykey", "garbage" : "jsonError"} }' http://localhost:8000/accounts/create
 createAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 createAccounts toCommand cmdStatusMap = do
-   maybeCreateAccount <- liftM (JSON.decode) (readRequestBody 10000000)
+   maybeCreateAccount <- liftM JSON.decode (readRequestBody 10000000)
    case maybeCreateAccount of
      Just (CreateAccountRequest (AccountPayload acct) _) -> do
          (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
-         liftIO $ writeChan toCommand $ (rId, CommandEntry $ createAccountBS' $ T.unpack acct)
+         liftIO $ writeChan toCommand (rId, CommandEntry $ createAccountBS' $ T.unpack acct)
          -- byz/client updates successfully
          (writeBS . BL.toStrict . JSON.encode . createAccountResponseSuccess . T.pack) (show rId)
-
-     Nothing ->
-         (writeBS . BL.toStrict . JSON.encode) (createAccountResponseFailure "cmdTestFailDecode")
-
+     Nothing -> writeBS . BL.toStrict . JSON.encode $ createAccountResponseFailure "cmdTestFailDecode"
      where
-       -- without quotes, i.e. TSLA
        createAccountBS' acct = BSC.pack $ "CreateAccount " ++ acct
-       -- with quotes, i.e. "TSLA"
-       createAccountBS = (BSC.pack . show . CreateAccount)
 
 swiftSubmission :: InChan (RequestId, CommandEntry) -> OutChan CommandResult -> CommandMVarMap -> Snap ()
 swiftSubmission toCommand fromResult cmdStatusMap = do
@@ -135,7 +125,7 @@ swiftSubmission toCommand fromResult cmdStatusMap = do
       -- TODO: maybe the swift blob should be serialized vs json-ified
       let blob = SwiftBlob unparsedSwift $ swiftToHopper v
       (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
-      liftIO $ writeChan toCommand $ (rId, CommandEntry $ BLC.toStrict $ encode blob)
+      liftIO $ writeChan toCommand (rId, CommandEntry $ BLC.toStrict $ encode blob)
       resp <- liftIO $ readChan fromResult
       logError $ "swiftSubmission: " <> unCommandResult resp
       modifyResponse $ setHeader "Content-Type" "application/json"
@@ -150,7 +140,7 @@ ledgerQuery toCommand fromResult cmdStatusMap = do
   let query = And $ catMaybes [mBySwift, mBySender, mByReceiver, mByBoth]
   -- TODO: if you are querying the ledger should we wait for the command to be applied here?
   (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
-  liftIO $ writeChan toCommand $ (rId, CommandEntry $ BLC.toStrict $ encode query)
+  liftIO $ writeChan toCommand (rId, CommandEntry $ BLC.toStrict $ encode query)
   resp <- liftIO $ readChan fromResult
   modifyResponse $ setHeader "Content-Type" "application/json"
   writeBS $ unCommandResult resp
@@ -168,7 +158,7 @@ swiftHandler toCommand fromResult cmdStatusMap = do
     Left err -> errDone 400 $ BLC.toStrict $ encode $ object ["status" .= ("Failure" :: T.Text), "reason" .= err]
     Right v -> do
         (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
-        liftIO $ writeChan toCommand $ (rId, CommandEntry $ BSC.pack (swiftToHopper v))
+        liftIO $ writeChan toCommand (rId, CommandEntry $ BSC.pack (swiftToHopper v))
         resp <- liftIO $ readChan fromResult
         modifyResponse $ setHeader "Content-Type" "application/json"
         logError $ "swiftHandler: SUCCESS: " <> unCommandResult resp
@@ -201,13 +191,13 @@ swiftToHopper m = hopperProgram to' from' inter' amt'
 hopperHandler :: InChan (RequestId, CommandEntry) -> OutChan CommandResult -> CommandMVarMap -> Snap ()
 hopperHandler toCommand fromResult cmdStatusMap = do
     bdy <- readRequestBody 1000000
-    logError $ "hopper: " <> (BLC.toStrict $ bdy)
+    logError $ "hopper: " <> (BLC.toStrict bdy)
     cmd <- return $ BLC.toStrict bdy
     case readHopper cmd of
       Left err -> errDone 400 $ BSC.pack err
       Right _ -> do
         (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
-        liftIO $ writeChan toCommand $ (rId, CommandEntry $ cmd)
+        liftIO $ writeChan toCommand (rId, CommandEntry cmd)
         resp <- liftIO $ readChan fromResult
         writeBS $ unCommandResult resp
 
@@ -216,8 +206,10 @@ hopperHandler toCommand fromResult cmdStatusMap = do
 main :: IO ()
 main = do
   (toCommand, fromCommand) <- newChan 1
+  -- `toResult` is unused. There seem to be API's that use/block on fromResult.
+  -- Either we need to kill this channel full stop or `toResult` needs to be used.
   (toResult, fromResult) <- newChan 1
-  cmdStatusMap <- newMVar Map.empty -- shared (MVar) command status
+  cmdStatusMap <- newMVar initCommandMap
   void $ CL.fork $ snapServer toCommand fromResult cmdStatusMap
   let -- getEntry :: (IO et)
       getEntry :: IO (RequestId, CommandEntry)

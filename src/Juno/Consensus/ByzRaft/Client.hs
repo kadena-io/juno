@@ -2,8 +2,10 @@
 
 module Juno.Consensus.ByzRaft.Client
   ( runRaftClient
-   ,CommandMVarMap
-   ,setNextCmdRequestId
+  , CommandMap(..)
+  , CommandMVarMap
+  , initCommandMap
+  , setNextCmdRequestId
   ) where
 
 import Control.Lens hiding (Index)
@@ -26,17 +28,23 @@ import           Control.Concurrent (MVar, modifyMVar_, takeMVar, putMVar)
 import qualified Control.Concurrent.Lifted as CL
 
 -- shared holds the command result when the status is CmdApplied
-type CommandMVarMap = MVar (Map RequestId CommandStatus)
+data CommandMap = CommandMap
+  { _cmvNextRequestId :: RequestId
+  , _cmvMap :: Map RequestId CommandStatus
+  } deriving (Show)
+
+type CommandMVarMap = MVar CommandMap
+
+initCommandMap :: CommandMap
+initCommandMap = CommandMap (RequestId 0) Map.empty
 
 -- move to utils, this is the only CommandStatus that should inc the requestId
+-- NB: this only works when we have a single client, but punting on solving this for now is a good idea.
 setNextCmdRequestId :: CommandMVarMap -> IO (RequestId, CommandMVarMap)
 setNextCmdRequestId cmdStatusMap = do
-         m <- takeMVar cmdStatusMap
-         let nextId = if (Map.size m == 0)
-                      then 1
-                      else (fst $ Map.findMax m) + 1 -- O(log n)
-         putMVar cmdStatusMap (Map.insert nextId CmdSubmitted m)
-         return (nextId, cmdStatusMap)
+  (CommandMap nextId m) <- takeMVar cmdStatusMap
+  putMVar cmdStatusMap $ CommandMap (nextId + 1) (Map.insert nextId CmdSubmitted m)
+  return (nextId, cmdStatusMap)
 
 -- main entry point wired up by Simple.hs
 -- getEntry (readChan) useResult (writeChan) replace by
@@ -69,7 +77,7 @@ commandGetter getEntry cmdStatusMap = do
   forever $ do
     (rid, entry) <- getEntry
     rid' <- setNextRequestId rid -- set current requestId to the value associated with this request.
-    liftIO (modifyMVar_ cmdStatusMap (\m -> return (Map.insert rid CmdAccepted m)))
+    liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert rid CmdAccepted m)))
     enqueueEvent $ ERPC $ CMD $ Command entry nid rid' B.empty
 
 -- THREAD: CLIENT COMMAND. updates state!
@@ -163,11 +171,11 @@ clientHandleCommandResponse cmdStatusMap cmdr@CommandResponse{..} = do
     currentLeader .= Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
     -- cmdStatusMap shared with the client, client can poll this map to await applied result
-    liftIO (modifyMVar_ cmdStatusMap (\m -> return (Map.insert _cmdrRequestId (CmdApplied _cmdrResult ) m)))
+    liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert _cmdrRequestId (CmdApplied _cmdrResult) m)))
     numTimeouts .= 0
     prcount <- fmap Map.size (use pendingRequests)
     -- if we still have pending requests, reset the timer
     -- otherwise cancel it
-    if (prcount > 0)
+    if prcount > 0
       then resetHeartbeatTimer
       else cancelTimer
