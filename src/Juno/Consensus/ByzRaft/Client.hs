@@ -27,11 +27,12 @@ runRaftClient :: IO CommandEntry
               -> RaftSpec (Raft IO)
               -> IO ()
 runRaftClient getEntry useResult rconf spec@RaftSpec{..} = do
-  let qsize = getQuorumSize $ Set.size $ rconf ^. otherNodes
+  let csize = Set.size $ rconf ^. otherNodes
+      qsize = getQuorumSize csize
   UTCTime _ time <- liftIO $ unUTCTime <$> getCurrentTime
   runRWS_
     (raftClient (lift getEntry) (lift . useResult))
-    (RaftEnv rconf qsize spec)
+    (RaftEnv rconf csize qsize spec)
     initialRaftState {_currentRequestId = toRequestId $ toMicroseconds time }-- only use currentLeader and logEntries
 
 -- THREAD: CLIENT MAIN

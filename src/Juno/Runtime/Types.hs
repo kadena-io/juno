@@ -27,7 +27,7 @@ module Juno.Runtime.Types
   , myPublicKey
   , Role(..)
   , Metric(..)
-  , RaftEnv(..), cfg, quorumSize, rs
+  , RaftEnv(..), cfg, clusterSize, quorumSize, rs
   , LogEntry(..)
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
@@ -627,8 +627,9 @@ initialRaftState = RaftState
 type Raft m = RWST (RaftEnv m) () RaftState m
 
 data RaftEnv m = RaftEnv
-  { _cfg        :: Config
-  , _quorumSize :: Int  -- Handler,Role
-  , _rs         :: RaftSpec (Raft m)
+  { _cfg         :: Config
+  , _clusterSize :: Int
+  , _quorumSize  :: Int  -- Handler,Role
+  , _rs          :: RaftSpec (Raft m)
   }
 makeLenses ''RaftEnv

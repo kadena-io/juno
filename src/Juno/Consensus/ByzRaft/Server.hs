@@ -15,10 +15,11 @@ import Control.Monad
 
 runRaftServer :: Config -> RaftSpec (Raft IO) -> IO ()
 runRaftServer rconf spec = do
-  let qsize = getQuorumSize $ 1 + (Set.size $ rconf ^. otherNodes)
+  let csize = 1 + (Set.size $ rconf ^. otherNodes)
+      qsize = getQuorumSize csize
   runRWS_
     raft
-    (RaftEnv rconf qsize spec)
+    (RaftEnv rconf csize qsize spec)
     initialRaftState
 
 -- THREAD: SERVER MAIN
