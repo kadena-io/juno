@@ -23,7 +23,7 @@ import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
 import Juno.Util.Util (seqIndex, debug, updateTerm, updateRole,
-                       getCmdSigOrInvariantError)
+                       updateCurrentLeader, getCmdSigOrInvariantError)
 import qualified Juno.Runtime.Types as JT
 
 data AppendEntriesEnv = AppendEntriesEnv {
@@ -154,7 +154,7 @@ applyNewLeader LeaderUnchanged = return ()
 applyNewLeader NewLeaderConfirmed{..} = do
   updateTerm _stateRsUpdateTerm
   JT.ignoreLeader .= _stateIgnoreLeader
-  JT.currentLeader .= Just _stateCurrentLeader
+  updateCurrentLeader $ Just _stateCurrentLeader
   updateRole _stateRole
 
 handle :: Monad m => AppendEntries -> JT.Raft m ()

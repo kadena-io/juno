@@ -19,7 +19,8 @@ import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (createRequestVoteResponse,sendRPC)
 import Juno.Runtime.Timer (resetElectionTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Combinator ((^$))
-import Juno.Util.Util (lastLogInfo,debug,updateTerm,updateRole)
+import Juno.Util.Util (lastLogInfo,debug,updateTerm,updateRole,
+                       updateCurrentLeader)
 import qualified Juno.Runtime.Types as JT
 
 data ElectionTimeoutEnv = ElectionTimeoutEnv {
@@ -139,7 +140,7 @@ castLazyVote lazyTerm' lazyCandidate' lazyResponse' = do
   setVotedFor (Just lazyCandidate')
   JT.lazyVote .= Nothing
   JT.ignoreLeader .= False
-  JT.currentLeader .= Nothing
+  updateCurrentLeader Nothing
   sendRPC lazyCandidate' (RVR' lazyResponse')
   -- TODO: we need to verify that this is correct. It seems that a RVR (so a vote) is sent every time an election timeout fires.
   -- However, should that be the case? I think so, as you shouldn't vote for multiple people in the same election. Still though...

@@ -16,8 +16,10 @@ import qualified Data.Sequence as Seq
 
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntries)
-import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader, resetElectionTimer)
-import Juno.Util.Util (debug, lastLogInfo, updateRole, updateTerm)
+import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader,
+                           resetElectionTimer)
+import Juno.Util.Util (debug, lastLogInfo, updateRole, updateTerm,
+                       updateCurrentLeader)
 import qualified Juno.Runtime.Types as JT
 
 data RequestVoteResponseEnv = RequestVoteResponseEnv {
@@ -103,7 +105,7 @@ handle m = do
 becomeLeader :: Monad m => JT.Raft m ()
 becomeLeader = do
   updateRole Leader
-  (JT.currentLeader .=) . Just =<< view (JT.cfg.JT.nodeId)
+  updateCurrentLeader . Just =<< view (JT.cfg.JT.nodeId)
   ni <- Seq.length <$> use JT.logEntries
   (JT.lNextIndex  .=) =<< Map.fromSet (const $ LogIndex ni) <$> view (JT.cfg.JT.otherNodes)
   (JT.lMatchIndex .=) =<< Map.fromSet (const startIndex) <$> view (JT.cfg.JT.otherNodes)
@@ -119,7 +121,7 @@ revertToLastQuorumState = do
   updateRole Follower
   -- We don't persist this info and don't want to trust the RVR send's
   -- word so we set it to nothing an await an AE from some Leader of a higher term, then validate the votes
-  JT.currentLeader .= Nothing
+  updateCurrentLeader Nothing
   JT.ignoreLeader .= False
   updateTerm lastGoodTerm'
   JT.votedFor .= Nothing

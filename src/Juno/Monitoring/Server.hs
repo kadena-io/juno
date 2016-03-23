@@ -15,12 +15,11 @@ import qualified Data.Text as T
 import qualified System.Metrics.Label as Label
 import qualified System.Metrics.Gauge as Gauge
 
--- TODO: probably switch to 'newStore' API. this allows us to use groups.
+-- TODO: possibly switch to 'newStore' API. this allows us to use groups.
 
 startApi :: Config -> IO Server
 startApi config = forkServer "localhost" port
   where
-    -- TODO: change this port / load it from config
     port = 80 + fromIntegral (config ^. nodeId . to _port)
 
 startMonitoring :: Config -> IO (Metric -> IO ())
@@ -31,6 +30,7 @@ startMonitoring config = do
   termGauge <- getGauge "juno.consensus.term" ekg
   logIndexGauge <- getGauge "juno.consensus.log_index" ekg
   commitIndexGauge <- getGauge "juno.consensus.commit_index" ekg
+  currentLeaderLabel <- getLabel "juno.consensus.current_leader" ekg
   -- Node
   nodeIdLabel <- getLabel "juno.node.id" ekg
   hostLabel <- getLabel "juno.node.host" ekg
@@ -49,9 +49,13 @@ startMonitoring config = do
       Gauge.set logIndexGauge $ fromIntegral idx
     MetricCommitIndex (LogIndex idx) ->
       Gauge.set commitIndexGauge $ fromIntegral idx
+    MetricCurrentLeader mNode ->
+      case mNode of
+        Just node -> Label.set currentLeaderLabel $ nodeDescription node
+        Nothing -> Label.set currentLeaderLabel ""
     -- Node
-    MetricNodeId (NodeID host port) -> do
-      Label.set nodeIdLabel $ T.pack $ host ++ ":" ++ show port
+    MetricNodeId node@(NodeID host port) -> do
+      Label.set nodeIdLabel $ nodeDescription node
       Label.set hostLabel $ T.pack host
       Gauge.set portGauge $ fromIntegral port
     MetricRole role ->
@@ -63,3 +67,7 @@ startMonitoring config = do
       Gauge.set clusterSizeGauge $ fromIntegral size
     MetricQuorumSize size ->
       Gauge.set quorumSizeGauge $ fromIntegral size
+
+  where
+    nodeDescription :: NodeID -> T.Text
+    nodeDescription (NodeID host port) = T.pack $ host ++ ":" ++ show port

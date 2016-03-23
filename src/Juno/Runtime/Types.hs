@@ -515,6 +515,7 @@ data Metric -- Consensus metrics:
             = MetricTerm Term
             | MetricLogIndex LogIndex
             | MetricCommitIndex LogIndex
+            | MetricCurrentLeader (Maybe NodeID)
             -- Node metrics:
             | MetricNodeId NodeID
             | MetricRole Role

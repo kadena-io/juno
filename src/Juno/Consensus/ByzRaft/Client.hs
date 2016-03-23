@@ -41,7 +41,7 @@ raftClient getEntry useResult = do
   logStaticMetrics
   nodes <- view (cfg.otherNodes)
   when (Set.null nodes) $ error "The client has no nodes to send requests to."
-  currentLeader .= (Just $ Set.findMin nodes)
+  updateCurrentLeader $ Just $ Set.findMin nodes
   void $ CL.fork messageReceiver -- THREAD: CLIENT MESSAGE RECEIVER
   void $ CL.fork $ commandGetter getEntry -- THREAD: CLIENT COMMAND
   pendingRequests .= Map.empty
@@ -102,7 +102,7 @@ setLeaderToFirst :: Monad m => Raft m ()
 setLeaderToFirst = do
   nodes <- view (cfg.otherNodes)
   when (Set.null nodes) $ error "the client has no nodes to send requests to"
-  currentLeader .= (Just $ Set.findMin nodes)
+  updateCurrentLeader $ Just $ Set.findMin nodes
 
 -- THREAD: CLIENT MAIN. updates state.
 setLeaderToNext :: Monad m => Raft m ()
@@ -111,7 +111,7 @@ setLeaderToNext = do
   nodes <- view (cfg.otherNodes)
   case mlid of
     Just lid -> case Set.lookupGT lid nodes of
-      Just nlid -> currentLeader .= Just nlid
+      Just nlid -> updateCurrentLeader $ Just nlid
       Nothing   -> setLeaderToFirst
     Nothing -> setLeaderToFirst
 
@@ -138,7 +138,7 @@ clientHandleCommandResponse useResult cmdr@CommandResponse{..} = do
   valid <- verifyRPCWithKey (CMDR cmdr)
   when (valid && Map.member _cmdrRequestId prs) $ do
     useResult _cmdrResult
-    currentLeader .= Just _cmdrLeaderId
+    updateCurrentLeader $ Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
     numTimeouts .= 0
     prcount <- fmap Map.size (use pendingRequests)

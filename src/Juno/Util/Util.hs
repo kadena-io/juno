@@ -15,6 +15,7 @@ module Juno.Util.Util
   , messageReceiver
   , updateTerm
   , updateRole
+  , updateCurrentLeader
   , getCmdSigOrInvariantError
   , getRevSigOrInvariantError
   ) where
@@ -110,6 +111,11 @@ updateRole :: Monad m => Role -> Raft m ()
 updateRole newRole = do
   role .= newRole
   logMetric $ MetricRole newRole
+
+updateCurrentLeader :: Monad m => Maybe NodeID -> Raft m ()
+updateCurrentLeader mNode = do
+  currentLeader .= mNode
+  logMetric $ MetricCurrentLeader mNode
 
 getCmdSigOrInvariantError :: String -> Command -> Signature
 getCmdSigOrInvariantError where' s@Command{..} = case _cmdProvenance of
