@@ -209,7 +209,7 @@ main = do
   -- `toResult` is unused. There seem to be API's that use/block on fromResult.
   -- Either we need to kill this channel full stop or `toResult` needs to be used.
   (toResult, fromResult) <- newChan 1
-  cmdStatusMap <- newMVar initCommandMap
+  cmdStatusMap <- initCommandMap
   void $ CL.fork $ snapServer toCommand fromResult cmdStatusMap
   let -- getEntry :: (IO et)
       getEntry :: IO (RequestId, CommandEntry)

@@ -24,7 +24,7 @@ import Juno.Runtime.Types
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendSignedRPC)
 
-import           Control.Concurrent (MVar, modifyMVar_, takeMVar, putMVar)
+import           Control.Concurrent (MVar, modifyMVar_, takeMVar, putMVar, newMVar, readMVar)
 import qualified Control.Concurrent.Lifted as CL
 
 -- shared holds the command result when the status is CmdApplied
@@ -35,8 +35,13 @@ data CommandMap = CommandMap
 
 type CommandMVarMap = MVar CommandMap
 
-initCommandMap :: CommandMap
-initCommandMap = CommandMap (RequestId 0) Map.empty
+
+-- If we initialize the request ID from zero every time, then when you restart the client the rid resets too.
+-- We've hit bugs by doing this before. The hack we use is to initialize it to UTC Time
+initCommandMap :: IO CommandMVarMap
+initCommandMap = do
+  UTCTime _ time <- unUTCTime <$> getCurrentTime
+  newMVar $ CommandMap (RequestId $ toMicroseconds time) Map.empty
 
 -- move to utils, this is the only CommandStatus that should inc the requestId
 -- NB: this only works when we have a single client, but punting on solving this for now is a good idea.
@@ -52,11 +57,12 @@ setNextCmdRequestId cmdStatusMap = do
 runRaftClient :: IO (RequestId, CommandEntry) -> CommandMVarMap -> Config -> RaftSpec (Raft IO) -> IO ()
 runRaftClient getEntry cmdStatusMap rconf spec@RaftSpec{..} = do
   let qsize = getQuorumSize $ Set.size $ rconf ^. otherNodes
-  UTCTime _ time <- liftIO $ unUTCTime <$> getCurrentTime
+  -- TODO: do we really need currentRequestId in state any longer, doing this to keep them in sync
+  (CommandMap rid _) <- readMVar cmdStatusMap
   runRWS_
     (raftClient (lift getEntry) cmdStatusMap)
     (RaftEnv rconf qsize spec)
-    initialRaftState {_currentRequestId = toRequestId $ toMicroseconds time }-- only use currentLeader and logEntries
+    initialRaftState {_currentRequestId = rid}-- only use currentLeader and logEntries
 
 -- THREAD: CLIENT MAIN
 raftClient :: Raft IO (RequestId, CommandEntry) -> CommandMVarMap -> Raft IO ()
