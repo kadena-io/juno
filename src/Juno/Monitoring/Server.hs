@@ -28,7 +28,6 @@ startMonitoring config = do
 
   -- Consensus
   termGauge <- getGauge "juno.consensus.term" ekg
-  logIndexGauge <- getGauge "juno.consensus.log_index" ekg
   commitIndexGauge <- getGauge "juno.consensus.commit_index" ekg
   currentLeaderLabel <- getLabel "juno.consensus.current_leader" ekg
   -- Node
@@ -45,8 +44,6 @@ startMonitoring config = do
     -- Consensus
     MetricTerm (Term t) ->
       Gauge.set termGauge $ fromIntegral t
-    MetricLogIndex (LogIndex idx) ->
-      Gauge.set logIndexGauge $ fromIntegral idx
     MetricCommitIndex (LogIndex idx) ->
       Gauge.set commitIndexGauge $ fromIntegral idx
     MetricCurrentLeader mNode ->
