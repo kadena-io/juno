@@ -90,10 +90,10 @@ runREPL toCommand cmdStatusMap = do
       case readHopper cmd' of
         Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommand cmdStatusMap
         Right _ -> do
-            (rId, mvarMap) <- liftIO $ setNextCmdRequestId cmdStatusMap
+            rId <- liftIO $ setNextCmdRequestId cmdStatusMap
             writeChan toCommand (rId, CommandEntry cmd')
-            showResult mvarMap rId
-            runREPL toCommand mvarMap
+            showResult cmdStatusMap rId
+            runREPL toCommand cmdStatusMap
 
 serverConf :: MonadSnap m => Config m a
 serverConf = setErrorLog (ConfigFileLog "log/error.log") $ setAccessLog (ConfigFileLog "log/access.log") defaultConfig
@@ -117,7 +117,7 @@ createAccounts toCommand cmdStatusMap = do
    maybeCreateAccount <- liftM JSON.decode (readRequestBody 10000000)
    case maybeCreateAccount of
      Just (CreateAccountRequest (AccountPayload acct) _) -> do
-         (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
+         rId <- liftIO $ setNextCmdRequestId cmdStatusMap
          liftIO $ writeChan toCommand (rId, CommandEntry $ createAccountBS' $ T.unpack acct)
          -- byz/client updates successfully
          (writeBS . BL.toStrict . JSON.encode . createAccountResponseSuccess . T.pack) (show rId)
@@ -136,7 +136,7 @@ swiftSubmission toCommand cmdStatusMap = do
     Right v -> do
       -- TODO: maybe the swift blob should be serialized vs json-ified
       let blob = SwiftBlob unparsedSwift $ swiftToHopper v
-      (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
+      rId <- liftIO $ setNextCmdRequestId cmdStatusMap
       liftIO $ writeChan toCommand (rId, CommandEntry $ BLC.toStrict $ encode blob)
       resp <- liftIO $ waitForCommand cmdStatusMap rId
       logError $ "swiftSubmission: " <> resp
@@ -151,7 +151,7 @@ ledgerQuery toCommand cmdStatusMap = do
   mByBoth <- fmap (ByAcctName Both) <$> getTextParam "account"
   let query = And $ catMaybes [mBySwift, mBySender, mByReceiver, mByBoth]
   -- TODO: if you are querying the ledger should we wait for the command to be applied here?
-  (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
+  rId <- liftIO $ setNextCmdRequestId cmdStatusMap
   liftIO $ writeChan toCommand (rId, CommandEntry $ BLC.toStrict $ encode query)
   resp <- liftIO $ waitForCommand cmdStatusMap rId
   modifyResponse $ setHeader "Content-Type" "application/json"
@@ -169,7 +169,7 @@ swiftHandler toCommand cmdStatusMap = do
   case parseSwift $ decodeUtf8 cmd of
     Left err -> errDone 400 $ BLC.toStrict $ encode $ object ["status" .= ("Failure" :: T.Text), "reason" .= err]
     Right v -> do
-        (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
+        rId <- liftIO $ setNextCmdRequestId cmdStatusMap
         liftIO $ writeChan toCommand (rId, CommandEntry $ BSC.pack (swiftToHopper v))
         resp <- liftIO $ waitForCommand cmdStatusMap rId
         modifyResponse $ setHeader "Content-Type" "application/json"
@@ -208,7 +208,7 @@ hopperHandler toCommand cmdStatusMap = do
     case readHopper cmd of
       Left err -> errDone 400 $ BSC.pack err
       Right _ -> do
-        (rId, _) <- liftIO $ setNextCmdRequestId cmdStatusMap
+        rId <- liftIO $ setNextCmdRequestId cmdStatusMap
         liftIO $ writeChan toCommand (rId, CommandEntry cmd)
         resp <- liftIO $ waitForCommand cmdStatusMap rId
         writeBS resp

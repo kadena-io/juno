@@ -12,7 +12,6 @@ import Control.Lens hiding (Index)
 import Control.Monad.RWS
 
 import Data.Foldable (traverse_)
-import qualified Data.ByteString.Lazy as B
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -45,11 +44,11 @@ initCommandMap = do
 
 -- move to utils, this is the only CommandStatus that should inc the requestId
 -- NB: this only works when we have a single client, but punting on solving this for now is a good idea.
-setNextCmdRequestId :: CommandMVarMap -> IO (RequestId, CommandMVarMap)
+setNextCmdRequestId :: CommandMVarMap -> IO RequestId
 setNextCmdRequestId cmdStatusMap = do
   (CommandMap nextId m) <- takeMVar cmdStatusMap
   putMVar cmdStatusMap $ CommandMap (nextId + 1) (Map.insert nextId CmdSubmitted m)
-  return (nextId, cmdStatusMap)
+  return nextId
 
 -- main entry point wired up by Simple.hs
 -- getEntry (readChan) useResult (writeChan) replace by
@@ -170,7 +169,7 @@ clientSendCommand cmd@Command{..} = do
 -- THREAD: CLIENT MAIN. updates state
 -- Command has been applied
 clientHandleCommandResponse :: MonadIO m => CommandMVarMap -> CommandResponse -> Raft m ()
-clientHandleCommandResponse cmdStatusMap cmdr@CommandResponse{..} = do
+clientHandleCommandResponse cmdStatusMap CommandResponse{..} = do
   prs <- use pendingRequests
   when (Map.member _cmdrRequestId prs) $ do
     currentLeader .= Just _cmdrLeaderId
