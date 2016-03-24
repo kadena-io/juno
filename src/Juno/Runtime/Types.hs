@@ -516,7 +516,7 @@ data Role = Follower
 data Metric -- Consensus metrics:
             = MetricTerm Term
             | MetricCommitIndex LogIndex
-            | MetricCommitPeriod Double
+            | MetricCommitPeriod Double          -- For computing throughput
             | MetricCurrentLeader (Maybe NodeID)
             -- Node metrics:
             | MetricNodeId NodeID
