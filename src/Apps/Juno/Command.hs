@@ -25,10 +25,8 @@ import Apps.Juno.Parser
 import Apps.Juno.Ledger (runQuery, convertQuery)
 import Schwifty.Swift.M105.Types (SWIFT)
 
--- state of hopper
 newtype JunoEnv = JunoEnv {getStateMVar :: MV.MVar (DEval.PersistentState, Map.Map DEval.TransactionId SWIFT)}
 
--- hopper
 starterEnv :: IO JunoEnv
 starterEnv = JunoEnv <$> MV.newMVar (DEval.initialState,Map.empty)
 
@@ -38,11 +36,10 @@ balances (DEval.PersistentState _ bals _) = bals
 setBalances :: Map.Map Text Rational -> DEval.PersistentState -> DEval.PersistentState
 setBalances bals ps = ps { DEval._persistentBalances = bals }
 
---JunoEnv:  MVar (State, Map(TX -> Swift))
 runCommand :: JunoEnv -> CommandEntry -> IO CommandResult
 runCommand env cmd' = do
   mvar <- return $ getStateMVar env
-  (ps, ss) <- MV.takeMVar mvar -- persistent s, swift
+  (ps, ss) <- MV.takeMVar mvar
   let bals = balances ps
   case readHopper $ unCommandEntry cmd' of
     Left err -> return $ CommandResult $ BSC.pack err
