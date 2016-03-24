@@ -6,6 +6,8 @@
 module Juno.Spec.Simple
   ( runServer
   , runClient
+  , RequestId
+  , CommandStatus
   ) where
 
 import Juno.Consensus.ByzRaft.Server
@@ -13,13 +15,12 @@ import Juno.Consensus.ByzRaft.Client
 import Juno.Runtime.Types
 import Juno.Messaging.Types
 import Juno.Messaging.ZMQ
-import Juno.Monitoring.Server (startMonitoring)
 
 import Control.Lens
+import Control.Concurrent (yield)
+import qualified Control.Concurrent.Lifted as CL
 import Control.Concurrent.Chan.Unagi
-import Crypto.Sign.Ed25519 (toPublicKey)
 import Data.Word
-import Data.Thyme.Clock (getCurrentTime)
 
 import System.Console.GetOpt
 import System.Environment
@@ -32,7 +33,6 @@ import Data.ByteString (ByteString)
 import Control.Monad.IO.Class
 import qualified Data.Map as Map
 
-import qualified Control.Concurrent.Lifted as CL
 import System.Random
 
 
@@ -139,9 +139,8 @@ simpleRaftSpec :: MonadIO m
                -> InChan Event
                -> (CommandEntry -> m CommandResult)
                -> (NodeID -> String -> m ())
-               -> (Metric -> m ())
                -> RaftSpec m
-simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMetricFn = RaftSpec
+simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn = RaftSpec
     {
       -- TODO don't read log entries
       _readLogEntry    = return . const Nothing
@@ -163,14 +162,11 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
     , _getMessage      = liftIO $ readChan inboxRead
       -- use the debug function given by the caller
     , _debugPrint      = debugFn
-      -- publish a 'Metric' to EKG
-    , _publishMetric   = pubMetricFn
-      -- get the current time in UTC
-    , _getTimestamp = liftIO getCurrentTime
-     -- _random :: forall a . Random a => (a, a) -> m a
+
+    -- _random :: forall a . Random a => (a, a) -> m a
     , _random = liftIO . randomRIO
     -- _enqueue :: InChan (Event nt et rt) -> Event nt et rt -> m ()
-    , _enqueue = liftIO . writeChan eventWrite
+    , _enqueue = \e -> liftIO $ writeChan eventWrite e >> yield
 
     -- _enqueueLater :: Int -> InChan (Event nt et rt) -> Event nt et rt -> m ThreadId
     , _enqueueLater = \t e -> liftIO $ CL.fork (CL.threadDelay t >> liftIO (writeChan eventWrite e))
@@ -190,6 +186,7 @@ sendMsg outboxWrite n s = do
   let addr = ROne $ nodeIDtoAddr n
       msg = OutBoundMsg addr s
   writeChan outboxWrite msg
+  yield
 
 runServer :: (CommandEntry -> IO CommandResult) -> IO ()
 runServer applyFn = do
@@ -199,23 +196,19 @@ runServer applyFn = do
   (outboxWrite, outboxRead) <- newChan
   (eventWrite, eventRead) <- newChan
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  pubMetric <- startMonitoring rconf
   runMsgServer inboxWrite outboxRead me []
-  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
-  runRaftServer rconf raftSpec
+  runRaftServer rconf $ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
 
-runClient :: (CommandEntry -> IO CommandResult) -> IO CommandEntry -> (CommandResult -> IO ()) -> IO ()
-runClient applyFn getEntry useResult = do
+runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, CommandEntry) -> CommandMVarMap -> IO ()
+runClient applyFn getEntry cmdStatusMap = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
-  (inboxWrite, inboxRead) <- newChan
-  (outboxWrite, outboxRead) <- newChan
-  (eventWrite, eventRead) <- newChan
-  pubMetric <- startMonitoring rconf
+  (inboxWrite, inboxRead) <- newChan -- client writes to inbox, raft reads
+  (outboxWrite, outboxRead) <- newChan -- raft writes to outbox, client reads
+  (eventWrite, eventRead) <- newChan -- timer events
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  runMsgServer inboxWrite outboxRead me []
-  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
-  runRaftClient getEntry useResult rconf raftSpec
+  runMsgServer inboxWrite outboxRead me [] -- ZMQ
+  runRaftClient getEntry cmdStatusMap rconf (simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn))
 
 
 -- | lift a two-arg action into MonadIO

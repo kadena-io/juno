@@ -14,11 +14,12 @@ module Juno.Runtime.Types
   , RaftSpec(..)
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
   , readVotedFor, writeVotedFor, applyLogEntry
-  , sendMessage, getMessage, debugPrint, publishMetric, getTimestamp, random
-  , enqueue, dequeue, enqueueLater, killEnqueued
+  , sendMessage, getMessage, debugPrint
+  , random, enqueue, dequeue, enqueueLater, killEnqueued
   , NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
+  , CommandStatus(..)
   , Term(..), startTerm
   , LogIndex(..), startIndex
   , RequestId(..), startRequestId, toRequestId
@@ -26,14 +27,12 @@ module Juno.Runtime.Types
   , enableDebug, publicKeys, clientPublicKeys, myPrivateKey, clientTimeoutLimit
   , myPublicKey
   , Role(..)
-  , Metric(..)
-  , RaftEnv(..), cfg, clusterSize, quorumSize, rs
-  , LogEntry(..), leTerm, leCommand, leHash
+  , RaftEnv(..), cfg, quorumSize, rs
+  , LogEntry(..)
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
-  , lastCommitTime, numTimeouts, pendingRequests, currentRequestId
-  , timeSinceLastAER
+  , numTimeouts, pendingRequests, currentRequestId, timeSinceLastAER
   , initialRaftState
   -- * RPC
   , AppendEntries(..)
@@ -49,7 +48,7 @@ module Juno.Runtime.Types
   , signedRPCtoRPC, rpcToSignedRPC
   , SignedRPC(..)
   -- for simplicity, re-export the crypto types
-  , PublicKey(..), SecretKey(..), Signature(..)
+  , PublicKey(..), SecretKey(..), Signature(..), dsign, dverify, toPublicKey
   -- for testing & benchmarks
   , LEWire(..), encodeLEWire, decodeLEWire, decodeRVRWire
   , verifySignedRPC, CMDWire(..)
@@ -58,7 +57,7 @@ module Juno.Runtime.Types
 import Control.Concurrent (ThreadId)
 import Control.Lens hiding (Index, (|>))
 import Control.Monad.RWS (RWST)
-import Crypto.Sign.Ed25519 (PublicKey(..), SecretKey(..), Signature(..), dsign, dverify)
+import Crypto.Sign.Ed25519 (PublicKey(..), SecretKey(..), Signature(..), dsign, dverify, toPublicKey)
 import Data.Sequence (Seq, (|>))
 import qualified Data.Sequence as Seq
 import Data.Map (Map)
@@ -71,7 +70,6 @@ import Data.Serialize (Serialize)
 import qualified Data.Serialize as S
 import Data.Word (Word64)
 import Data.Foldable
-import Data.Thyme.Clock (UTCTime)
 
 import qualified Data.Binary.Serialise.CBOR.Class as CBC
 
@@ -260,7 +258,6 @@ data LogEntry = LogEntry
   , _leHash    :: !ByteString
   }
   deriving (Show, Eq, Generic)
-makeLenses ''LogEntry
 instance Serialize LogEntry -- again, for SQLite
 
 data LEWire = LEWire (Term, SignedRPC, ByteString)
@@ -270,13 +267,10 @@ instance Serialize LEWire
 decodeLEWire :: KeySet -> [LEWire] -> Either String (Seq LogEntry)
 decodeLEWire ks les = go les Seq.empty
   where
-    go [LEWire (t,cmd,hsh)] v = case fromWire ks cmd of
-      Left err -> Left err
-      Right cmd' -> Right $ v |> LogEntry t cmd' hsh
+    go [] s = Right s
     go (LEWire (t,cmd,hsh):ls) v = case fromWire ks cmd of
       Left err -> Left err
-      Right cmd' -> go ls $ v |> LogEntry t cmd' hsh
-    go [] _ = Right Seq.empty
+      Right cmd' -> go ls (v |> LogEntry t cmd' hsh)
 {-# INLINE decodeLEWire #-}
 
 encodeLEWire :: NodeID -> PublicKey -> SecretKey -> Seq LogEntry -> [LEWire]
@@ -436,13 +430,10 @@ instance WireFormat RequestVoteResponse where
 decodeRVRWire :: KeySet -> [SignedRPC] -> Either String (Set RequestVoteResponse)
 decodeRVRWire ks votes' = go votes' Set.empty
   where
-    go [v] s = case fromWire ks v of
-      Left err -> Left err
-      Right rvr' -> Right $ Set.insert rvr' s
+    go [] s = Right s
     go (v:vs) s = case fromWire ks v of
       Left err -> Left err
-      Right rvr' -> go vs $ Set.insert rvr' s
-    go [] _ = Right Set.empty
+      Right rvr' -> go vs (Set.insert rvr' s)
 {-# INLINE decodeRVRWire #-}
 
 data Revolution = Revolution
@@ -509,25 +500,11 @@ data Event = ERPC RPC
            | HeartbeatTimeout String
   deriving (Show)
 
-data Role = Follower
-          | Candidate
-          | Leader
-  deriving (Show, Generic, Eq)
-
-data Metric -- Consensus metrics:
-            = MetricTerm Term
-            | MetricCommitIndex LogIndex
-            | MetricCommitPeriod Double          -- For computing throughput
-            | MetricCurrentLeader (Maybe NodeID)
-            | MetricHash ByteString
-            -- Node metrics:
-            | MetricNodeId NodeID
-            | MetricRole Role
-            | MetricAppliedIndex LogIndex
-            -- Cluster metrics:
-            | MetricClusterSize Int
-            | MetricQuorumSize Int
-            | MetricAvailableSize Int
+data CommandStatus = CmdSubmitted -- client sets when sending command
+                   | CmdAccepted  -- Raft client has recieved command and submitted
+                   | CmdCommitted -- Raft has Committed the command, not yet applied
+                   | CmdApplied { result :: CommandResult }  -- We have a result
+                   deriving (Show)
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
@@ -568,10 +545,6 @@ data RaftSpec m = RaftSpec
     -- ^ Function to log a debug message (no newline).
   , _debugPrint       :: NodeID -> String -> m () -- Simple,Util(debug)
 
-  , _publishMetric    :: Metric -> m ()
-
-  , _getTimestamp     :: m UTCTime
-
   , _random           :: forall a . Random a => (a, a) -> m a -- Simple,Util(randomRIO[timer])
 
   , _enqueue          :: Event -> m () -- Simple,Util(enqueueEvent)
@@ -581,8 +554,14 @@ data RaftSpec m = RaftSpec
   , _killEnqueued     :: ThreadId -> m () -- Simple,Timer
 
   , _dequeue          :: m Event -- Simple,Util(dequeueEvent)
+
   }
 makeLenses (''RaftSpec)
+
+data Role = Follower
+          | Candidate
+          | Leader
+  deriving (Show, Generic, Eq)
 
 data RaftState = RaftState
   { _role             :: Role -- Handler,Role,Util(debug)
@@ -603,9 +582,6 @@ data RaftState = RaftState
   , _lNextIndex       :: Map NodeID LogIndex -- Handler,Role,Sender
   , _lMatchIndex      :: Map NodeID LogIndex -- Role (never read?)
   , _lConvinced       :: Set NodeID -- Handler,Role,Sender
-
-  -- used for metrics
-  , _lastCommitTime   :: Maybe UTCTime
 
   -- used by clients
   , _pendingRequests  :: Map RequestId Command -- Client
@@ -634,7 +610,6 @@ initialRaftState = RaftState
   Map.empty  -- lNextIndex
   Map.empty  -- lMatchIndex
   Set.empty  -- lConvinced
-  Nothing    -- lastCommitTime
   Map.empty  -- pendingRequests
   0          -- nextRequestId
   0          -- numTimeouts
@@ -643,9 +618,8 @@ initialRaftState = RaftState
 type Raft m = RWST (RaftEnv m) () RaftState m
 
 data RaftEnv m = RaftEnv
-  { _cfg         :: Config
-  , _clusterSize :: Int
-  , _quorumSize  :: Int  -- Handler,Role
-  , _rs          :: RaftSpec (Raft m)
+  { _cfg        :: Config
+  , _quorumSize :: Int  -- Handler,Role
+  , _rs         :: RaftSpec (Raft m)
   }
 makeLenses ''RaftEnv
