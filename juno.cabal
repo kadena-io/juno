@@ -98,6 +98,7 @@ library
                      , criterion
                      , binary-serialise-cbor
                      , vector-space >= 0.10.2 && < 0.11
+                     , base64-bytestring >= 1.0.0.1 && < 1.1
   hs-source-dirs:      src
   ghc-options:         -Wall -fno-warn-unused-do-bind
   ghc-prof-options:    -fprof-auto -fprof-auto-calls

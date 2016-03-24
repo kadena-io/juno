@@ -11,7 +11,9 @@ import Juno.Runtime.Types (Config, Metric(..), LogIndex(..), Term(..),
 import System.Remote.Monitoring (Server, forkServer, getLabel, getGauge,
                                  getDistribution)
 import Control.Lens ((^.), to)
+import Data.Text.Encoding (decodeUtf8)
 
+import qualified Data.ByteString.Base64 as B64
 import qualified Data.Text as T
 import qualified System.Metrics.Label as Label
 import qualified System.Metrics.Gauge as Gauge
@@ -33,6 +35,7 @@ startMonitoring config = do
   commitIndexGauge <- getGauge "juno.consensus.commit_index" ekg
   commitPeriodDist <- getDistribution "juno.consensus.commit_period" ekg
   currentLeaderLabel <- getLabel "juno.consensus.current_leader" ekg
+  hashLabel <- getLabel "juno.consensus.hash" ekg
   -- Node
   nodeIdLabel <- getLabel "juno.node.id" ekg
   hostLabel <- getLabel "juno.node.host" ekg
@@ -56,6 +59,8 @@ startMonitoring config = do
       case mNode of
         Just node -> Label.set currentLeaderLabel $ nodeDescription node
         Nothing -> Label.set currentLeaderLabel ""
+    MetricHash bs ->
+      Label.set hashLabel $ decodeUtf8 $ B64.encode bs
     -- Node
     MetricNodeId node@(NodeID host port) -> do
       Label.set nodeIdLabel $ nodeDescription node

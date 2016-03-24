@@ -28,7 +28,7 @@ module Juno.Runtime.Types
   , Role(..)
   , Metric(..)
   , RaftEnv(..), cfg, clusterSize, quorumSize, rs
-  , LogEntry(..)
+  , LogEntry(..), leTerm, leCommand, leHash
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
@@ -260,6 +260,7 @@ data LogEntry = LogEntry
   , _leHash    :: !ByteString
   }
   deriving (Show, Eq, Generic)
+makeLenses ''LogEntry
 instance Serialize LogEntry -- again, for SQLite
 
 data LEWire = LEWire (Term, SignedRPC, ByteString)
@@ -518,6 +519,7 @@ data Metric -- Consensus metrics:
             | MetricCommitIndex LogIndex
             | MetricCommitPeriod Double          -- For computing throughput
             | MetricCurrentLeader (Maybe NodeID)
+            | MetricHash ByteString
             -- Node metrics:
             | MetricNodeId NodeID
             | MetricRole Role

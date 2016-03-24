@@ -23,7 +23,7 @@ import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
 import Juno.Util.Util (seqIndex, debug, setTerm, setRole, setCurrentLeader,
-                       getCmdSigOrInvariantError)
+                       getCmdSigOrInvariantError, logMetric)
 import qualified Juno.Runtime.Types as JT
 
 data AppendEntriesEnv = AppendEntriesEnv {
@@ -157,6 +157,13 @@ applyNewLeader NewLeaderConfirmed{..} = do
   setCurrentLeader $ Just _stateCurrentLeader
   setRole _stateRole
 
+logHashChange :: Monad m => JT.Raft m ()
+logHashChange = do
+  mLastHash <- firstOf (_last.JT.leHash) <$> use JT.logEntries
+  case mLastHash of
+    Just lastHash -> logMetric $ JT.MetricHash lastHash
+    Nothing -> return ()
+
 handle :: Monad m => AppendEntries -> JT.Raft m ()
 handle ae = do
   r <- ask
@@ -180,5 +187,6 @@ handle ae = do
         SendFailureResponse -> sendAppendEntriesResponse _responseLeaderId False True
         (Commit rMap updatedLog') -> do
           JT.logEntries .= updatedLog'
+          logHashChange
           JT.replayMap %= Map.union rMap
           sendAllAppendEntriesResponse
