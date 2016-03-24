@@ -13,9 +13,9 @@ module Juno.Util.Util
   , logMetric
   , logStaticMetrics
   , messageReceiver
-  , updateTerm
-  , updateRole
-  , updateCurrentLeader
+  , setTerm
+  , setRole
+  , setCurrentLeader
   , updateLNextIndex
   , getCmdSigOrInvariantError
   , getRevSigOrInvariantError
@@ -103,19 +103,19 @@ messageReceiver = do
         Left err -> debug err
         Right rpc -> enqueueEvent $ ERPC rpc
 
-updateTerm :: Monad m => Term -> Raft m ()
-updateTerm t = do
+setTerm :: Monad m => Term -> Raft m ()
+setTerm t = do
   void $ rs.writeTermNumber ^$ t
   term .= t
   logMetric $ MetricTerm t
 
-updateRole :: Monad m => Role -> Raft m ()
-updateRole newRole = do
+setRole :: Monad m => Role -> Raft m ()
+setRole newRole = do
   role .= newRole
   logMetric $ MetricRole newRole
 
-updateCurrentLeader :: Monad m => Maybe NodeID -> Raft m ()
-updateCurrentLeader mNode = do
+setCurrentLeader :: Monad m => Maybe NodeID -> Raft m ()
+setCurrentLeader mNode = do
   currentLeader .= mNode
   logMetric $ MetricCurrentLeader mNode
 

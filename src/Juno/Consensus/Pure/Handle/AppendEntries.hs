@@ -22,8 +22,8 @@ import Juno.Consensus.ByzRaft.Log
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
-import Juno.Util.Util (seqIndex, debug, updateTerm, updateRole,
-                       updateCurrentLeader, getCmdSigOrInvariantError)
+import Juno.Util.Util (seqIndex, debug, setTerm, setRole, setCurrentLeader,
+                       getCmdSigOrInvariantError)
 import qualified Juno.Runtime.Types as JT
 
 data AppendEntriesEnv = AppendEntriesEnv {
@@ -92,7 +92,7 @@ handleAppendEntries ae@AppendEntries{..} = do
             then sendAllAppendEntriesResponse
             else sendAppendEntriesResponse _leaderId True True
           --}
-    _ | not ignoreLeader' && _aeTerm >= currentTerm' -> do -- see TODO about updateTerm
+    _ | not ignoreLeader' && _aeTerm >= currentTerm' -> do -- see TODO about setTerm
       tell ["sending unconvinced response"]
       return $ AppendEntriesOut nlo $ SendUnconvincedResponse _leaderId
     _ -> return $ AppendEntriesOut nlo Ignore
@@ -152,10 +152,10 @@ appendLogEntries pli newEs = do
 applyNewLeader :: Monad m => CheckForNewLeaderOut -> JT.Raft m ()
 applyNewLeader LeaderUnchanged = return ()
 applyNewLeader NewLeaderConfirmed{..} = do
-  updateTerm _stateRsUpdateTerm
+  setTerm _stateRsUpdateTerm
   JT.ignoreLeader .= _stateIgnoreLeader
-  updateCurrentLeader $ Just _stateCurrentLeader
-  updateRole _stateRole
+  setCurrentLeader $ Just _stateCurrentLeader
+  setRole _stateRole
 
 handle :: Monad m => AppendEntries -> JT.Raft m ()
 handle ae = do
