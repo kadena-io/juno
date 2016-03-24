@@ -160,7 +160,7 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
       -- send messages using msgSend
     , _sendMessage     = liftIO2 (sendMsg outboxWrite)
       -- get messages using getMsg
-    , _getMessage      = liftIO $ readChan inboxRead -- TODO: timestamp here?
+    , _getMessage      = liftIO $ readChan inboxRead
       -- use the debug function given by the caller
     , _debugPrint      = debugFn
       -- publish a 'Metric' to EKG
