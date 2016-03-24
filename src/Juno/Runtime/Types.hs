@@ -292,13 +292,10 @@ instance Serialize LEWire
 decodeLEWire :: ReceivedAt -> KeySet -> [LEWire] -> Either String (Seq LogEntry)
 decodeLEWire ts ks les = go les Seq.empty
   where
-    go [LEWire (t,cmd,hsh)] v = case fromWire ts ks cmd of
+    go [] s = Right s
+    go (LEWire (t,cmd,hsh):ls) v = case fromWire ks cmd of
       Left err -> Left err
-      Right cmd' -> Right $ v |> LogEntry t cmd' hsh
-    go (LEWire (t,cmd,hsh):ls) v = case fromWire ts ks cmd of
-      Left err -> Left err
-      Right cmd' -> go ls $ v |> LogEntry t cmd' hsh
-    go [] _ = Right Seq.empty
+      Right cmd' -> go ls (v |> LogEntry t cmd' hsh)
 {-# INLINE decodeLEWire #-}
 
 encodeLEWire :: NodeID -> PublicKey -> SecretKey -> Seq LogEntry -> [LEWire]
@@ -458,13 +455,10 @@ instance WireFormat RequestVoteResponse where
 decodeRVRWire :: ReceivedAt -> KeySet -> [SignedRPC] -> Either String (Set RequestVoteResponse)
 decodeRVRWire ts ks votes' = go votes' Set.empty
   where
-    go [v] s = case fromWire ts ks v of
+    go [] s = Right s
+    go (v:vs) s = case fromWire ks v of
       Left err -> Left err
-      Right rvr' -> Right $ Set.insert rvr' s
-    go (v:vs) s = case fromWire ts ks v of
-      Left err -> Left err
-      Right rvr' -> go vs $ Set.insert rvr' s
-    go [] _ = Right Set.empty
+      Right rvr' -> go vs (Set.insert rvr' s)
 {-# INLINE decodeRVRWire #-}
 
 data Revolution = Revolution
