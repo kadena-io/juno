@@ -42,6 +42,7 @@ startMonitoring config = do
   -- Cluster
   clusterSizeGauge <- getGauge "juno.cluster.size" ekg
   quorumSizeGauge <- getGauge "juno.cluster.quorum_size" ekg
+  availableSizeGauge <- getGauge "juno.cluster.available_size" ekg
 
   return $ \case
     -- Consensus
@@ -69,6 +70,8 @@ startMonitoring config = do
       Gauge.set clusterSizeGauge $ fromIntegral size
     MetricQuorumSize size ->
       Gauge.set quorumSizeGauge $ fromIntegral size
+    MetricAvailableSize size ->
+      Gauge.set availableSizeGauge $ fromIntegral size
 
   where
     nodeDescription :: NodeID -> T.Text

@@ -16,6 +16,7 @@ module Juno.Util.Util
   , updateTerm
   , updateRole
   , updateCurrentLeader
+  , updateLNextIndex
   , getCmdSigOrInvariantError
   , getRevSigOrInvariantError
   ) where
@@ -26,12 +27,13 @@ import Juno.Util.Combinator
 import Control.Lens
 import Data.Sequence (Seq)
 import Control.Monad.RWS
-import qualified Control.Concurrent.Lifted as CL
 import Data.ByteString (ByteString)
+import Data.Serialize
+import qualified Control.Concurrent.Lifted as CL
 import qualified Data.ByteString as B
 import qualified Data.Sequence as Seq
+import qualified Data.Map as Map
 import qualified System.Random as R
-import Data.Serialize
 
 seqIndex :: Seq a -> Int -> Maybe a
 seqIndex s i =
@@ -116,6 +118,20 @@ updateCurrentLeader :: Monad m => Maybe NodeID -> Raft m ()
 updateCurrentLeader mNode = do
   currentLeader .= mNode
   logMetric $ MetricCurrentLeader mNode
+
+updateLNextIndex :: Monad m
+                 => (Map.Map NodeID LogIndex -> Map.Map NodeID LogIndex)
+                 -> Raft m ()
+updateLNextIndex f = do
+  lNextIndex %= f
+  lni <- use lNextIndex
+  ci <- use commitIndex
+  logMetric $ MetricAvailableSize $ availSize lni ci
+
+  where
+    -- | The number of nodes at most one behind the commit index
+    availSize lni ci = let oneBehind = pred ci
+                       in succ $ Map.size $ Map.filter (>= oneBehind) lni
 
 getCmdSigOrInvariantError :: String -> Command -> Signature
 getCmdSigOrInvariantError where' s@Command{..} = case _cmdProvenance of

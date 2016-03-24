@@ -525,6 +525,7 @@ data Metric -- Consensus metrics:
             -- Cluster metrics:
             | MetricClusterSize Int
             | MetricQuorumSize Int
+            | MetricAvailableSize Int
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
