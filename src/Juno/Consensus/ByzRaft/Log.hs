@@ -1,10 +1,8 @@
-
 module Juno.Consensus.ByzRaft.Log
   ( addLogEntryAndHash
-  , updateLogHashesFromIndex')
+  , updateLogHashesFromIndex)
 where
 
-import Control.Lens
 import qualified Data.Sequence as Seq
 import Data.Sequence (Seq)
 import Codec.Digest.SHA
@@ -21,13 +19,12 @@ hashLogEntry (Just LogEntry{ _leHash = prevHash}) le =
 hashLogEntry Nothing le =
   le { _leHash = hash SHA256 (encode (le { _leHash = B.empty }))}
 
--- pure version
-updateLogHashesFromIndex' :: LogIndex -> Seq LogEntry -> Seq LogEntry
-updateLogHashesFromIndex' i es =
+updateLogHashesFromIndex :: LogIndex -> Seq LogEntry -> Seq LogEntry
+updateLogHashesFromIndex i es =
   case seqIndex es $ fromIntegral i of
-    Just _  -> do
+    Just _ -> do
       logEntries' <- return (Seq.adjust (hashLogEntry (seqIndex es (fromIntegral i - 1))) (fromIntegral i) es)
-      updateLogHashesFromIndex' (i + 1) logEntries'
+      updateLogHashesFromIndex (i + 1) logEntries'
     Nothing -> es
 
 addLogEntryAndHash :: LogEntry -> Seq LogEntry -> Seq LogEntry
