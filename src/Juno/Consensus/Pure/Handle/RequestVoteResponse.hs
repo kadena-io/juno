@@ -19,7 +19,7 @@ import Juno.Runtime.Sender (sendAllAppendEntries)
 import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader,
                            resetElectionTimer)
 import Juno.Util.Util (debug, lastLogInfo, setRole, setTerm, setCurrentLeader,
-                       updateLNextIndex)
+                       setLNextIndex)
 import qualified Juno.Runtime.Types as JT
 
 data RequestVoteResponseEnv = RequestVoteResponseEnv {
@@ -107,7 +107,7 @@ becomeLeader = do
   setRole Leader
   setCurrentLeader . Just =<< view (JT.cfg.JT.nodeId)
   ni <- Seq.length <$> use JT.logEntries
-  (updateLNextIndex . const) =<< Map.fromSet (const $ LogIndex ni) <$> view (JT.cfg.JT.otherNodes)
+  setLNextIndex =<< Map.fromSet (const $ LogIndex ni) <$> view (JT.cfg.JT.otherNodes)
   (JT.lMatchIndex .=) =<< Map.fromSet (const startIndex) <$> view (JT.cfg.JT.otherNodes)
   JT.lConvinced .= Set.empty
   sendAllAppendEntries

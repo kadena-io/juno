@@ -17,6 +17,7 @@ module Juno.Util.Util
   , setRole
   , setCurrentLeader
   , updateLNextIndex
+  , setLNextIndex
   , getCmdSigOrInvariantError
   , getRevSigOrInvariantError
   ) where
@@ -132,6 +133,11 @@ updateLNextIndex f = do
     -- | The number of nodes at most one behind the commit index
     availSize lni ci = let oneBehind = pred ci
                        in succ $ Map.size $ Map.filter (>= oneBehind) lni
+
+setLNextIndex :: Monad m
+              => Map.Map NodeID LogIndex
+              -> Raft m ()
+setLNextIndex = updateLNextIndex . const
 
 getCmdSigOrInvariantError :: String -> Command -> Signature
 getCmdSigOrInvariantError where' s@Command{..} = case _cmdProvenance of
