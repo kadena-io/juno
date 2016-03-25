@@ -10,8 +10,14 @@ module Juno.Util.Util
   , runRWS_
   , enqueueEvent, enqueueEventLater
   , dequeueEvent
+  , logMetric
+  , logStaticMetrics
   , messageReceiver
-  , updateTerm
+  , setTerm
+  , setRole
+  , setCurrentLeader
+  , updateLNextIndex
+  , setLNextIndex
   , getCmdSigOrInvariantError
   , getRevSigOrInvariantError
   ) where
@@ -22,12 +28,13 @@ import Juno.Util.Combinator
 import Control.Lens
 import Data.Sequence (Seq)
 import Control.Monad.RWS
-import qualified Control.Concurrent.Lifted as CL
 import Data.ByteString (ByteString)
+import Data.Serialize
+import qualified Control.Concurrent.Lifted as CL
 import qualified Data.ByteString as B
 import qualified Data.Sequence as Seq
+import qualified Data.Map as Map
 import qualified System.Random as R
-import Data.Serialize
 
 seqIndex :: Seq a -> Int -> Maybe a
 seqIndex s i =
@@ -74,6 +81,15 @@ enqueueEventLater t event = view (rs.enqueueLater) >>= \f -> f t event
 dequeueEvent :: Monad m => Raft m Event
 dequeueEvent = join $ view (rs.dequeue)
 
+logMetric :: Monad m => Metric -> Raft m ()
+logMetric metric = view (rs.publishMetric) >>= \f -> f metric
+
+logStaticMetrics :: Monad m => Raft m ()
+logStaticMetrics = do
+  logMetric . MetricNodeId =<< view (cfg.nodeId)
+  logMetric . MetricClusterSize =<< view clusterSize
+  logMetric . MetricQuorumSize =<< view quorumSize
+
 -- | Thread to take incoming messages and write them to the event queue.
 -- THREAD: MESSAGE RECEIVER (client and server), no state updates
 messageReceiver :: Monad m => Raft m ()
@@ -92,10 +108,40 @@ messageReceiver = do
         Left err -> debug err
         Right rpc -> enqueueEvent $ ERPC rpc
 
-updateTerm :: Monad m => Term -> Raft m ()
-updateTerm t = do
+setTerm :: Monad m => Term -> Raft m ()
+setTerm t = do
   void $ rs.writeTermNumber ^$ t
   term .= t
+  logMetric $ MetricTerm t
+
+setRole :: Monad m => Role -> Raft m ()
+setRole newRole = do
+  role .= newRole
+  logMetric $ MetricRole newRole
+
+setCurrentLeader :: Monad m => Maybe NodeID -> Raft m ()
+setCurrentLeader mNode = do
+  currentLeader .= mNode
+  logMetric $ MetricCurrentLeader mNode
+
+updateLNextIndex :: Monad m
+                 => (Map.Map NodeID LogIndex -> Map.Map NodeID LogIndex)
+                 -> Raft m ()
+updateLNextIndex f = do
+  lNextIndex %= f
+  lni <- use lNextIndex
+  ci <- use commitIndex
+  logMetric $ MetricAvailableSize $ availSize lni ci
+
+  where
+    -- | The number of nodes at most one behind the commit index
+    availSize lni ci = let oneBehind = pred ci
+                       in succ $ Map.size $ Map.filter (>= oneBehind) lni
+
+setLNextIndex :: Monad m
+              => Map.Map NodeID LogIndex
+              -> Raft m ()
+setLNextIndex = updateLNextIndex . const
 
 getCmdSigOrInvariantError :: String -> Command -> Signature
 getCmdSigOrInvariantError where' s@Command{..} = case _cmdProvenance of

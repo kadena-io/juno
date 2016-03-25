@@ -8,6 +8,8 @@ where
 
 import Control.Lens
 import Control.Monad
+import Data.AffineSpace ((.-.))
+import Data.Thyme.Clock (microseconds)
 import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
@@ -37,6 +39,7 @@ applyLogEntries = do
   r <- use role
   when (r == Leader) $ sendResults results
   lastApplied .= ci
+  logMetric $ MetricAppliedIndex ci
   if length results > 0
     then debug $ "Sent " ++ show (length results) ++ " CMDRs"
     else debug $ "Applied log entries but did not send results?"
@@ -61,6 +64,22 @@ makeCommandResponse' nid mlid Command{..} result = CommandResponse
              nid
              _cmdRequestId
              NewMsg
+
+logCommitChange :: Monad m => LogIndex -> LogIndex -> Raft m ()
+logCommitChange before after
+  | after > before = do
+      logMetric $ MetricCommitIndex after
+      mLastTime <- use lastCommitTime
+      now <- join $ view (rs.getTimestamp)
+      case mLastTime of
+        Nothing -> return ()
+        Just lastTime ->
+          let duration = view microseconds $ now .-. lastTime
+              (LogIndex numCommits) = after - before
+              period = fromIntegral duration / fromIntegral numCommits
+          in logMetric $ MetricCommitPeriod period
+      lastCommitTime ?= now
+  | otherwise = return ()
 
 -- checks to see what the largest N where a quorum of nodes
 -- has sent us proof of a commit up to that index
@@ -94,6 +113,7 @@ updateCommitIndex = do
           if valid
             then do
               commitIndex .= qci
+              logCommitChange ci qci
               commitProof %= Map.filterWithKey (\k _ -> k >= qci)
               debug $ "Commit index is now: " ++ show qci
               return True

@@ -19,7 +19,7 @@ import Juno.Consensus.ByzRaft.Commit (doCommit)
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAppendEntries)
 import Juno.Runtime.Timer (resetElectionTimerLeader)
-import Juno.Util.Util (debug)
+import Juno.Util.Util (debug, updateLNextIndex)
 import qualified Juno.Runtime.Types as JT
 
 data AEResponseEnv = AEResponseEnv {
@@ -138,10 +138,10 @@ handle ae = do
       sendAppendEntries _sendAENodeID
       resetElectionTimerLeader
     ConvincedAndSuccessful{..} -> do
-      JT.lNextIndex . at _incrementNextIndexNode .= Just (_incrementNextIndexLogIndex + 1)
+      updateLNextIndex $ Map.insert _incrementNextIndexNode $ _incrementNextIndexLogIndex + 1
       JT.lConvinced %= Set.insert _insertConvinced
       resetElectionTimerLeader
     ConvincedAndUnsuccessful{..} -> do
-      JT.lNextIndex %= Map.adjust (subtract 1) _decrementNextIndex
+      updateLNextIndex $ Map.adjust (subtract 1) _decrementNextIndex
       sendAppendEntries _sendAENodeID
       resetElectionTimerLeader

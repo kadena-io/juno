@@ -2,11 +2,9 @@
 
 module Juno.Consensus.ByzRaft.Log
   ( addLogEntryAndHash
-  , updateLogHashesFromIndex
-  , updateLogHashesFromIndex')
+  , updateLogHashesFromIndex)
 where
 
-import Control.Lens
 import qualified Data.Sequence as Seq
 import Data.Sequence (Seq)
 import Codec.Digest.SHA
@@ -29,26 +27,12 @@ getCmdSignedRPC LogEntry{ _leCommand = Command{ _cmdProvenance = ReceivedMsg{ _p
 getCmdSignedRPC LogEntry{ _leCommand = Command{ _cmdProvenance = NewMsg }} =
   error "Invariant Failure: for a command to be in a log entry, it needs to have been received!"
 
--- THREAD: SERVER MAIN. updates state
-updateLogHashesFromIndex :: Monad m => LogIndex -> Raft m ()
-updateLogHashesFromIndex i =
-  logEntries %= updateLogHashesFromIndex' i
-{-
-  es <- use logEntries
+updateLogHashesFromIndex :: LogIndex -> Seq LogEntry -> Seq LogEntry
+updateLogHashesFromIndex i es =
   case seqIndex es $ fromIntegral i of
-    Just _  -> do
-      logEntries %= Seq.adjust (hashLogEntry (seqIndex es (fromIntegral i - 1))) (fromIntegral i)
-      updateLogHashesFromIndex (i + 1)
-    Nothing -> return ()
--}
-
--- pure version
-updateLogHashesFromIndex' :: LogIndex -> Seq LogEntry -> Seq LogEntry
-updateLogHashesFromIndex' i es =
-  case seqIndex es $ fromIntegral i of
-    Just _  -> do
+    Just _ -> do
       logEntries' <- return (Seq.adjust (hashLogEntry (seqIndex es (fromIntegral i - 1))) (fromIntegral i) es)
-      updateLogHashesFromIndex' (i + 1) logEntries'
+      updateLogHashesFromIndex (i + 1) logEntries'
     Nothing -> es
 
 addLogEntryAndHash :: LogEntry -> Seq LogEntry -> Seq LogEntry

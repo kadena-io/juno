@@ -27,6 +27,8 @@ extra-deps:
 - data-dword-0.3
 - data-bword-0.1 # for data-dword
 - vector-0.11.0.0
+- ekg-0.4.0.9
+- ekg-json-0.1.0.1
 
 # Override default flag values for local packages and extra-deps
 flags:

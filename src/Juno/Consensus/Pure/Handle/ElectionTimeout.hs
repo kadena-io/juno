@@ -19,7 +19,7 @@ import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (createRequestVoteResponse,sendRPC)
 import Juno.Runtime.Timer (resetElectionTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Combinator ((^$))
-import Juno.Util.Util (lastLogInfo,debug,updateTerm)
+import Juno.Util.Util (lastLogInfo,debug,setTerm,setRole,setCurrentLeader)
 import qualified Juno.Runtime.Types as JT
 
 data ElectionTimeoutEnv = ElectionTimeoutEnv {
@@ -122,11 +122,11 @@ handle msg = do
   case out of
     AlreadyLeader -> return ()
     -- this is for handling the leader w/o followers case only
-    AbdicateAndLazyVote {..} -> JT.role .= Follower >> castLazyVote _lazyTerm _lazyCandidate _lazyResponse
+    AbdicateAndLazyVote {..} -> setRole Follower >> castLazyVote _lazyTerm _lazyCandidate _lazyResponse
     VoteForLazyCandidate {..} -> castLazyVote _lazyTerm _lazyCandidate _lazyResponse
     BecomeCandidate {..} -> do
-               JT.role .= _newRole
-               updateTerm _newTerm
+               setRole _newRole
+               setTerm _newTerm
                setVotedFor (Just _myNodeId)
                JT.cYesVotes .= Set.singleton _selfYesVote
                JT.cPotentialVotes.= _potentialVotes
@@ -135,11 +135,11 @@ handle msg = do
 
 castLazyVote :: Monad m => Term -> NodeID -> RequestVoteResponse -> JT.Raft m ()
 castLazyVote lazyTerm' lazyCandidate' lazyResponse' = do
-  updateTerm lazyTerm'
+  setTerm lazyTerm'
   setVotedFor (Just lazyCandidate')
   JT.lazyVote .= Nothing
   JT.ignoreLeader .= False
-  JT.currentLeader .= Nothing
+  setCurrentLeader Nothing
   sendRPC lazyCandidate' (RVR' lazyResponse')
   -- TODO: we need to verify that this is correct. It seems that a RVR (so a vote) is sent every time an election timeout fires.
   -- However, should that be the case? I think so, as you shouldn't vote for multiple people in the same election. Still though...
