@@ -8,7 +8,7 @@ module Juno.Monitoring.Server
 import Juno.Runtime.Types (Config, Metric(..), LogIndex(..), Term(..),
                            NodeID(..), nodeId, _port)
 
-import System.Remote.Monitoring (Server, forkServer, getLabel, getGauge,
+import Juno.Monitoring.EkgMonitor (Server, forkServer, getLabel, getGauge,
                                  getDistribution)
 import Control.Lens ((^.), to)
 import Data.Text.Encoding (decodeUtf8)

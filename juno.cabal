@@ -53,6 +53,9 @@ library
                      , Juno.Util.Util
                      , Schwifty.Swift.M105.Types
                      , Schwifty.Swift.M105.Parser
+                     , Juno.Monitoring.EkgJson
+                     , Juno.Monitoring.EkgMonitor
+                     , Juno.Monitoring.EkgSnap
   build-depends:       SHA2
                      , aeson
                      , aeson-pretty
@@ -63,11 +66,9 @@ library
                      , base16-bytestring
                      , base64-bytestring >= 1.0.0.1 && < 1.1
                      , binary-serialise-cbor
-                     , binary-serialise-cbor
                      , bytestring
                      , cereal >= 0.4.1.1
                      , containers
-                     , criterion
                      , criterion
                      , crypto-api
                      , deepseq >= 1.4.1.1
@@ -103,6 +104,10 @@ library
                      , yaml
                      , zeromq4-haskell >= 0.6.3
                      , zlib
+                     , time
+                     , unordered-containers
+                     , filepath
+                     , ekg-json
   hs-source-dirs:      src
   ghc-options:         -Wall -fno-warn-unused-do-bind -O2 -with-rtsopts="-N4"
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
