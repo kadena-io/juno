@@ -1,0 +1,27 @@
+:root {
+  --font-family: Monaco, monospace;
+  --font-size: 12px;
+  --background: white;
+  --color: #aaa;
+  --yellow: #FFD601;
+}
+
+body {
+  font-size: var(--font-size);
+  font-family: var(--font-family);
+
+  background-color: var(--background);
+  color: var(--color);
+}
+
+.chart div {
+  text-align: right;
+  padding: 3px;
+  margin: 1px;
+  color: white;
+}
+
+.mg-line1-legend-color {
+  color: var(--yellow);
+  fill: var(--yellow);
+}
