@@ -17,7 +17,7 @@ import qualified Data.ByteString.Base64 as B64
 import qualified Data.Text as T
 import qualified System.Metrics.Label as Label
 import qualified System.Metrics.Gauge as Gauge
-import qualified System.Metrics.Distribution as Distribution
+import qualified System.Metrics.Distribution as Dist
 
 -- TODO: possibly switch to 'newStore' API. this allows us to use groups.
 
@@ -42,6 +42,7 @@ startMonitoring config = do
   portGauge <- getGauge "juno.node.port" ekg
   roleLabel <- getLabel "juno.node.role" ekg
   appliedIndexGauge <- getGauge "juno.node.applied_index" ekg
+  applyLatencyDist <- getDistribution "juno.node.apply_latency" ekg
   -- Cluster
   clusterSizeGauge <- getGauge "juno.cluster.size" ekg
   quorumSizeGauge <- getGauge "juno.cluster.quorum_size" ekg
@@ -54,7 +55,7 @@ startMonitoring config = do
     MetricCommitIndex (LogIndex idx) ->
       Gauge.set commitIndexGauge $ fromIntegral idx
     MetricCommitPeriod p ->
-      Distribution.add commitPeriodDist p
+      Dist.add commitPeriodDist p
     MetricCurrentLeader mNode ->
       case mNode of
         Just node -> Label.set currentLeaderLabel $ nodeDescription node
@@ -70,6 +71,8 @@ startMonitoring config = do
       Label.set roleLabel $ T.pack $ show role
     MetricAppliedIndex (LogIndex idx) ->
       Gauge.set appliedIndexGauge $ fromIntegral idx
+    MetricApplyLatency l ->
+      Dist.add applyLatencyDist l
     -- Cluster
     MetricClusterSize size ->
       Gauge.set clusterSizeGauge $ fromIntegral size

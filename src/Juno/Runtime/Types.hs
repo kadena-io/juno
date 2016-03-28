@@ -526,20 +526,22 @@ data CommandStatus = CmdSubmitted -- client sets when sending command
                    | CmdApplied { result :: CommandResult }  -- We have a result
                    deriving (Show)
 
--- | Consensus metrics
-data Metric = MetricTerm Term
-            | MetricCommitIndex LogIndex
-            | MetricCommitPeriod Double          -- For computing throughput
-            | MetricCurrentLeader (Maybe NodeID)
-            | MetricHash ByteString
-            -- Node metrics:
-            | MetricNodeId NodeID
-            | MetricRole Role
-            | MetricAppliedIndex LogIndex
-            -- Cluster metrics:
-            | MetricClusterSize Int
-            | MetricQuorumSize Int
-            | MetricAvailableSize Int
+data Metric
+  -- Consensus metrics:
+  = MetricTerm Term
+  | MetricCommitIndex LogIndex
+  | MetricCommitPeriod Double          -- For computing throughput
+  | MetricCurrentLeader (Maybe NodeID)
+  | MetricHash ByteString
+  -- Node metrics:
+  | MetricNodeId NodeID
+  | MetricRole Role
+  | MetricAppliedIndex LogIndex
+  | MetricApplyLatency Double
+  -- Cluster metrics:
+  | MetricClusterSize Int
+  | MetricQuorumSize Int
+  | MetricAvailableSize Int
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.

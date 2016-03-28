@@ -9,7 +9,8 @@ where
 import Control.Lens
 import Control.Monad
 import Data.AffineSpace ((.-.))
-import Data.Thyme.Clock (microseconds)
+import Data.Int (Int64)
+import Data.Thyme.Clock (UTCTime, microseconds)
 import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
@@ -41,9 +42,22 @@ applyLogEntries = do
   lastApplied .= ci
   logMetric $ MetricAppliedIndex ci
 
+interval :: UTCTime -> UTCTime -> Int64
+interval start end = view microseconds $ end .-. start
+
+logApplyLatency :: Monad m => Command -> Raft m ()
+logApplyLatency (Command _ _ _ provenance) = case provenance of
+  NewMsg -> return ()
+  ReceivedMsg _digest _orig mReceivedAt -> case mReceivedAt of
+    Just (ReceivedAt arrived) -> do
+      now <- join $ view (rs.getTimestamp)
+      logMetric $ MetricApplyLatency $ fromIntegral $ interval arrived now
+    Nothing -> return ()
+
 applyCommand :: Monad m => Command -> Raft m (NodeID, CommandResponse)
 applyCommand cmd@Command{..} = do
   apply <- view (rs.applyLogEntry)
+  logApplyLatency cmd
   result <- apply _cmdEntry
   replayMap %= Map.insert (_cmdClientId, getCmdSigOrInvariantError "applyCommand" cmd) (Just result)
   ((,) _cmdClientId) <$> makeCommandResponse cmd result
@@ -71,7 +85,7 @@ logCommitChange before after
       case mLastTime of
         Nothing -> return ()
         Just lastTime ->
-          let duration = view microseconds $ now .-. lastTime
+          let duration = interval lastTime now
               (LogIndex numCommits) = after - before
               period = fromIntegral duration / fromIntegral numCommits
           in logMetric $ MetricCommitPeriod period
