@@ -100,7 +100,7 @@ mergeCommitProof aer@AppendEntriesResponse{..} = do
     then do
       tell [ "merging commit proof for index: " ++ show _aerIndex]
       commitProof' <- view (commitProof . at _aerIndex)
-      aer' <- return $ aer {_aerProvenance = _aerProvenance {_pTimeStamp = defaultReceivedAt}}
+      aer' <- return $ aer {_aerProvenance = _aerProvenance {_pTimeStamp = Nothing }}
       case commitProof' of
         Nothing -> return $ SetFirstCommitProof (_aerIndex, Set.singleton aer')
         Just _ -> return $ AddToCommitProof (_aerIndex, aer')

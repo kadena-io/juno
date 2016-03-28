@@ -17,66 +17,66 @@ spec = describe "WireFormat RoundTrips" testWireRoundtrip
 testWireRoundtrip :: Spec
 testWireRoundtrip = do
   it "Command" $
-    fromWire defaultReceivedAt keySet cmdSignedRPC1
+    fromWire Nothing keySet cmdSignedRPC1
       `shouldBe`
         (Right $ cmdRPC1 {
             _cmdProvenance = ReceivedMsg
               { _pDig = _sigDigest cmdSignedRPC1
               , _pOrig = _sigBody cmdSignedRPC1
-              , _pTimeStamp = defaultReceivedAt}})
+              , _pTimeStamp = Nothing}})
 
   it "CommandResponse" $
-    fromWire defaultReceivedAt keySet cmdrSignedRPC
+    fromWire Nothing keySet cmdrSignedRPC
       `shouldBe`
         (Right $ cmdrRPC {
             _cmdrProvenance = ReceivedMsg
               { _pDig = _sigDigest cmdrSignedRPC
               , _pOrig = _sigBody cmdrSignedRPC
-              , _pTimeStamp = defaultReceivedAt}})
+              , _pTimeStamp = Nothing}})
   it "Seq LogEntry" $
     leSeqDecoded `shouldBe` leSeq
   it "RequestVoteResponse" $
-    fromWire defaultReceivedAt keySet rvrSignedRPC1
+    fromWire Nothing keySet rvrSignedRPC1
       `shouldBe`
         (Right $ rvrRPC1 {
             _rvrProvenance = ReceivedMsg
               { _pDig = _sigDigest rvrSignedRPC1
               , _pOrig = _sigBody rvrSignedRPC1
-              , _pTimeStamp = defaultReceivedAt}})
+              , _pTimeStamp = Nothing}})
   it "Set RequestVoteResponse" $
-    decodeRVRWire defaultReceivedAt keySet rvrSignedRPCList `shouldBe` Right rvrRPCSet'
+    decodeRVRWire Nothing keySet rvrSignedRPCList `shouldBe` Right rvrRPCSet'
   it "AppendEntries" $
-    fromWire defaultReceivedAt keySet aeSignedRPC
+    fromWire Nothing keySet aeSignedRPC
       `shouldBe`
         (Right $ aeRPC {
             _aeProvenance = ReceivedMsg
               { _pDig = _sigDigest aeSignedRPC
               , _pOrig = _sigBody aeSignedRPC
-              , _pTimeStamp = defaultReceivedAt}})
+              , _pTimeStamp = Nothing}})
   it "AppendEntriesResponse" $
-    fromWire defaultReceivedAt keySet aerSignedRPC
+    fromWire Nothing keySet aerSignedRPC
       `shouldBe`
         (Right $ aerRPC {
             _aerProvenance = ReceivedMsg
               { _pDig = _sigDigest aerSignedRPC
               , _pOrig = _sigBody aerSignedRPC
-              , _pTimeStamp = defaultReceivedAt}})
+              , _pTimeStamp = Nothing}})
   it "RequestVote" $
-    fromWire defaultReceivedAt keySet rvSignedRPC
+    fromWire Nothing keySet rvSignedRPC
       `shouldBe`
         (Right $ rvRPC {
             _rvProvenance = ReceivedMsg
               { _pDig = _sigDigest rvSignedRPC
               , _pOrig = _sigBody rvSignedRPC
-              , _pTimeStamp = defaultReceivedAt}})
+              , _pTimeStamp = Nothing}})
   it "Revolution" $
-    fromWire defaultReceivedAt keySet revSignedRPC
+    fromWire Nothing keySet revSignedRPC
       `shouldBe`
         (Right $ revRPC {
             _revProvenance = ReceivedMsg
               { _pDig = _sigDigest revSignedRPC
               , _pOrig = _sigBody revSignedRPC
-              , _pTimeStamp = defaultReceivedAt}})
+              , _pTimeStamp = Nothing}})
 
 
 -- ##########################################################
@@ -128,8 +128,8 @@ cmdSignedRPC2 = toWire nodeIdClient pubKeyClient privKeyClient cmdRPC2
 
 -- these are signed (received) provenance versions
 cmdRPC1', cmdRPC2' :: Command
-cmdRPC1' = (\(Right v) -> v) $ fromWire defaultReceivedAt keySet cmdSignedRPC1
-cmdRPC2' = (\(Right v) -> v) $ fromWire defaultReceivedAt keySet cmdSignedRPC2
+cmdRPC1' = (\(Right v) -> v) $ fromWire Nothing keySet cmdSignedRPC1
+cmdRPC2' = (\(Right v) -> v) $ fromWire Nothing keySet cmdSignedRPC2
 
 -- #############################################
 -- CommandResponse, with and without provenance
@@ -165,7 +165,7 @@ logEntry2 = LogEntry
 
 leSeq, leSeqDecoded :: Seq LogEntry
 leSeq = Seq.fromList [logEntry1, logEntry2]
-leSeqDecoded = (\(Right v) -> v) $ decodeLEWire defaultReceivedAt keySet leWire
+leSeqDecoded = (\(Right v) -> v) $ decodeLEWire Nothing keySet leWire
 
 leWire :: [LEWire]
 leWire = encodeLEWire nodeIdLeader pubKeyLeader privKeyLeader leSeq
@@ -197,8 +197,8 @@ rvrSignedRPC1 = toWire nodeIdLeader pubKeyLeader privKeyLeader rvrRPC1
 rvrSignedRPC2 = toWire nodeIdFollower pubKeyFollower privKeyFollower rvrRPC2
 
 rvrRPC1', rvrRPC2' :: RequestVoteResponse
-rvrRPC1' = (\(Right v) -> v) $ fromWire defaultReceivedAt keySet rvrSignedRPC1
-rvrRPC2' = (\(Right v) -> v) $ fromWire defaultReceivedAt keySet rvrSignedRPC2
+rvrRPC1' = (\(Right v) -> v) $ fromWire Nothing keySet rvrSignedRPC1
+rvrRPC2' = (\(Right v) -> v) $ fromWire Nothing keySet rvrSignedRPC2
 
 rvrRPCSet' :: Set RequestVoteResponse
 rvrRPCSet' = Set.fromList [rvrRPC1', rvrRPC2']
@@ -224,7 +224,7 @@ aeSignedRPC :: SignedRPC
 aeSignedRPC = toWire nodeIdLeader pubKeyLeader privKeyLeader aeRPC
 
 aeRPC' :: RequestVoteResponse
-aeRPC' = (\(Right v) -> v) $ fromWire defaultReceivedAt keySet aeSignedRPC
+aeRPC' = (\(Right v) -> v) $ fromWire Nothing keySet aeSignedRPC
 
 -- #####################
 -- AppendEntriesResponse
