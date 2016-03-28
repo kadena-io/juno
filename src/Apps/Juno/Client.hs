@@ -115,16 +115,16 @@ snapServer toCommand cmdStatusMap = httpServe serverConf $
 -- bad: curl -H "Content-Type: application/json" -X POST -d '{ "payloadGarb" : { "account": "KALE" }, "digest": { "hash" : "mhash", "key" : "mykey", "garbage" : "jsonError"} }' http://localhost:8000/api/juno/v1/accounts/create
 createAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 createAccounts toCommand cmdStatusMap = do
-   maybeCreateAccount <- liftM JSON.decode (readRequestBody 1000)
-   case maybeCreateAccount of
-     Just (CreateAccountRequest (AccountPayload acct) _) -> do
-         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
-         liftIO $ writeChan toCommand (reqestId, CommandEntry $ createAccountBS' $ T.unpack acct)
-         -- byz/client updates successfully
-         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
-     Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
-     where
-       createAccountBS' acct = BSC.pack $ "CreateAccount " ++ acct
+    maybeCreateAccount <- liftM JSON.decode (readRequestBody 1000)
+    case maybeCreateAccount of
+      Just (CreateAccountRequest (AccountPayload acct) _) -> do
+        reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
+        liftIO $ writeChan toCommand (reqestId, CommandEntry $ createAccountBS' $ T.unpack acct)
+        -- byz/client updates successfully
+        (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
+      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+  where
+    createAccountBS' acct = BSC.pack $ "CreateAccount " ++ acct
 
 -- |
 --  curl -H "Content-Type: application/json" -X POST -d '{ "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }' http://localhost:8000/api/juno/v1/accounts/adjust
