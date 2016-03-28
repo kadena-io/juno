@@ -37,7 +37,7 @@ import Schwifty.Swift.M105.Types
 import Schwifty.Swift.M105.Parser
 
 import Juno.Spec.Simple
-import Juno.Runtime.Types (CommandEntry(..), CommandResult(..),CommandStatus(..))
+import Juno.Runtime.Types (CommandEntry(..),CommandResult(..),CommandStatus(..),RequestId(..))
 import Juno.Consensus.ByzRaft.Client (CommandMVarMap, CommandMap(..), initCommandMap, setNextCmdRequestId)
 
 import Apps.Juno.JsonTypes
@@ -103,6 +103,7 @@ snapServer toCommand cmdStatusMap = httpServe serverConf $
     applyCORS defaultOptions $ methods [GET, POST]
     (ifTop (writeBS "use /hopper for commands") <|>
      route [("accounts/create", createAccounts toCommand cmdStatusMap)
+           , ("accounts/adjust", adjustAccounts toCommand cmdStatusMap)
            , ("hopper", hopperHandler toCommand cmdStatusMap)
            , ("swift", swiftHandler toCommand cmdStatusMap)
            , ("api/swift-submit", swiftSubmission toCommand cmdStatusMap)
@@ -114,16 +115,30 @@ snapServer toCommand cmdStatusMap = httpServe serverConf $
 -- bad: curl -H "Content-Type: application/json" -X POST -d '{ "payloadGarb" : { "account": "KALE" }, "digest": { "hash" : "mhash", "key" : "mykey", "garbage" : "jsonError"} }' http://localhost:8000/accounts/create
 createAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 createAccounts toCommand cmdStatusMap = do
-   maybeCreateAccount <- liftM JSON.decode (readRequestBody 10000000)
+   maybeCreateAccount <- liftM JSON.decode (readRequestBody 1000)
    case maybeCreateAccount of
      Just (CreateAccountRequest (AccountPayload acct) _) -> do
-         rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-         liftIO $ writeChan toCommand (rId, CommandEntry $ createAccountBS' $ T.unpack acct)
+         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
+         liftIO $ writeChan toCommand (reqestId, CommandEntry $ createAccountBS' $ T.unpack acct)
          -- byz/client updates successfully
-         (writeBS . BL.toStrict . JSON.encode . createAccountResponseSuccess . T.pack) (show rId)
-     Nothing -> writeBS . BL.toStrict . JSON.encode $ createAccountResponseFailure "cmdTestFailDecode"
+         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) (T.pack "")
+     Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
      where
        createAccountBS' acct = BSC.pack $ "CreateAccount " ++ acct
+
+-- |
+--  curl -H "Content-Type: application/json" -X POST -d '{ "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }' http://localhost:8000/accounts/adjust
+adjustAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
+adjustAccounts toCommand cmdStatusMap = do
+   maybeAdjustAccount <- liftM JSON.decode (readRequestBody 1000)
+   case maybeAdjustAccount of
+     Just (AccountAdjustRequest (AccountAdjustPayload acct amt) _) -> do
+         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
+         liftIO $ writeChan toCommand (reqestId, CommandEntry $ adjustAccountBS acct amt)
+         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) (T.pack "")
+     Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+     where
+       adjustAccountBS acct amt = BSC.pack $ "AdjustAccount " ++ ( T.unpack acct) ++ " " ++ (show $ toRational amt)
 
 swiftSubmission :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 swiftSubmission toCommand cmdStatusMap = do

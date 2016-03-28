@@ -6,6 +6,7 @@
 
 module Apps.Juno.JsonTypes where
 
+import           Control.Monad (mzero)
 import           Data.Aeson (encode
                             , decode
                             , genericParseJSON
@@ -16,7 +17,12 @@ import           Data.Aeson (encode
                             , FromJSON
                             )
 import           Data.Aeson.Types (defaultOptions
-                                 , Options(..))
+                                  ,object
+                                  ,Options(..)
+                                  ,(.:)
+                                  ,(.=)
+                                  )
+import           Data.Aeson (Value(..))
 import qualified Data.ByteString.Lazy.Char8 as BL
 import           GHC.Generics
 import qualified Data.Text as T
@@ -51,21 +57,49 @@ instance ToJSON CreateAccountRequest where
 instance FromJSON CreateAccountRequest where
     parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
 
-data CreateAccountResponse = CreateAccountResponse {
-      _cmdid :: Text
-    , _status :: Text
+data CommandResponse = CommandResponse {
+      _status :: Text
+    , _cmdid :: Text
+    , _message :: Text
     } deriving (Eq, Generic, Show)
 
-instance ToJSON CreateAccountResponse where
+instance ToJSON CommandResponse where
     toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
-instance FromJSON CreateAccountResponse where
+instance FromJSON CommandResponse where
     parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
 
-createAccountResponseSuccess :: Text -> CreateAccountResponse
-createAccountResponseSuccess cid = CreateAccountResponse cid "Success"
+commandResponseSuccess :: Text -> Text -> CommandResponse
+commandResponseSuccess cid msg = CommandResponse "Success" cid msg
 
-createAccountResponseFailure :: Text -> CreateAccountResponse
-createAccountResponseFailure cid = CreateAccountResponse cid "Failure"
+commandResponseFailure :: Text -> Text -> CommandResponse
+commandResponseFailure cid msg = CommandResponse "Failure" cid msg
+
+-- | AccountAdjust adding/substracting money from and existing account
+-- { "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }
+data AccountAdjustPayload = AccountAdjustPayload {
+      _adjustAccount :: Text
+    , _adjustAmount :: Double } deriving (Eq, Generic, Show)
+
+instance ToJSON AccountAdjustPayload where
+    toJSON (AccountAdjustPayload account amount) = object ["account" .= account, "amount" .= amount]
+instance FromJSON AccountAdjustPayload where
+    parseJSON (Object v) = AccountAdjustPayload <$>
+                             v .: "account" <*>
+                             v .: "amount"
+    parseJSON _ = mzero
+
+data AccountAdjustRequest = AccountAdjustRequest {
+      _adjustAccountPayload :: AccountAdjustPayload,
+      _adjustAccountDigest :: Digest
+    } deriving (Eq, Generic, Show)
+
+instance ToJSON AccountAdjustRequest where
+    toJSON (AccountAdjustRequest payload digest) = object ["payload" .= payload, "digest" .= digest]
+instance FromJSON AccountAdjustRequest where
+    parseJSON (Object v) = AccountAdjustRequest <$>
+                             v .: "payload" <*>
+                             v .: "digest"
+    parseJSON _ = mzero
 
 -- Tests
 test :: Bool
@@ -91,3 +125,30 @@ testDecodeDigest = case (decode bytesDigest :: Maybe Digest) of
                      Nothing -> False
 testCAEncode :: Bool
 testCAEncode = (encode (CreateAccountRequest (AccountPayload (T.pack "TSLA")) (Digest (T.pack "hashy") (T.pack "mykey")))) == ("{\"payload\":{\"account\":\"TSLA\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}")
+
+-- | Test account adjust
+
+testAdjustPayloadDecode :: Bool
+testAdjustPayloadDecode = (decode $ BL.pack "{\"amount\":100,\"account\":\"TSLA\"}" :: Maybe AccountAdjustPayload) ==
+                          Just (AccountAdjustPayload {_adjustAccount = "TSLA", _adjustAmount = 100.0})
+
+testAdjustPayloadEncode :: Bool
+testAdjustPayloadEncode = (encode $ AccountAdjustPayload "TSLA" 100) == "{\"amount\":100,\"account\":\"TSLA\"}"
+
+bytesAdjustRequestPayload :: BL.ByteString
+bytesAdjustRequestPayload =  BL.pack "{\"payload\":{\"amount\":100,\"account\":\"TSLA\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}"
+
+testAdjustRequestEncode :: BL.ByteString
+testAdjustRequestEncode = encode $
+                          AccountAdjustRequest (AccountAdjustPayload (T.pack "TSLA") 100)
+                                        (Digest (T.pack "hashy") (T.pack "mykey"))
+
+testAdjustRequestDecode :: Bool
+testAdjustRequestDecode = (decode $ bytesAdjustRequestPayload :: Maybe AccountAdjustRequest) ==
+                   Just (
+                         AccountAdjustRequest {
+                           _adjustAccountPayload = AccountAdjustPayload
+                           {_adjustAccount = "TSLA", _adjustAmount = 100.0}
+                         , _adjustAccountDigest = Digest {_hash = "hashy", _key = "mykey"}
+                         }
+                        )
