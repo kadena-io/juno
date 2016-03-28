@@ -110,12 +110,21 @@ observeAccounts = do
   _ <- ssString "ObserveAccounts"
   return $ Right ObserveAccounts
 
+-- negative representation: -10%1, (-10)%1, ((-10)%1) (-10%1)
+-- positive representation:  10%1, (10)%1, ((10)%1), (10%1)
 myRational :: (Monad m, TokenParsing m) => m Rational
 myRational = do
+  _ <- optional $ char '('
+  _ <- optional $ char '('
+  sig <- optional $ char '-'
   n <- decimal
+  _ <- optional $ char ')'
   _ <- ssChar '%'
   d <- decimal
-  return (n % d)
+  _ <- optional $ char ')'
+  case sig of
+    Nothing -> return (n % d)
+    Just _ -> return ((-n) % d)
 
 
 skipSpace :: TokenParsing m => m ()
