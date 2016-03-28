@@ -102,8 +102,8 @@ snapServer :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> IO ()
 snapServer toCommand cmdStatusMap = httpServe serverConf $
     applyCORS defaultOptions $ methods [GET, POST]
     (ifTop (writeBS "use /hopper for commands") <|>
-     route [("accounts/create", createAccounts toCommand cmdStatusMap)
-           , ("accounts/adjust", adjustAccounts toCommand cmdStatusMap)
+     route [ ("/api/juno/v1/accounts/create", createAccounts toCommand cmdStatusMap)
+           , ("/api/juno/v1/accounts/adjust", adjustAccounts toCommand cmdStatusMap)
            , ("hopper", hopperHandler toCommand cmdStatusMap)
            , ("swift", swiftHandler toCommand cmdStatusMap)
            , ("api/swift-submit", swiftSubmission toCommand cmdStatusMap)
@@ -111,8 +111,8 @@ snapServer toCommand cmdStatusMap = httpServe serverConf $
            ])
 
 -- |
--- good: curl -H "Content-Type: application/json" -X POST -d '{ "payload" : { "account": "TSLA" }, "digest": { "hash" : "mhash", "key" : "mykey"} }' http://localhost:8000/accounts/create
--- bad: curl -H "Content-Type: application/json" -X POST -d '{ "payloadGarb" : { "account": "KALE" }, "digest": { "hash" : "mhash", "key" : "mykey", "garbage" : "jsonError"} }' http://localhost:8000/accounts/create
+-- good: curl -H "Content-Type: application/json" -X POST -d '{ "payload" : { "account": "TSLA" }, "digest": { "hash" : "mhash", "key" : "mykey"} }' http://localhost:8000/api/juno/v1/accounts/create
+-- bad: curl -H "Content-Type: application/json" -X POST -d '{ "payloadGarb" : { "account": "KALE" }, "digest": { "hash" : "mhash", "key" : "mykey", "garbage" : "jsonError"} }' http://localhost:8000/api/juno/v1/accounts/create
 createAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 createAccounts toCommand cmdStatusMap = do
    maybeCreateAccount <- liftM JSON.decode (readRequestBody 1000)
@@ -127,7 +127,7 @@ createAccounts toCommand cmdStatusMap = do
        createAccountBS' acct = BSC.pack $ "CreateAccount " ++ acct
 
 -- |
---  curl -H "Content-Type: application/json" -X POST -d '{ "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }' http://localhost:8000/accounts/adjust
+--  curl -H "Content-Type: application/json" -X POST -d '{ "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }' http://localhost:8000/api/juno/v1/accounts/adjust
 adjustAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 adjustAccounts toCommand cmdStatusMap = do
    maybeAdjustAccount <- liftM JSON.decode (readRequestBody 1000)
