@@ -121,7 +121,7 @@ createAccounts toCommand cmdStatusMap = do
          reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
          liftIO $ writeChan toCommand (reqestId, CommandEntry $ createAccountBS' $ T.unpack acct)
          -- byz/client updates successfully
-         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) (T.pack "")
+         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
      where
        createAccountBS' acct = BSC.pack $ "CreateAccount " ++ acct
@@ -135,7 +135,7 @@ adjustAccounts toCommand cmdStatusMap = do
      Just (AccountAdjustRequest (AccountAdjustPayload acct amt) _) -> do
          reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
          liftIO $ writeChan toCommand (reqestId, CommandEntry $ adjustAccountBS acct amt)
-         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) (T.pack "")
+         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
      where
        adjustAccountBS acct amt = BSC.pack $ "AdjustAccount " ++ ( T.unpack acct) ++ " " ++ (show $ toRational amt)
