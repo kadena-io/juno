@@ -53,18 +53,17 @@ library
                      , Juno.Util.Util
                      , Schwifty.Swift.M105.Types
                      , Schwifty.Swift.M105.Parser
-
-  build-depends:       RSA
-                     , SHA2
+  build-depends:       SHA2
                      , ed25519
                      , attoparsec
                      , aeson
                      , aeson-pretty
                      , array
                      , base < 5
-                     , binary
+                     , binary-serialise-cbor
                      , bytestring
                      , cereal >= 0.4.1.1
+                     , criterion
                      , containers
                      , crypto-api
                      , enclosed-exceptions
@@ -136,43 +135,36 @@ executable junoclient
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
---executable serialization
---  main-is:             Serialization.hs
---  build-depends:       base < 5
---                     , RSA
---                     , ed25519
---                     , containers
---                     , bytestring
---                     , juno
---                     , cereal
---                     , criterion
---                     , binary-serialise-cbor
---  hs-source-dirs:      criterion
---  ghc-options:         -Wall -threaded -rtsopts -O2
---  ghc-prof-options:    -fprof-auto -fprof-auto-calls
---  default-language:    Haskell2010
---
-executable crypto
-  main-is:             Crypto.hs
+executable serialization
+  main-is:             Serialization.hs
   build-depends:       base < 5
-                     , RSA
+                     , ed25519
+                     , containers
                      , bytestring
+                     , juno
+                     , cereal
                      , criterion
+                     , binary-serialise-cbor
   hs-source-dirs:      criterion
   ghc-options:         -Wall -threaded -rtsopts -O2
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
 test-suite hspec
+  other-modules:       ParserSpec
+                     , WireFormatSpec
+                     , JsonTypesSpec
   type: exitcode-stdio-1.0
   main-is: hspec.hs
   hs-source-dirs: tests
   default-language: Haskell2010
   build-depends:
                 base
-              , RSA
+              , aeson
+              , bytestring
               , SHA
               , containers
               , hspec
               , juno
               , hopper
+              , text >= 1.2.0.0 && < 1.3

@@ -128,7 +128,6 @@ createAccounts toCommand cmdStatusMap = do
 
 -- |
 --  curl -H "Content-Type: application/json" -X POST -d '{ "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }' http://localhost:8000/api/juno/v1/accounts/adjust
--- curl -H "Content-Type: application/json" -X POST -d '{ "payload": { "account": "TSLA", "amount": -100.0 }, "digest": { "hash": "myhash", "key": "string" } }' http://localhost:8000/api/juno/v1/accounts/adjust
 adjustAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 adjustAccounts toCommand cmdStatusMap = do
    maybeAdjustAccount <- liftM JSON.decode (readRequestBody 1000)
