@@ -12,10 +12,6 @@ import qualified Data.ByteString as B
 import Juno.Runtime.Types
 import Juno.Util.Util
 
--- we need the Serialize instances for hashing the log entry
-import Juno.Persistence.SQLite ()
--- see Runtime.Types not on Provenance's serialize instance for details
-
 -- TODO: This uses the old decode encode trick and should be changed...
 hashLogEntry :: Maybe LogEntry -> LogEntry -> LogEntry
 hashLogEntry (Just LogEntry{ _leHash = prevHash}) le =

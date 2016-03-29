@@ -595,8 +595,7 @@ instance WireFormatCBOR Command where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWireCBOR ts ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
     Left err -> Left err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= CMD
+    Right () -> if _digType dig /= CMD
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDWire instance"
       else case CBR.deserialiseFromBytes CBC.decode $ LB.fromStrict bdy of
         Left err -> Left $ "Failure to decode CMDWire: " ++ err
@@ -676,8 +675,7 @@ instance WireFormat CommandBatch where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWire !ks !s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
     Left !err -> Left err
-    Right !False -> error "Invariant Failure: verification came back as Right False"
-    Right !True -> if _digType dig /= CMDB
+    Right () -> if _digType dig /= CMDB
       then error $! "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
       else case S.decode bdy of
         Left !err -> Left $ "Failure to decode CMDBWire: " ++ err
@@ -783,8 +781,7 @@ instance WireFormatParNF CommandBatch where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWireParNF ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
     Left err -> Left err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= CMDB
+    Right () -> if _digType dig /= CMDB
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
       else case decode bdy of
         Left err -> Left $ "Failure to decode CMDBWire: " ++ err

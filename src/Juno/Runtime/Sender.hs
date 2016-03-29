@@ -27,22 +27,7 @@ import Juno.Util.Util
 import Juno.Runtime.Types
 
 
--- TODO: There seems to be needless construction then destruction of the non-wire message types
---       Not sure if that could impact performance or if it will be unrolled/magic-ified
--- no state update, uses state
-sendAppendEntries :: Monad m => NodeID -> Raft m ()
-sendAppendEntries target = do
-  mni <- use $ lNextIndex.at target
-  es <- use logEntries
-  let (pli,plt) = logInfoForNextIndex mni es
-  ct <- use term
-  nid <- view (cfg.nodeId)
-  qVoteList <- getVotesForNode target
-  sendRPC target $ AE' $
-    AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) qVoteList NewMsg
-  debug $ "sendAppendEntries: " ++ show ct
-
-sendAppendEntries' :: NodeID
+createAppendEntries' :: NodeID
                    -> Map NodeID LogIndex
                    -> Seq LogEntry
                    -> Term
@@ -50,7 +35,7 @@ sendAppendEntries' :: NodeID
                    -> Set NodeID
                    -> Set RequestVoteResponse
                    -> RPC
-sendAppendEntries' target lNextIndex' es ct nid vts yesVotes =
+createAppendEntries' target lNextIndex' es ct nid vts yesVotes =
   let
     mni = Map.lookup target lNextIndex'
     (pli,plt) = logInfoForNextIndex mni es
@@ -58,38 +43,19 @@ sendAppendEntries' target lNextIndex' es ct nid vts yesVotes =
   in
     AE' $ AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) vts' NewMsg
 
-getVotesForNode :: Monad m => NodeID -> Raft m (Set RequestVoteResponse)
-getVotesForNode target = do
-  convinced <- Set.member target <$> use lConvinced
-  if convinced
-    then return Set.empty
-    else use cYesVotes
-
--- no state update but uses state
-sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
-sendAppendEntriesResponse target success convinced = do
+-- TODO: There seems to be needless construction then destruction of the non-wire message types
+--       Not sure if that could impact performance or if it will be unrolled/magic-ified
+-- no state update, uses state
+sendAppendEntries :: Monad m => NodeID -> Raft m ()
+sendAppendEntries target = do
+  lNextIndex' <- use lNextIndex
+  es <- use logEntries
   ct <- use term
   nid <- view (cfg.nodeId)
-  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  sendRPC target $ AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
-  debug $ "Sent AppendEntriesResponse: " ++ show ct
-
-sendAppendEntriesResponse' :: Bool -> Bool -> Term -> NodeID -> LogIndex -> ByteString -> RPC
-sendAppendEntriesResponse' success convinced ct nid lindex lhash =
-  AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
-
--- no state update but uses state
-sendAllAppendEntriesResponse :: Monad m => Raft m ()
-sendAllAppendEntriesResponse = do
-  ct <- use term
-  nid <- view (cfg.nodeId)
-  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  traverse_ (\n -> sendRPC n $ sendAppendEntriesResponse' True True ct nid lindex lhash) =<< view (cfg.otherNodes)
-
-createRequestVoteResponse :: MonadWriter [String] m => Term -> LogIndex -> NodeID -> NodeID -> Bool -> m RequestVoteResponse
-createRequestVoteResponse term' logIndex' myNodeId' target vote = do
-  tell ["Created RequestVoteResponse: " ++ show term']
-  return $ RequestVoteResponse term' logIndex' myNodeId' vote target NewMsg
+  vts <- use lConvinced
+  yesVotes <- use cYesVotes
+  sendRPC target $ createAppendEntries' target lNextIndex' es ct nid vts yesVotes
+  debug $ "sendAppendEntries: " ++ show ct
 
 -- no state update
 sendAllAppendEntries :: Monad m => Raft m ()
@@ -100,8 +66,34 @@ sendAllAppendEntries = do
   nid <- view (cfg.nodeId)
   vts <- use lConvinced
   yesVotes <- use cYesVotes
-  traverse_ (\target -> sendRPC target $ sendAppendEntries' target lNextIndex' es ct nid vts yesVotes) =<< view (cfg.otherNodes)
+  traverse_ (\target -> sendRPC target $ createAppendEntries' target lNextIndex' es ct nid vts yesVotes) =<< view (cfg.otherNodes)
   debug "Sent All AppendEntries"
+
+createAppendEntriesResponse' :: Bool -> Bool -> Term -> NodeID -> LogIndex -> ByteString -> RPC
+createAppendEntriesResponse' success convinced ct nid lindex lhash =
+  AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
+
+-- no state update but uses state
+sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
+sendAppendEntriesResponse target success convinced = do
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
+  sendRPC target $ createAppendEntriesResponse' success convinced ct nid lindex lhash
+  debug $ "Sent AppendEntriesResponse: " ++ show ct
+
+-- no state update but uses state
+sendAllAppendEntriesResponse :: Monad m => Raft m ()
+sendAllAppendEntriesResponse = do
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
+  traverse_ (\n -> sendRPC n $ createAppendEntriesResponse' True True ct nid lindex lhash) =<< view (cfg.otherNodes)
+
+createRequestVoteResponse :: MonadWriter [String] m => Term -> LogIndex -> NodeID -> NodeID -> Bool -> m RequestVoteResponse
+createRequestVoteResponse term' logIndex' myNodeId' target vote = do
+  tell ["Created RequestVoteResponse: " ++ show term']
+  return $ RequestVoteResponse term' logIndex' myNodeId' vote target NewMsg
 
 -- no state update
 sendResults :: Monad m => Seq (NodeID, CommandResponse) -> Raft m ()

@@ -186,7 +186,7 @@ data Provenance =
 -- Without a Serialize instance, we can be REALLY sure.
 
 -- | Based on the MsgType in the SignedRPC's Digest, we know which set of keys are needed to validate the message
-verifySignedRPC :: KeySet -> SignedRPC -> Either String Bool
+verifySignedRPC :: KeySet -> SignedRPC -> Either String ()
 verifySignedRPC !KeySet{..} !s@(SignedRPC !Digest{..} !bdy)
   | _digType == CMD || _digType == REV || _digType == CMDB =
       case Map.lookup _digNodeId _ksClient of
@@ -195,7 +195,7 @@ verifySignedRPC !KeySet{..} !s@(SignedRPC !Digest{..} !bdy)
           | key /= _digPubkey -> Left $! "Public key in storage doesn't match digest's key for msg: " ++ show s
           | otherwise -> if not $ dverify key bdy _digSig
                          then Left $! "Unable to verify SignedRPC sig: " ++ show s
-                         else Right True
+                         else Right ()
   | otherwise =
       case Map.lookup _digNodeId _ksCluster of
         Nothing -> Left $! "PubKey not found for NodeID: " ++ show _digNodeId
@@ -203,7 +203,7 @@ verifySignedRPC !KeySet{..} !s@(SignedRPC !Digest{..} !bdy)
           | key /= _digPubkey -> Left $! "Public key in storage doesn't match digest's key for msg: " ++ show s
           | otherwise -> if not $ dverify key bdy _digSig
                          then Left $! "Unable to verify SignedRPC sig: " ++ show s
-                         else Right True
+                         else Right ()
 {-# INLINE verifySignedRPC #-}
 
 class WireFormat a where
@@ -232,8 +232,7 @@ instance WireFormat Command where
   fromWire !ts !ks !s@(SignedRPC !dig !bdy) =
     case verifySignedRPC ks s of
       Left !err -> Left err
-      Right !False -> error "Invariant Failure: verification came back as Right False"
-      Right !True -> if _digType dig /= CMD
+      Right () -> if _digType dig /= CMD
         then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDWire instance"
         else case S.decode bdy of
             Left !err -> Left $! "Failure to decode CMDWire: " ++ err
@@ -259,8 +258,7 @@ instance WireFormat CommandBatch where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWire !ts !ks !s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
     Left !err -> Left err
-    Right !False -> error "Invariant Failure: verification came back as Right False"
-    Right !True -> if _digType dig /= CMDB
+    Right () -> if _digType dig /= CMDB
       then error $! "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
       else case S.decode bdy of
         Left !err -> Left $ "Failure to decode CMDBWire: " ++ err
@@ -269,11 +267,7 @@ instance WireFormat CommandBatch where
   {-# INLINE fromWire #-}
 
 gatherValidCmdbs :: Provenance -> [Either String Command] -> Either String CommandBatch
-gatherValidCmdbs prov ec = go ec []
-  where
-    go [] s = Right $! CommandBatch (reverse s) prov
-    go ((Right cmd):cmds) s = go cmds (cmd:s)
-    go ((Left err):_) _ = Left err
+gatherValidCmdbs prov ec = (`CommandBatch` prov) <$> sequence ec
 {-# INLINE gatherValidCmdbs #-}
 
 data CommandResponse = CommandResponse
@@ -298,8 +292,7 @@ instance WireFormat CommandResponse where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWire ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
     Left !err -> Left err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= CMDR
+    Right () -> if _digType dig /= CMDR
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDRWire instance"
       else case S.decode bdy of
         Left !err -> Left $! "Failure to decode CMDRWire: " ++ err
@@ -325,6 +318,7 @@ decodeLEWire' !ts !ks (LEWire !(t,cmd,hsh)) = case fromWire ts ks cmd of
       Right !cmd' -> Right $! LogEntry t cmd' hsh
 {-# INLINE decodeLEWire' #-}
 
+-- TODO: check if `toSeqLogEntry ele = Seq.fromList <$> sequence ele` is fusable?
 toSeqLogEntry :: [Either String LogEntry] -> Either String (Seq LogEntry)
 toSeqLogEntry !ele = go ele Seq.empty
   where
@@ -376,8 +370,7 @@ instance WireFormat AppendEntries where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
     Left !err -> Left err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= AE
+    Right () -> if _digType dig /= AE
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with AEWire instance"
       else case S.decode bdy of
         Left err -> Left $! "Failure to decode AEWire: " ++ err
@@ -423,8 +416,7 @@ instance WireFormat AppendEntriesResponse where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
     Left !err -> Left $! err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= AER
+    Right () -> if _digType dig /= AER
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with AERWire instance"
       else case S.decode bdy of
         Left !err -> Left $! "Failure to decode AERWire: " ++ err
@@ -457,8 +449,7 @@ instance WireFormat RequestVote where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
     Left !err -> Left $! err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= RV
+    Right () -> if _digType dig /= RV
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with RVWire instance"
       else case S.decode bdy of
         Left !err -> Left $! "Failure to decode RVWire: " ++ err
@@ -489,8 +480,7 @@ instance WireFormat RequestVoteResponse where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
     Left !err -> Left $! err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= RVR
+    Right () -> if _digType dig /= RVR
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with RVRWire instance"
       else case S.decode bdy of
         Left !err -> Left $! "Failure to decode RVRWire: " ++ err
@@ -498,8 +488,9 @@ instance WireFormat RequestVoteResponse where
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
 
+-- TODO: check if `toSetRvr eRvrs = Set.fromList <$> sequence eRvrs` is fusable?
 toSetRvr :: [Either String RequestVoteResponse] -> Either String (Set RequestVoteResponse)
-toSetRvr ele = go ele Set.empty
+toSetRvr eRvrs = go eRvrs Set.empty
   where
     go [] s = Right $! s
     go ((Right rvr):rvrs) s = go rvrs (Set.insert rvr s)
@@ -538,8 +529,7 @@ instance WireFormat Revolution where
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
   fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
     Left !err -> Left $! err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= REV
+    Right () -> if _digType dig /= REV
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with REVWire instance"
       else case S.decode bdy of
         Left !err -> Left $! "Failure to decode REVWire: " ++ err

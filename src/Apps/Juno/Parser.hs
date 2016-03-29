@@ -80,7 +80,7 @@ convertBlob (SwiftBlob t c) =
     Right o -> Left $ "Invariant Failure: expected Program but got " ++ show o
 
 transmatic :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
-transmatic = either Left (Right . Program) . compile <$> expr
+transmatic = fmap Program . compile <$> expr
 
 readHopper :: BSC.ByteString -> Either String HopperLiteAdminCommand
 readHopper m = case Atto.parseOnly hopperliteParser m of

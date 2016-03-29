@@ -78,31 +78,8 @@ handleCommand cmd@Command{..} = do
       -- anything
       return UnknownLeader
 
-handle :: Monad m => Command -> JT.Raft m ()
-handle cmd = do
-  c <- view JT.cfg
-  s <- get
-  (out,l) <- runReaderT (runWriterT (handleCommand cmd)) $
-             CommandEnv (JT._role s)
-                        (JT._term s)
-                        (JT._currentLeader s)
-                        (JT._replayMap s)
-                        (JT._nodeId c)
-  mapM_ debug l
-  case out of
-    UnknownLeader -> return ()
-    AlreadySeen -> return ()
-    (RetransmitToLeader lid rpc) -> sendRPC lid rpc
-    (SendCommandResponse cid rpc) -> sendRPC cid rpc
-    (CommitAndPropagate newEntry replayKey) -> do
-               JT.logEntries %= addLogEntryAndHash newEntry
-               JT.replayMap %= Map.insert replayKey Nothing
-               sendAllAppendEntries
-               sendAllAppendEntriesResponse
-               doCommit
-
-handleBatchSingle :: Monad m => Command -> JT.Raft m ()
-handleBatchSingle cmd = do
+handleSingleCommand :: Monad m => Bool -> Command -> JT.Raft m ()
+handleSingleCommand sendWhenDone cmd = do
   c <- view JT.cfg
   s <- get
   (out,_) <- runReaderT (runWriterT (handleCommand cmd)) $
@@ -119,10 +96,19 @@ handleBatchSingle cmd = do
     (CommitAndPropagate newEntry replayKey) -> do
                JT.logEntries %= addLogEntryAndHash newEntry
                JT.replayMap %= Map.insert replayKey Nothing
+               if sendWhenDone
+               then do
+                 sendAllAppendEntries
+                 sendAllAppendEntriesResponse
+                 doCommit
+               else return ()
+
+handle :: Monad m => Command -> JT.Raft m ()
+handle cmd = handleSingleCommand True cmd
 
 handleBatch :: Monad m => CommandBatch -> JT.Raft m ()
 handleBatch CommandBatch{..} = do
-  mapM_ handleBatchSingle _cmdbBatch
+  mapM_ (handleSingleCommand False) _cmdbBatch
   sendAllAppendEntries
   sendAllAppendEntriesResponse
   doCommit
