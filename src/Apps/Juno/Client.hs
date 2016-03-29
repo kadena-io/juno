@@ -87,9 +87,16 @@ runREPL toCommand cmdStatusMap = do
     "" -> runREPL toCommand cmdStatusMap
     _ -> do
       cmd' <- return $ BSC.pack cmd
-      case readHopper cmd' of
-        Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommand cmdStatusMap
-        Right _ -> do
+      if take 11 cmd == "batch test:"
+      then do
+        rId <- liftIO $ setNextCmdRequestId cmdStatusMap
+        writeChan toCommand (rId, CommandEntry cmd')
+        threadDelay 1000
+        runREPL toCommand cmdStatusMap
+      else
+        case readHopper cmd' of
+          Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommand cmdStatusMap
+          Right _ -> do
             rId <- liftIO $ setNextCmdRequestId cmdStatusMap
             writeChan toCommand (rId, CommandEntry cmd')
             showResult cmdStatusMap rId

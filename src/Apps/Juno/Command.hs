@@ -45,7 +45,9 @@ runCommand env cmd' = do
   (ps, ss) <- MV.takeMVar mvar -- persistent s, swift
   let bals = balances ps
   case readHopper $ unCommandEntry cmd' of
-    Left err -> return $ CommandResult $ BSC.pack err
+    Left err -> do
+      MV.putMVar mvar (ps,ss)
+      return $ CommandResult $ BSC.pack err
     Right cmd -> fmap CommandResult $ handle
         (\e -> do
             MV.putMVar mvar (ps,ss)

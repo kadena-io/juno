@@ -11,6 +11,8 @@ cabal.sandbox.config
 datadump.json
 simplerdump.json
 *.html
+*.zip
+*.eventLog
 simple.conf
 fakepayments.json
 paymentsquery-07-28.json

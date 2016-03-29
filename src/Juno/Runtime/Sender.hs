@@ -14,10 +14,13 @@ module Juno.Runtime.Sender
 import Control.Lens
 import Control.Monad.Writer
 import Data.Foldable (traverse_)
-import Data.Sequence (Seq)
+import Data.ByteString (ByteString)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Set (Set)
-import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Serialize
 
 import Juno.Util.Util
@@ -34,10 +37,26 @@ sendAppendEntries target = do
   let (pli,plt) = logInfoForNextIndex mni es
   ct <- use term
   nid <- view (cfg.nodeId)
-  debug $ "sendAppendEntries: " ++ show ct
   qVoteList <- getVotesForNode target
   sendRPC target $ AE' $
     AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) qVoteList NewMsg
+  debug $ "sendAppendEntries: " ++ show ct
+
+sendAppendEntries' :: NodeID
+                   -> Map NodeID LogIndex
+                   -> Seq LogEntry
+                   -> Term
+                   -> NodeID
+                   -> Set NodeID
+                   -> Set RequestVoteResponse
+                   -> RPC
+sendAppendEntries' target lNextIndex' es ct nid vts yesVotes =
+  let
+    mni = Map.lookup target lNextIndex'
+    (pli,plt) = logInfoForNextIndex mni es
+    vts' = if Set.member target vts then Set.empty else yesVotes
+  in
+    AE' $ AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) vts' NewMsg
 
 getVotesForNode :: Monad m => NodeID -> Raft m (Set RequestVoteResponse)
 getVotesForNode target = do
@@ -51,14 +70,21 @@ sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
 sendAppendEntriesResponse target success convinced = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  debug $ "Sent AppendEntriesResponse: " ++ show ct
   (_, lindex, lhash) <- lastLogInfo <$> use logEntries
   sendRPC target $ AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
+  debug $ "Sent AppendEntriesResponse: " ++ show ct
+
+sendAppendEntriesResponse' :: Bool -> Bool -> Term -> NodeID -> LogIndex -> ByteString -> RPC
+sendAppendEntriesResponse' success convinced ct nid lindex lhash =
+  AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
 
 -- no state update but uses state
 sendAllAppendEntriesResponse :: Monad m => Raft m ()
-sendAllAppendEntriesResponse =
-  traverse_ (\n -> sendAppendEntriesResponse n True True) =<< view (cfg.otherNodes)
+sendAllAppendEntriesResponse = do
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
+  traverse_ (\n -> sendRPC n $ sendAppendEntriesResponse' True True ct nid lindex lhash) =<< view (cfg.otherNodes)
 
 createRequestVoteResponse :: MonadWriter [String] m => Term -> LogIndex -> NodeID -> NodeID -> Bool -> m RequestVoteResponse
 createRequestVoteResponse term' logIndex' myNodeId' target vote = do
@@ -67,7 +93,15 @@ createRequestVoteResponse term' logIndex' myNodeId' target vote = do
 
 -- no state update
 sendAllAppendEntries :: Monad m => Raft m ()
-sendAllAppendEntries = traverse_ sendAppendEntries =<< view (cfg.otherNodes)
+sendAllAppendEntries = do
+  lNextIndex' <- use lNextIndex
+  es <- use logEntries
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  vts <- use lConvinced
+  yesVotes <- use cYesVotes
+  traverse_ (\target -> sendRPC target $ sendAppendEntries' target lNextIndex' es ct nid vts yesVotes) =<< view (cfg.otherNodes)
+  debug "Sent All AppendEntries"
 
 -- no state update
 sendResults :: Monad m => Seq (NodeID, CommandResponse) -> Raft m ()

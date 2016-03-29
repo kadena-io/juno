@@ -24,7 +24,15 @@ testWireRoundtrip = do
               { _pDig = _sigDigest cmdSignedRPC1
               , _pOrig = _sigBody cmdSignedRPC1
               , _pTimeStamp = Nothing}})
-
+  it "CommandBatch" $
+    fromWire Nothing keySet cmdbSignedRPC
+      `shouldBe`
+        (Right $ cmdbRPC {
+              _cmdbBatch = [cmdRPC1', cmdRPC2']
+            , _cmdbProvenance = ReceivedMsg
+              { _pDig = _sigDigest cmdbSignedRPC
+              , _pOrig = _sigBody cmdbSignedRPC
+              , _pTimeStamp = Nothing}})
   it "CommandResponse" $
     fromWire Nothing keySet cmdrSignedRPC
       `shouldBe`
@@ -105,6 +113,21 @@ keySet :: KeySet
 keySet = KeySet
   { _ksCluster = Map.fromList [(nodeIdLeader, pubKeyLeader),(nodeIdFollower, pubKeyFollower)]
   , _ksClient = Map.fromList [(nodeIdClient, pubKeyClient)] }
+
+-- #####################################
+-- Commands, with and without provenance
+-- #####################################
+cmdbRPC :: CommandBatch
+cmdbRPC = CommandBatch
+  { _cmdbBatch = [cmdRPC1, cmdRPC2]
+  , _cmdbProvenance = NewMsg }
+
+cmdbSignedRPC :: SignedRPC
+cmdbSignedRPC = toWire nodeIdClient pubKeyClient privKeyClient cmdbRPC
+
+-- these are signed (received) provenance versions
+cmdbRPC' :: CommandBatch
+cmdbRPC' = (\(Right v) -> v) $ fromWire Nothing keySet cmdbSignedRPC
 
 
 -- #####################################

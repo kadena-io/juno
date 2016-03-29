@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Juno.Consensus.ByzRaft.Client
   ( runRaftClient
@@ -15,6 +16,8 @@ import Data.Foldable (traverse_)
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Text.Read (readMaybe)
+import qualified Data.ByteString.Char8 as SB8
 import Data.Thyme.Clock
 import Data.Thyme.Time.Core (unUTCTime, toMicroseconds)
 
@@ -80,10 +83,41 @@ commandGetter :: MonadIO m => Raft m (RequestId, CommandEntry) -> CommandMVarMap
 commandGetter getEntry cmdStatusMap = do
   nid <- view (cfg.nodeId)
   forever $ do
-    (rid, entry) <- getEntry
-    rid' <- setNextRequestId rid -- set current requestId to the value associated with this request.
-    liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert rid CmdAccepted m)))
-    enqueueEvent $ ERPC $ CMD' $ Command entry nid rid' NewMsg
+    (rid@(RequestId _), entry@(CommandEntry cmd)) <- getEntry
+    if SB8.take 11 cmd == "batch test:"
+    then do
+      let missiles = batchScript nid rid howManyMissiles
+          lastCmd = last missiles
+          howManyMissiles = maybe 500 id . readMaybe $ drop 11 $ SB8.unpack cmd
+      liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert (_cmdRequestId lastCmd) CmdAccepted m)))
+      enqueueEvent $ ERPC $ CMDB' $ CommandBatch missiles NewMsg
+      liftIO $ prettyScript missiles
+    else do
+      rid' <- setNextRequestId rid -- set current requestId to the value associated with this request.
+      liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert rid CmdAccepted m)))
+      enqueueEvent $ ERPC $ CMD' $ Command entry nid rid' NewMsg
+
+batchScript :: NodeID -> RequestId -> Int -> [Command]
+batchScript nid (RequestId rid) cnt = transfers
+  where
+    dollarTransfer :: RequestId -> Command
+    dollarTransfer r = Command (CommandEntry "transfer(Acct1->Acct2, 1 % 1)") nid r NewMsg
+    transfers :: [Command]
+    transfers = dollarTransfer <$> take cnt rids
+    rids :: [RequestId]
+    rids = RequestId <$> [rid..]
+
+prettyScript :: [Command] -> IO ()
+prettyScript cmds = do
+  let fstCmd = head cmds
+      lstCmd = last cmds
+      cnt = _cmdRequestId lstCmd - _cmdRequestId fstCmd
+      rawCmd (CommandEntry s) = SB8.unpack s
+      pp Command{..} = show _cmdRequestId ++ " => " ++ rawCmd _cmdEntry
+  putStrLn $ "Issued a batch of " ++ show cnt ++ " independent transactions"
+  putStrLn $ pp fstCmd
+  putStrLn "... through ..."
+  putStrLn $ pp lstCmd
 
 -- THREAD: CLIENT COMMAND. updates state!
 -- TODO: used in revolution, should take this from MVar map as well?
@@ -102,20 +136,14 @@ clientHandleEvents :: MonadIO m => CommandMVarMap -> Raft m ()
 clientHandleEvents cmdStatusMap = forever $ do
   e <- dequeueEvent -- blocking queue
   case e of
+    ERPC (CMDB' cmdb)   -> clientSendCommandBatch cmdb
     ERPC (CMD' cmd)     -> clientSendCommand cmd -- these are commands coming from the commandGetter thread
     ERPC (CMDR' cmdr)   -> clientHandleCommandResponse cmdStatusMap cmdr
     HeartbeatTimeout _ -> do
       timeouts <- use numTimeouts
       limit <- view (cfg.clientTimeoutLimit)
-      if timeouts < limit
+      if timeouts > limit
         then do
-          debug "choosing a new leader and resending commands"
-          setLeaderToNext
-          reqs <- use pendingRequests
-          pendingRequests .= Map.empty -- this will reset the timer on resend
-          traverse_ clientSendCommand reqs
-          numTimeouts += 1
-        else do
           debug "starting a revolution"
           nid <- view (cfg.nodeId)
           mlid <- use currentLeader
@@ -129,6 +157,15 @@ clientHandleEvents cmdStatusMap = forever $ do
             _ -> do
               setLeaderToFirst
               resetHeartbeatTimer
+        else if timeouts > 3
+             then do
+                debug "choosing a new leader and resending commands"
+                setLeaderToNext
+                reqs <- use pendingRequests
+                pendingRequests .= Map.empty -- this will reset the timer on resend
+                traverse_ clientSendCommand reqs
+                numTimeouts += 1
+             else numTimeouts += 1
     _                  -> return ()
 
 -- THREAD: CLIENT MAIN. updates state
@@ -165,6 +202,22 @@ clientSendCommand cmd@Command{..} = do
     Nothing  -> do
       setLeaderToFirst
       clientSendCommand cmd
+
+-- THREAD: CLIENT MAIN. updates state
+clientSendCommandBatch :: Monad m => CommandBatch -> Raft m ()
+clientSendCommandBatch cmdb@CommandBatch{..} = do
+  mlid <- use currentLeader
+  case mlid of
+    Just lid -> do
+      sendRPC lid $ CMDB' cmdb
+      -- if this will be our only pending request, start the timer
+      -- otherwise, it should already be running
+      resetHeartbeatTimer
+      let lastCmd = last _cmdbBatch
+      pendingRequests %= Map.insert (_cmdRequestId lastCmd) lastCmd -- TODO should we update CommandMap here?
+    Nothing  -> do
+      setLeaderToFirst
+      clientSendCommandBatch cmdb
 
 -- THREAD: CLIENT MAIN. updates state
 -- Command has been applied

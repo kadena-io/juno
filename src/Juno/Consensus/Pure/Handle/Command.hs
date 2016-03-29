@@ -2,7 +2,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 module Juno.Consensus.Pure.Handle.Command
-    (handle)
+    (handle
+    ,handleBatch)
     where
 
 import Control.Lens
@@ -99,3 +100,29 @@ handle cmd = do
                sendAllAppendEntries
                sendAllAppendEntriesResponse
                doCommit
+
+handleBatchSingle :: Monad m => Command -> JT.Raft m ()
+handleBatchSingle cmd = do
+  c <- view JT.cfg
+  s <- get
+  (out,_) <- runReaderT (runWriterT (handleCommand cmd)) $
+             CommandEnv (JT._role s)
+                        (JT._term s)
+                        (JT._currentLeader s)
+                        (JT._replayMap s)
+                        (JT._nodeId c)
+  case out of
+    UnknownLeader -> return ()
+    AlreadySeen -> return ()
+    (RetransmitToLeader lid rpc) -> sendRPC lid rpc
+    (SendCommandResponse cid rpc) -> sendRPC cid rpc
+    (CommitAndPropagate newEntry replayKey) -> do
+               JT.logEntries %= addLogEntryAndHash newEntry
+               JT.replayMap %= Map.insert replayKey Nothing
+
+handleBatch :: Monad m => CommandBatch -> JT.Raft m ()
+handleBatch CommandBatch{..} = do
+  mapM_ handleBatchSingle _cmdbBatch
+  sendAllAppendEntries
+  sendAllAppendEntriesResponse
+  doCommit

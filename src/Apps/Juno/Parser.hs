@@ -126,7 +126,6 @@ myRational = do
     Nothing -> return (n % d)
     Just _ -> return ((-n) % d)
 
-
 skipSpace :: TokenParsing m => m ()
 skipSpace = skipMany space
 

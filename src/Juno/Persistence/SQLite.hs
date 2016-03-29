@@ -19,6 +19,14 @@ import qualified Data.Text as T
 
 import Juno.Runtime.Types
 
+-- These live here as orphans, and not in Types, because trying to Serialize these things should be a type level error
+-- with rare exception (i.e. for hashing the log entry). Moreover, accidentally sending Provenance over the wire could
+-- be hard to catch. Best to make it impossible.
+instance Serialize Command
+instance Serialize Provenance
+instance Serialize LogEntry
+instance Serialize RequestVoteResponse
+
 instance ToField NodeID where
   toField n = toField $ encode n
 instance FromField NodeID where

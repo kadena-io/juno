@@ -54,30 +54,39 @@ library
                      , Schwifty.Swift.M105.Types
                      , Schwifty.Swift.M105.Parser
   build-depends:       SHA2
-                     , ed25519
-                     , attoparsec
                      , aeson
                      , aeson-pretty
                      , array
+                     , async
+                     , attoparsec
                      , base < 5
+                     , base64-bytestring >= 1.0.0.1 && < 1.1
+                     , binary-serialise-cbor
                      , binary-serialise-cbor
                      , bytestring
                      , cereal >= 0.4.1.1
-                     , criterion
                      , containers
+                     , criterion
+                     , criterion
                      , crypto-api
+                     , deepseq >= 1.4.1.1
+                     , ed25519
+                     , ekg >= 0.4 && < 0.5
+                     , ekg-core >= 0.1.1.0 && < 0.2
                      , enclosed-exceptions
                      , hopper <= 0.1.0.0
+                     , hspec
                      , lens
                      , lifted-base
+                     , megaparsec >= 4.2.0 && < 4.3
                      , monad-control
                      , monad-loops
                      , mtl
                      , mtl-compat
                      , network
                      , network-simple
+                     , parallel
                      , parsec
-                     , megaparsec >= 4.2.0 && < 4.3
                      , parsers
                      , random
                      , snap-core
@@ -89,15 +98,9 @@ library
                      , thyme
                      , transformers
                      , unagi-chan
+                     , vector-space >= 0.10.2 && < 0.11
                      , zeromq4-haskell >= 0.6.3
                      , zlib
-                     , ekg >= 0.4 && < 0.5
-                     , ekg-core >= 0.1.1.0 && < 0.2
-                     , hspec
-                     , criterion
-                     , binary-serialise-cbor
-                     , vector-space >= 0.10.2 && < 0.11
-                     , base64-bytestring >= 1.0.0.1 && < 1.1
   hs-source-dirs:      src
   ghc-options:         -Wall -fno-warn-unused-do-bind
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
@@ -135,16 +138,33 @@ executable junoclient
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
+executable simplepartest
+  main-is:             SimpleSeqVsParVsAsync.hs
+  build-depends:       base < 5
+                     , bytestring
+                     , criterion
+                     , deepseq >= 1.4.1.1
+                     , ed25519
+                     , parallel
+                     , async
+  hs-source-dirs:      criterion
+  ghc-options:         -Wall -threaded -eventlog -rtsopts -O2 +RTS -N4 -RTS
+  ghc-prof-options:    -fprof-auto -fprof-auto-calls
+  default-language:    Haskell2010
+
 executable serialization
   main-is:             Serialization.hs
   build-depends:       base < 5
-                     , ed25519
-                     , containers
-                     , bytestring
-                     , juno
-                     , cereal
-                     , criterion
                      , binary-serialise-cbor
+                     , bytestring
+                     , cereal
+                     , containers
+                     , criterion
+                     , deepseq >= 1.4.1.1
+                     , ed25519
+                     , juno
+                     , parallel
+                     , async
   hs-source-dirs:      criterion
   ghc-options:         -Wall -threaded -rtsopts -O2
   ghc-prof-options:    -fprof-auto -fprof-auto-calls

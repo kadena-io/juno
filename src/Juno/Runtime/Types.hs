@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -43,6 +44,7 @@ module Juno.Runtime.Types
   , RequestVoteResponse(..)
   , Command(..)
   , CommandResponse(..)
+  , CommandBatch(..)
   , Revolution(..)
   , RPC(..)
   , Event(..)
@@ -57,6 +59,8 @@ module Juno.Runtime.Types
   , verifySignedRPC, CMDWire(..)
   ) where
 
+
+import Control.Parallel.Strategies
 import Control.Concurrent (ThreadId)
 import Control.Lens hiding (Index, (|>))
 import Control.Monad.RWS (RWST)
@@ -137,7 +141,7 @@ data KeySet = KeySet
 -- | One way or another we need a way to figure our what set of public keys to use for verification of signatures.
 -- By placing the message type in the digest, we can make the WireFormat implementation easier as well. CMD and REV
 -- need to use the Client Public Key maps.
-data MsgType = AE | AER | RV | RVR | CMD | CMDR | REV
+data MsgType = AE | AER | RV | RVR | CMD | CMDR | CMDB | REV
   deriving (Show, Eq, Ord, Generic)
 instance Serialize MsgType
 
@@ -173,30 +177,32 @@ instance Serialize Micro
 data Provenance =
   NewMsg |
   ReceivedMsg
-    { _pDig :: Digest
-    , _pOrig :: ByteString
-    , _pTimeStamp :: Maybe ReceivedAt
+    { _pDig :: !Digest
+    , _pOrig :: !ByteString
+    , _pTimeStamp :: !(Maybe ReceivedAt)
     } deriving (Show, Eq, Ord, Generic)
-instance Serialize Provenance -- this instance is used for persistence, not sure we need it though
+-- instance Serialize Provenance <== This is bait, if you uncomment it you've done something wrong
+-- We really want to be sure that Provenance from one Node isn't by accident transferred to another node.
+-- Without a Serialize instance, we can be REALLY sure.
 
 -- | Based on the MsgType in the SignedRPC's Digest, we know which set of keys are needed to validate the message
 verifySignedRPC :: KeySet -> SignedRPC -> Either String Bool
-verifySignedRPC KeySet{..} s@(SignedRPC Digest{..} bdy)
-  | _digType == CMD || _digType == REV =
+verifySignedRPC !KeySet{..} !s@(SignedRPC !Digest{..} !bdy)
+  | _digType == CMD || _digType == REV || _digType == CMDB =
       case Map.lookup _digNodeId _ksClient of
-        Nothing -> Left $ "PubKey not found for NodeID: " ++ show _digNodeId
-        Just key
-          | key /= _digPubkey -> Left $ "Public key in storage doesn't match digest's key for msg: " ++ show s
+        !Nothing -> Left $! "PubKey not found for NodeID: " ++ show _digNodeId
+        Just !key
+          | key /= _digPubkey -> Left $! "Public key in storage doesn't match digest's key for msg: " ++ show s
           | otherwise -> if not $ dverify key bdy _digSig
-                         then Left $ "Unable to verify SignedRPC sig: " ++ show s
+                         then Left $! "Unable to verify SignedRPC sig: " ++ show s
                          else Right True
   | otherwise =
       case Map.lookup _digNodeId _ksCluster of
-        Nothing -> Left $ "PubKey not found for NodeID: " ++ show _digNodeId
-        Just key
-          | key /= _digPubkey -> Left $ "Public key in storage doesn't match digest's key for msg: " ++ show s
+        Nothing -> Left $! "PubKey not found for NodeID: " ++ show _digNodeId
+        Just !key
+          | key /= _digPubkey -> Left $! "Public key in storage doesn't match digest's key for msg: " ++ show s
           | otherwise -> if not $ dverify key bdy _digSig
-                         then Left $ "Unable to verify SignedRPC sig: " ++ show s
+                         then Left $! "Unable to verify SignedRPC sig: " ++ show s
                          else Right True
 {-# INLINE verifySignedRPC #-}
 
@@ -211,9 +217,8 @@ data Command = Command
   , _cmdProvenance :: !Provenance
   }
   deriving (Show, Eq, Generic)
-instance Serialize Command -- again, for SQLite
 
-data CMDWire = CMDWire (CommandEntry, NodeID, RequestId)
+data CMDWire = CMDWire !(CommandEntry, NodeID, RequestId)
   deriving (Show, Generic)
 instance Serialize CMDWire
 
@@ -224,16 +229,52 @@ instance WireFormat Command where
                   dig = Digest nid sig pubKey CMD
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire ts ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
-    Left err -> Left err
-    Right False -> error "Invariant Failure: verification came back as Right False"
-    Right True -> if _digType dig /= CMD
-      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDWire instance"
-      else case S.decode bdy of
-        Left err -> Left $ "Failure to decode CMDWire: " ++ err
-        Right (CMDWire (ce,nid,rid)) -> Right $ Command ce nid rid $ ReceivedMsg dig bdy ts
+  fromWire !ts !ks !s@(SignedRPC !dig !bdy) =
+    case verifySignedRPC ks s of
+      Left !err -> Left err
+      Right !False -> error "Invariant Failure: verification came back as Right False"
+      Right !True -> if _digType dig /= CMD
+        then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDWire instance"
+        else case S.decode bdy of
+            Left !err -> Left $! "Failure to decode CMDWire: " ++ err
+            Right (CMDWire !(ce,nid,rid)) -> Right $! Command ce nid rid $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
+
+data CommandBatch = CommandBatch
+  { _cmdbBatch :: ![Command]
+  , _cmdbProvenance :: !Provenance
+  } deriving (Show, Eq, Generic)
+
+data CMDBWire = CMDBWire ![SignedRPC]
+  deriving (Show, Generic)
+instance Serialize CMDBWire
+
+instance WireFormat CommandBatch where
+  toWire nid pubKey privKey CommandBatch{..} = case _cmdbProvenance of
+    NewMsg -> let bdy = S.encode $ (toWire nid pubKey privKey <$> _cmdbBatch)
+                  sig = dsign privKey bdy
+                  dig = Digest nid sig pubKey CMDB
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire !ts !ks !s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left !err -> Left err
+    Right !False -> error "Invariant Failure: verification came back as Right False"
+    Right !True -> if _digType dig /= CMDB
+      then error $! "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
+      else case S.decode bdy of
+        Left !err -> Left $ "Failure to decode CMDBWire: " ++ err
+        Right !cmdb' -> gatherValidCmdbs (ReceivedMsg dig bdy ts) ((fromWire ts ks <$> cmdb') `using` parListChunk 2 rseq)
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
+
+gatherValidCmdbs :: Provenance -> [Either String Command] -> Either String CommandBatch
+gatherValidCmdbs prov ec = go ec []
+  where
+    go [] s = Right $! CommandBatch (reverse s) prov
+    go ((Right cmd):cmds) s = go cmds (cmd:s)
+    go ((Left err):_) _ = Left err
+{-# INLINE gatherValidCmdbs #-}
 
 data CommandResponse = CommandResponse
   { _cmdrResult     :: !CommandResult
@@ -255,14 +296,14 @@ instance WireFormat CommandResponse where
                   dig = Digest nid sig pubKey CMDR
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire ts ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
-    Left err -> Left err
+  fromWire ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
+    Left !err -> Left err
     Right False -> error "Invariant Failure: verification came back as Right False"
     Right True -> if _digType dig /= CMDR
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDRWire instance"
       else case S.decode bdy of
-        Left err -> Left $ "Failure to decode CMDRWire: " ++ err
-        Right (CMDRWire (r,lid,nid,rid)) -> Right $ CommandResponse r lid nid rid $ ReceivedMsg dig bdy ts
+        Left !err -> Left $! "Failure to decode CMDRWire: " ++ err
+        Right (CMDRWire !(r,lid,nid,rid)) -> Right $! CommandResponse r lid nid rid $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
 
@@ -273,18 +314,31 @@ data LogEntry = LogEntry
   }
   deriving (Show, Eq, Generic)
 makeLenses ''LogEntry
-instance Serialize LogEntry -- again, for SQLite
 
 data LEWire = LEWire (Term, SignedRPC, ByteString)
   deriving (Show, Generic)
 instance Serialize LEWire
 
-decodeLEWire :: Maybe ReceivedAt -> KeySet -> [LEWire] -> Either String (Seq LogEntry)
-decodeLEWire ts ks les = go les Seq.empty
+decodeLEWire' :: Maybe ReceivedAt -> KeySet -> LEWire -> Either String LogEntry
+decodeLEWire' !ts !ks (LEWire !(t,cmd,hsh)) = case fromWire ts ks cmd of
+      Left !err -> Left $!err
+      Right !cmd' -> Right $! LogEntry t cmd' hsh
+{-# INLINE decodeLEWire' #-}
+
+toSeqLogEntry :: [Either String LogEntry] -> Either String (Seq LogEntry)
+toSeqLogEntry !ele = go ele Seq.empty
   where
-    go [] s = Right s
-    go (LEWire (t,cmd,hsh):ls) v = case fromWire ts ks cmd of
-      Left err -> Left err
+    go [] s = Right $! s
+    go ((Right le):les) s = go les (s |> le)
+    go ((Left err):_) _ = Left $! err
+{-# INLINE toSeqLogEntry #-}
+
+decodeLEWire :: Maybe ReceivedAt -> KeySet -> [LEWire] -> Either String (Seq LogEntry)
+decodeLEWire !ts !ks !les = go les Seq.empty
+  where
+    go [] s = Right $! s
+    go (LEWire !(t,cmd,hsh):ls) v = case fromWire ts ks cmd of
+      Left err -> Left $! err
       Right cmd' -> go ls (v |> LogEntry t cmd' hsh)
 {-# INLINE decodeLEWire #-}
 
@@ -311,27 +365,32 @@ instance Serialize AEWire
 instance WireFormat AppendEntries where
   toWire nid pubKey privKey AppendEntries{..} = case _aeProvenance of
     NewMsg -> let bdy = S.encode $ AEWire (_aeTerm
-                                              ,_leaderId
-                                              ,_prevLogIndex
-                                              ,_prevLogTerm
-                                              ,encodeLEWire nid pubKey privKey _aeEntries
-                                              ,toWire nid pubKey privKey <$> toList _aeQuorumVotes)
+                                          ,_leaderId
+                                          ,_prevLogIndex
+                                          ,_prevLogTerm
+                                          ,encodeLEWire nid pubKey privKey _aeEntries
+                                          ,toWire nid pubKey privKey <$> toList _aeQuorumVotes)
                   sig = dsign privKey bdy
                   dig = Digest nid sig pubKey AE
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire ts ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
-    Left err -> Left err
+  fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
+    Left !err -> Left err
     Right False -> error "Invariant Failure: verification came back as Right False"
     Right True -> if _digType dig /= AE
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with AEWire instance"
       else case S.decode bdy of
-        Left err -> Left $ "Failure to decode AEWire: " ++ err
-        Right (AEWire (t,lid,pli,pt,les,vts)) -> case decodeLEWire ts ks les of
-          Left err -> Left $ "Found a LogEntry with an invalid Command: " ++ err
-          Right les' -> case decodeRVRWire ts ks vts of
-            Left err -> Left $ "Caught an invalid RVR in an AE: " ++ err
-            Right vts' -> Right $ AppendEntries t lid pli pt les' vts' $ ReceivedMsg dig bdy ts
+        Left err -> Left $! "Failure to decode AEWire: " ++ err
+        Right (AEWire (t,lid,pli,pt,les,vts)) -> runEval $ do
+          eLes <- rpar (toSeqLogEntry ((decodeLEWire' ts ks <$> les) `using` parListChunk 2 rseq))
+          eRvr <- rseq (toSetRvr ((fromWire ts ks <$> vts) `using` parListChunk 2 rseq))
+          case eRvr of
+            Left !err -> return $! Left $! "Caught an invalid RVR in an AE: " ++ err
+            Right !vts' -> do
+              _ <- rseq eLes
+              case eLes of
+                Left !err -> return $! Left $ "Found a LogEntry with an invalid Command: " ++ err
+                Right !les' -> return $! Right $! AppendEntries t lid pli pt les' vts' $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
 
@@ -362,14 +421,14 @@ instance WireFormat AppendEntriesResponse where
                   dig = Digest nid sig pubKey AER
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire ts ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
-    Left err -> Left err
+  fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
+    Left !err -> Left $! err
     Right False -> error "Invariant Failure: verification came back as Right False"
     Right True -> if _digType dig /= AER
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with AERWire instance"
       else case S.decode bdy of
-        Left err -> Left $ "Failure to decode AERWire: " ++ err
-        Right (AERWire (t,nid,s',c,i,h)) -> Right $ AppendEntriesResponse t nid s' c i h $ ReceivedMsg dig bdy ts
+        Left !err -> Left $! "Failure to decode AERWire: " ++ err
+        Right (AERWire !(t,nid,s',c,i,h)) -> Right $! AppendEntriesResponse t nid s' c i h $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
 
@@ -389,21 +448,21 @@ instance Serialize RVWire
 instance WireFormat RequestVote where
   toWire nid pubKey privKey RequestVote{..} = case _rvProvenance of
     NewMsg -> let bdy = S.encode $ RVWire ( _rvTerm
-                                              , _rvCandidateId
-                                              , _lastLogIndex
-                                              , _lastLogTerm)
+                                          , _rvCandidateId
+                                          , _lastLogIndex
+                                          , _lastLogTerm)
                   sig = dsign privKey bdy
                   dig = Digest nid sig pubKey RV
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire ts ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
-    Left err -> Left err
+  fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
+    Left !err -> Left $! err
     Right False -> error "Invariant Failure: verification came back as Right False"
     Right True -> if _digType dig /= RV
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with RVWire instance"
       else case S.decode bdy of
-        Left err -> Left $ "Failure to decode RVWire: " ++ err
-        Right (RVWire (t,cid,lli,llt)) -> Right $ RequestVote t cid lli llt $ ReceivedMsg dig bdy ts
+        Left !err -> Left $! "Failure to decode RVWire: " ++ err
+        Right (RVWire !(t,cid,lli,llt)) -> Right $! RequestVote t cid lli llt $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
 
@@ -416,7 +475,6 @@ data RequestVoteResponse = RequestVoteResponse
   , _rvrProvenance  :: !Provenance
   }
   deriving (Show, Eq, Ord, Generic)
-instance Serialize RequestVoteResponse -- again, for SQLite
 
 data RVRWire = RVRWire (Term,LogIndex,NodeID,Bool,NodeID)
   deriving (Show, Generic)
@@ -429,25 +487,33 @@ instance WireFormat RequestVoteResponse where
                   dig = Digest nid sig pubKey RVR
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire ts ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
-    Left err -> Left err
+  fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
+    Left !err -> Left $! err
     Right False -> error "Invariant Failure: verification came back as Right False"
     Right True -> if _digType dig /= RVR
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with RVRWire instance"
       else case S.decode bdy of
-        Left err -> Left $ "Failure to decode RVRWire: " ++ err
-        Right (RVRWire (t,li,nid,granted,cid)) -> Right $ RequestVoteResponse t li nid granted cid $ ReceivedMsg dig bdy ts
+        Left !err -> Left $! "Failure to decode RVRWire: " ++ err
+        Right (RVRWire !(t,li,nid,granted,cid)) -> Right $! RequestVoteResponse t li nid granted cid $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
+
+toSetRvr :: [Either String RequestVoteResponse] -> Either String (Set RequestVoteResponse)
+toSetRvr ele = go ele Set.empty
+  where
+    go [] s = Right $! s
+    go ((Right rvr):rvrs) s = go rvrs (Set.insert rvr s)
+    go ((Left err):_) _ = Left $! err
+{-# INLINE toSetRvr #-}
 
 -- the expected behavior here is tricky. For a set of votes, we are actually okay if some are invalid so long as there's a quorum
 -- however while we're still in alpha I think these failures represent a bug. Hence, they should be raised asap.
 decodeRVRWire :: Maybe ReceivedAt -> KeySet -> [SignedRPC] -> Either String (Set RequestVoteResponse)
 decodeRVRWire ts ks votes' = go votes' Set.empty
   where
-    go [] s = Right s
+    go [] s = Right $! s
     go (v:vs) s = case fromWire ts ks v of
-      Left err -> Left err
+      Left err -> Left $! err
       Right rvr' -> go vs (Set.insert rvr' s)
 {-# INLINE decodeRVRWire #-}
 
@@ -470,14 +536,14 @@ instance WireFormat Revolution where
                   dig = Digest nid sig pubKey REV
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire ts ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
-    Left err -> Left err
+  fromWire !ts !ks s@(SignedRPC !dig !bdy) = case verifySignedRPC ks s of
+    Left !err -> Left $! err
     Right False -> error "Invariant Failure: verification came back as Right False"
     Right True -> if _digType dig /= REV
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with REVWire instance"
       else case S.decode bdy of
-        Left err -> Left $ "Failure to decode REVWire: " ++ err
-        Right (REVWire (cid,lid,rid)) -> Right $ Revolution cid lid rid $ ReceivedMsg dig bdy ts
+        Left !err -> Left $! "Failure to decode REVWire: " ++ err
+        Right (REVWire !(cid,lid,rid)) -> Right $! Revolution cid lid rid $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
 
@@ -486,18 +552,20 @@ data RPC = AE'   AppendEntries
          | RV'   RequestVote
          | RVR'  RequestVoteResponse
          | CMD'  Command
+         | CMDB'  CommandBatch
          | CMDR' CommandResponse
          | REV'  Revolution
   deriving (Show, Generic)
 
 signedRPCtoRPC :: Maybe ReceivedAt -> KeySet -> SignedRPC -> Either String RPC
-signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ AE)   _) = AE'   <$> fromWire ts ks s
-signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ AER)  _) = AER'  <$> fromWire ts ks s
-signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ RV)   _) = RV'   <$> fromWire ts ks s
-signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ RVR)  _) = RVR'  <$> fromWire ts ks s
-signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ CMD)  _) = CMD'  <$> fromWire ts ks s
-signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ CMDR) _) = CMDR' <$> fromWire ts ks s
-signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ REV)  _) = REV'  <$> fromWire ts ks s
+signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ AE)   _) = (\rpc -> rpc `seq` AE'   rpc) <$> fromWire ts ks s
+signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ AER)  _) = (\rpc -> rpc `seq` AER'  rpc) <$> fromWire ts ks s
+signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ RV)   _) = (\rpc -> rpc `seq` RV'   rpc) <$> fromWire ts ks s
+signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ RVR)  _) = (\rpc -> rpc `seq` RVR'  rpc) <$> fromWire ts ks s
+signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ CMD)  _) = (\rpc -> rpc `seq` CMD'  rpc) <$> fromWire ts ks s
+signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ CMDR) _) = (\rpc -> rpc `seq` CMDR' rpc) <$> fromWire ts ks s
+signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ CMDB) _) = (\rpc -> rpc `seq` CMDB' rpc) <$> fromWire ts ks s
+signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ REV)  _) = (\rpc -> rpc `seq` REV'  rpc) <$> fromWire ts ks s
 {-# INLINE signedRPCtoRPC #-}
 
 rpcToSignedRPC :: NodeID -> PublicKey -> SecretKey -> RPC -> SignedRPC
@@ -507,6 +575,7 @@ rpcToSignedRPC nid pubKey privKey (RV' v) = toWire nid pubKey privKey v
 rpcToSignedRPC nid pubKey privKey (RVR' v) = toWire nid pubKey privKey v
 rpcToSignedRPC nid pubKey privKey (CMD' v) = toWire nid pubKey privKey v
 rpcToSignedRPC nid pubKey privKey (CMDR' v) = toWire nid pubKey privKey v
+rpcToSignedRPC nid pubKey privKey (CMDB' v) = toWire nid pubKey privKey v
 rpcToSignedRPC nid pubKey privKey (REV' v) = toWire nid pubKey privKey v
 {-# INLINE rpcToSignedRPC #-}
 

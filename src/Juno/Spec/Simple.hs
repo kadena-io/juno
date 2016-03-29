@@ -93,7 +93,7 @@ defaultConfig =
     (3000000,6000000)                          -- election timeout range
     1500000                                    -- heartbeat timeout
     False                                      -- no debug
-    5                                          -- client timeouts before revolution
+    5000000                                     -- client timeouts before revolution
 
 setSelf :: String -> Config -> IO Config
 setSelf s c = case readNodeID s of

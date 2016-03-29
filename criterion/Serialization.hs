@@ -4,9 +4,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MagicHash #-}
+{-# LANGAUGE StandaloneDeriving #-}
 
 module Main where
 
@@ -21,11 +24,17 @@ import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Serialize
 import Data.ByteString (ByteString)
--- import qualified Data.ByteString as SB
+
+-- import qualified Data.ByteString.Char8 as SB8
 import qualified Data.ByteString.Lazy as LB
 import GHC.Generics
 import Data.Monoid
 import GHC.Word
+import Control.Parallel.Strategies
+import Control.Exception
+import Data.Typeable
+import Control.Concurrent.Async
+import Control.DeepSeq
 
 import qualified Data.Binary.Serialise.CBOR.Read     as CBR
 import qualified Data.Binary.Serialise.CBOR.Write    as CBW
@@ -36,90 +45,142 @@ import qualified Data.Binary.Serialise.CBOR as CB
 
 import Juno.Runtime.Types
 
+-- we need the Serialize instances that I don't want exported from the main types module
+import Juno.Persistence.SQLite ()
+-- see Runtime.Types not on Provenance's serialize instance for details
+
 main :: IO ()
 main = defaultMain
-  [ bgroup "Ed Crypto"
-    [ bench "Sign 256B" $
-        whnf (Ed.dsign edPrivKey) edB256
-    , bench "Sign 512B" $
-        whnf (Ed.dsign edPrivKey) edB512
-    , bench "Sign 1024B" $
-        whnf (Ed.dsign edPrivKey) edB1024
-    , bench "Sign 2048B" $
-        whnf (Ed.dsign edPrivKey) edB2048
-    , bench "Sign 4096B" $
-        whnf (Ed.dsign edPrivKey) edB4096
-    , bench "Verify 256B" $
-        whnf (Ed.dverify edPubKey edB256) edSigB256
-    , bench "Verify 512B" $
-        whnf (Ed.dverify edPubKey edB512) edSigB512
-    , bench "Verify 1024B" $
-        whnf (Ed.dverify edPubKey edB1024) edSigB1024
-    , bench "Verify 2048B" $
-        whnf (Ed.dverify edPubKey edB2048) edSigB2048
-    , bench "Verify 4096B" $
-        whnf (Ed.dverify edPubKey edB4096) edSigB4096
-    ]
-  , bgroup "CMD (Old Method)" [
-      bench "Verify CMD" $
-        whnf ((\(Right v) -> v) . oldCmdVerify ClientMsg keySet) ocmdSignedRPC
-    , bench "Decode & Verify Raw BS" $
-        whnf ((\(Right v) -> v) . oldCmdDecode ClientMsg keySet) ocmdSerRPC
-    , bench "Sign and Encode" $
-        whnf (encode . oldCmdSign) ocmdRPC
-    , bench "Encode pre-signed" $
-        whnf encode ocmdSignedRPC
-    ]
-  , bgroup "CMD (Digest)" [
+--  [ bgroup "Ed Crypto"
+--    [ bench "Sign 256B" $
+--        whnf (Ed.dsign edPrivKey) edB256
+--    , bench "Sign 512B" $
+--        whnf (Ed.dsign edPrivKey) edB512
+--    , bench "Sign 1024B" $
+--        whnf (Ed.dsign edPrivKey) edB1024
+--    , bench "Sign 2048B" $
+--        whnf (Ed.dsign edPrivKey) edB2048
+--    , bench "Sign 4096B" $
+--        whnf (Ed.dsign edPrivKey) edB4096
+--    , bench "Verify 256B" $
+--        whnf (Ed.dverify edPubKey edB256) edSigB256
+--    , bench "Verify 512B" $
+--        whnf (Ed.dverify edPubKey edB512) edSigB512
+--    , bench "Verify 1024B" $
+--        whnf (Ed.dverify edPubKey edB1024) edSigB1024
+--    , bench "Verify 2048B" $
+--        whnf (Ed.dverify edPubKey edB2048) edSigB2048
+--    , bench "Verify 4096B" $
+--        whnf (Ed.dverify edPubKey edB4096) edSigB4096
+--    ]
+--  , bgroup "CMD (Old Method)" [
+--      bench "Verify CMD" $
+--        whnf ((\(Right v) -> v) . oldCmdVerify ClientMsg keySet) ocmdSignedRPC
+--    , bench "Decode & Verify Raw BS" $
+--        whnf ((\(Right v) -> v) . oldCmdDecode ClientMsg keySet) ocmdSerRPC
+--    , bench "Sign and Encode" $
+--        whnf (encode . oldCmdSign) ocmdRPC
+--    , bench "Encode pre-signed" $
+--        whnf encode ocmdSignedRPC
+--    ]
+--  , bgroup "CMD (Digest)" [
+--      bench "Verify & Decode SignedRPC" $
+--        whnf ((\(Right v) -> v) . fromWire Nothing keySet :: SignedRPC -> Command) cmdSignedRPC1
+--    , bench "Verify & Decode Raw BS" $
+--        whnf (either error ((\(Right v) -> v) . fromWire Nothing keySet) . decode :: ByteString -> Command) cmdSignedRpc1BS
+--    , bench "Sign and Encode" $
+--        whnf (encode . toWire nodeIdClient pubKeyClient privKeyClient) cmdRPC1
+--    , bench "Encode pre-signed" $
+--        whnf (encode . toWire nodeIdClient pubKeyClient privKeyClient) cmdRpc1Received
+--    ]
+--  , bgroup "CMD (CBOR)" [
+--      bench "Verify & Decode SignedRPC" $
+--        whnf ((\(Right v) -> v) . fromWireCBOR keySet :: SignedRPC -> Command) cmdSignedRpcCBOR
+--    , bench "Verify & Decode Raw BS" $
+--        whnf (either error ((\(Right v) -> v) . fromWireCBOR keySet) . CBR.deserialiseFromBytes CBC.decode :: LB.ByteString -> Command) cmdSignedRpcCborBS
+--    , bench "Sign and Encode" $
+--        whnf (encode . toWireCBOR nodeIdClient pubKeyClient privKeyClient) cmdRPC1
+--    , bench "Encode pre-signed" $
+--        whnf (encode . toWireCBOR nodeIdClient pubKeyClient privKeyClient) cmdRpc1Received
+--    ]
+--  [ bgroup "CmdBatch (either error id)" [
+--      bench "Verify & Decode SignedRPC" $
+--        whnf ((\(Right CommandBatch{..}) -> length _cmdbBatch) . fromWire Nothing keySet :: SignedRPC -> Int) cmdbSignedRPC
+--    , bench "Verify & Decode Raw BS" $
+--        whnf (either error ((\(Right v) -> v) . fromWire Nothing keySet) . decode :: ByteString -> CommandBatch) cmdbSignedRpcBS
+--    , bench "Sign and Encode" $
+--        whnf (encode . toWire nodeIdClient pubKeyClient privKeyClient) cmdbRPC
+--    , bench "Encode pre-signed" $
+--        whnf (encode . toWire nodeIdClient pubKeyClient privKeyClient) cmdbRPC'
+--    ]
+--  [ bgroup "CmdBatch [Either String Command]" [
+--      bench "Verify & Decode SignedRPC" $
+--        whnfIO (fromWirePar keySet cmdbSignedRPC >>= (\CommandBatch{..} -> return $ length _cmdbBatch))
+--    , bench "Verify & Decode Raw BS" $
+--        whnf (either error ((\(Right v) -> v) . fromWirePar keySet) . decode :: ByteString -> CommandBatch) cmdbSignedRpcBS
+--    , bench "Sign and Encode" $
+--        whnf (encode . toWirePar nodeIdClient pubKeyClient privKeyClient) cmdbRPC
+--    , bench "Encode pre-signed" $
+--        whnf (encode . toWirePar nodeIdClient pubKeyClient privKeyClient) cmdbRPC'
+--    ]
+  [ bgroup "CmdBatch Sequential" [
       bench "Verify & Decode SignedRPC" $
-        whnf ((\(Right v) -> v) . fromWire Nothing keySet :: SignedRPC -> Command) cmdSignedRPC1
-    , bench "Verify & Decode Raw BS" $
-        whnf (either error ((\(Right v) -> v) . fromWire Nothing keySet) . decode :: ByteString -> Command) cmdSignedRpc1BS
-    , bench "Sign and Encode" $
-        whnf (encode . toWire nodeIdClient pubKeyClient privKeyClient) cmdRPC1
-    , bench "Encode pre-signed" $
-        whnf (encode . toWire nodeIdClient pubKeyClient privKeyClient) cmdRpc1Received
+        whnf ((\(Right CommandBatch{..}) -> length _cmdbBatch) . fromWireParNF keySet :: SignedRPC -> Int) cmdbSignedRPC
     ]
-  , bgroup "CMD (CBOR)" [
-      bench "Verify & Decode SignedRPC" $
-        whnf ((\(Right v) -> v) . fromWireCBOR Nothing keySet :: SignedRPC -> Command) cmdSignedRpcCBOR
-    , bench "Verify & Decode Raw BS" $
-        whnf (either error ((\(Right v) -> v) . fromWireCBOR Nothing keySet) . CBR.deserialiseFromBytes CBC.decode :: LB.ByteString -> Command) cmdSignedRpcCborBS
-    , bench "Sign and Encode" $
-        whnf (encode . toWireCBOR nodeIdClient pubKeyClient privKeyClient) cmdRPC1
-    , bench "Encode pre-signed" $
-        whnf (encode . toWireCBOR nodeIdClient pubKeyClient privKeyClient) cmdRpc1Received
-    ]
-  , bgroup "Empty AE (Digest)" [
-      bench "Verify & Decode SignedRPC" $
-        whnf ((\(Right v) -> v) . fromWire Nothing keySet :: SignedRPC -> AppendEntries) aeEmptySignedRPC
-    , bench "Verify & Decode Raw BS" $
-        whnf (either error ((\(Right v) -> v) . fromWire Nothing keySet) . decode :: ByteString -> AppendEntries) aeEmptySignedRpcBS
-    , bench "Sign and Encode" $
-        whnf (encode . toWire nodeIdLeader pubKeyLeader privKeyLeader) aeEmptyRPC
-    , bench "Encode pre-signed" $
-        whnf (encode . toWire nodeIdLeader pubKeyLeader privKeyLeader) aeEmptyRpcReceived
-    ]
-  , bgroup "AE Two LogEntries (Old Method)" [
-      bench "Verify AE" $
-        whnf oldAeVerify oaeRPC'
-    , bench "Decode & Verify Raw BS" $
-        whnf oldAeDecode oaeSerRPC
-    , bench "Sign and Encode" $
-        whnf (encode . oldAeSign) oaeRPC
-    , bench "Encode pre-signed" $
-        whnf encode oaeRPC'
-    ]
-  , bgroup "AE Two LogEntries (Digest)" [
-      bench "Verify & Decode SignedRPC" $
-        whnf ((\(Right v) -> v) . fromWire Nothing keySet :: SignedRPC -> AppendEntries) aeSignedRPC
-    , bench "Verify & Decode Raw BS" $
-        whnf (either error ((\(Right v) -> v) . fromWire Nothing keySet) . decode :: ByteString -> AppendEntries) aeSignedRpcBS
-    , bench "Sign and Encode" $
-        whnf (encode . toWire nodeIdLeader pubKeyLeader privKeyLeader) aeRPC
-    , bench "Encode pre-signed" $
-        whnf (encode . toWire nodeIdLeader pubKeyLeader privKeyLeader) aeRpcReceived
-    ]
+--  , bgroup "CmdBatch [Either String Command] == (either error id)" [
+--      bench "Verify & Decode SignedRPC" $
+--        whnf ((\s ->
+--                ((\(Right (CommandBatch v _)) -> length v) $ fromWirePar keySet s)
+--                ==
+--                ((\(Right (CommandBatch v' _)) -> length v') $ fromWire Nothing keySet s)
+--              ) :: SignedRPC -> Bool) cmdbSignedRPC
+--    ]
+--  , bgroup "Core Parallel" [
+--      bench "coreTest" $
+--        nf (coreTest keySet) batchScriptSigned
+--    , bench "coreTest'" $
+--        nf (coreTest' keySet) batchScriptSigned
+--    ]
+--  , bgroup "CmdBatch Parallel NF" [
+--      bench "Verify & Decode SignedRPC" $
+--        whnf ((\(Right v) -> v) . fromWireParNF keySet :: SignedRPC -> CommandBatch) cmdbSignedRPC
+--    , bench "Verify & Decode Raw BS" $
+--        whnf (either error ((\(Right v) -> v) . fromWireParNF keySet) . decode :: ByteString -> CommandBatch) cmdbSignedRpcBS
+--    , bench "Sign and Encode" $
+--        whnf (encode . toWireParNF nodeIdClient pubKeyClient privKeyClient) cmdbRPC
+--    , bench "Encode pre-signed" $
+--        whnf (encode . toWireParNF nodeIdClient pubKeyClient privKeyClient) cmdbRPC'
+--    ]
+--  , bgroup "Empty AE (Digest)" [
+--      bench "Verify & Decode SignedRPC" $
+--        whnf ((\(Right v) -> v) . fromWire Nothing keySet :: SignedRPC -> AppendEntries) aeEmptySignedRPC
+--    , bench "Verify & Decode Raw BS" $
+--        whnf (either error ((\(Right v) -> v) . fromWire Nothing keySet) . decode :: ByteString -> AppendEntries) aeEmptySignedRpcBS
+--    , bench "Sign and Encode" $
+--        whnf (encode . toWire nodeIdLeader pubKeyLeader privKeyLeader) aeEmptyRPC
+--    , bench "Encode pre-signed" $
+--        whnf (encode . toWire nodeIdLeader pubKeyLeader privKeyLeader) aeEmptyRpcReceived
+--    ]
+--  , bgroup "AE Two LogEntries (Old Method)" [
+--      bench "Verify AE" $
+--        whnf oldAeVerify oaeRPC'
+--    , bench "Decode & Verify Raw BS" $
+--        whnf oldAeDecode oaeSerRPC
+--    , bench "Sign and Encode" $
+--        whnf (encode . oldAeSign) oaeRPC
+--    , bench "Encode pre-signed" $
+--        whnf encode oaeRPC'
+--    ]
+--  , bgroup "AE Two LogEntries (Digest)" [
+--      bench "Verify & Decode SignedRPC" $
+--        whnf ((\(Right v) -> v) . fromWire Nothing keySet :: SignedRPC -> AppendEntries) aeSignedRPC
+--    , bench "Verify & Decode Raw BS" $
+--        whnf (either error ((\(Right v) -> v) . fromWire Nothing keySet) . decode :: ByteString -> AppendEntries) aeSignedRpcBS
+--    , bench "Sign and Encode" $
+--        whnf (encode . toWire nodeIdLeader pubKeyLeader privKeyLeader) aeRPC
+--    , bench "Encode pre-signed" $
+--        whnf (encode . toWire nodeIdLeader pubKeyLeader privKeyLeader) aeRpcReceived
+--    ]
   ]
 
 -- ##########################################################
@@ -486,7 +547,8 @@ instance CBC.Serialise MsgType where
   encode RVR = CBC.encode (3::Word8)
   encode CMD = CBC.encode (4::Word8)
   encode CMDR = CBC.encode (5::Word8)
-  encode REV = CBC.encode (6::Word8)
+  encode CMDB = CBC.encode (6::Word8)
+  encode REV = CBC.encode (7::Word8)
   decode = do
     !(v :: Word8) <- CBC.decode
     case v of
@@ -496,7 +558,8 @@ instance CBC.Serialise MsgType where
       3 -> return RVR
       4 -> return CMD
       5 -> return CMDR
-      6 -> return REV
+      6 -> return CMDB
+      7 -> return REV
       n -> fail $ "Attempting to decode MsgType [0,6] but got " ++ show n
 
 instance CBC.Serialise Digest where
@@ -564,3 +627,197 @@ edSigB512 = Ed.Signature "0\246\242\130/\162V\150\210,\212\240\&9v\f\143{\213\24
 edSigB1024 = Ed.Signature "\210\152\228FzRUi&\156\138\209\165\224\206W-\DEL\176\176\&2\132'$\236/\CANm\226\152\227\173t\248\ACK\245\242i\182\200\196Ju\137\&0^\180\208\SOH\245\192>\200\ENQ#\142X\SOH\191\139^\246\223\r"
 edSigB2048 = Ed.Signature "}\144yrk$m\254G\160\215\211k\203\168\191\156\DLE\180\169e\147\159\199[\191\201\196&u\b\ETBA\250d\217\&4Y9\ACK{+\215\224\&3\138\DELE\226\212\219dyF\133\211&W\214\DC2\150\155\235\ACK"
 edSigB4096 = Ed.Signature "\200\164\166\206p\252Z\175M<\DC4\ETX+\217A\242\158 \246`\202\182)\207 \255\191\148Vyf\158\CANOsN\210\a%\174\176\233\t4g\EOTPxF\158D5M\186\158\186\133\CAN9\224{\173~\STX"
+
+-- ######################
+-- #### CommandBatch ####
+-- ######################
+
+cmdbRPC, cmdbRPC' :: CommandBatch
+cmdbRPC = CommandBatch
+  { _cmdbBatch = batchScript
+  , _cmdbProvenance = NewMsg }
+cmdbRPC' = either error id $ fromWire Nothing keySet cmdbSignedRPC
+
+cmdbSignedRPC :: SignedRPC
+cmdbSignedRPC = toWire nodeIdClient pubKeyClient privKeyClient cmdbRPC
+
+cmdbSignedRpcBS :: ByteString
+cmdbSignedRpcBS = encode cmdbSignedRPC
+
+batchScript :: [Command]
+batchScript = transfers
+  where
+    dollarTransfer :: RequestId -> Command
+    dollarTransfer r = Command (CommandEntry "transfer(Acct1->Acct2, 1 % 1)") nodeIdClient r NewMsg
+    transfers :: [Command]
+    transfers = dollarTransfer <$> take 5000 rids
+    rids :: [RequestId]
+    rids = RequestId <$> [0..]
+
+batchScriptSigned :: [SignedRPC]
+batchScriptSigned = toWire nodeIdClient pubKeyClient privKeyClient <$> batchScript
+
+class WireFormatPar a where
+  toWirePar   :: NodeID -> PublicKey -> SecretKey -> a -> SignedRPC
+  fromWirePar :: KeySet -> SignedRPC -> IO a
+
+data WireFormatError = WireFormatError  String deriving (Show,Eq,Typeable)
+
+instance Exception WireFormatError
+
+
+{-
+instance WireFormat CommandBatch where
+  toWire nid pubKey privKey CommandBatch{..} = case _cmdbProvenance of
+    NewMsg -> let bdy = S.encode $ (toWire nid pubKey privKey <$> _cmdbBatch)
+                  sig = dsign privKey bdy
+                  dig = Digest nid sig pubKey CMDB
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWire !ks !s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left !err -> Left err
+    Right !False -> error "Invariant Failure: verification came back as Right False"
+    Right !True -> if _digType dig /= CMDB
+      then error $! "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
+      else case S.decode bdy of
+        Left !err -> Left $ "Failure to decode CMDBWire: " ++ err
+        Right !cmdb' -> Right $ CommandBatch ((either error id . fromWire Nothing ks <$> cmdb') `using` parList rseq) (ReceivedMsg dig bdy Nothing)
+  {-# INLINE toWire #-}
+  {-# INLINE fromWire #-}
+-}
+
+verifySignedRPC' :: KeySet -> SignedRPC -> Bool
+verifySignedRPC' !KeySet{..} s@(SignedRPC !Digest{..} !bdy)
+  | _digType == CMD || _digType == REV || _digType == CMDB =
+      case Map.lookup _digNodeId _ksClient of
+        Nothing -> throw $ WireFormatError $ "PubKey not found for NodeID: " ++ show _digNodeId
+        Just !key
+          | key /= _digPubkey -> throw $ WireFormatError $ "Public key in storage doesn't match digest's key for msg: " ++ show s
+          | otherwise -> if not $ dverify key bdy _digSig
+                         then throw $ WireFormatError $ "Unable to verify SignedRPC sig: " ++ show s
+                         else True
+  | otherwise =
+      case Map.lookup _digNodeId _ksCluster of
+        Nothing -> throw $ WireFormatError $ "PubKey not found for NodeID: " ++ show _digNodeId
+        Just !key
+          | key /= _digPubkey -> throw $ WireFormatError $ "Public key in storage doesn't match digest's key for msg: " ++ show s
+          | otherwise -> if not $ dverify key bdy _digSig
+                         then throw $ WireFormatError $ "Unable to verify SignedRPC sig: " ++ show s
+                         else True
+{-# INLINE verifySignedRPC' #-}
+
+instance WireFormatPar Command where
+  toWirePar nid pubKey privKey Command{..} = case _cmdProvenance of
+    NewMsg -> let bdy = encode $ CMDWire (_cmdEntry, _cmdClientId, _cmdRequestId)
+                  sig = dsign privKey bdy
+                  dig = Digest nid sig pubKey CMD
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWirePar !ks s@(SignedRPC !dig !bdy) = do
+    _ <- return $! verifySignedRPC' ks s
+    if _digType dig /= CMD
+    then error $! "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
+    else case decode bdy of
+      Left !err -> throw $ WireFormatError $ "Failure to decode CMDBWire: " ++ err
+      --Right !cmdb' -> Right $ CommandBatch ((either error id . fromWire Nothing ks <$> cmdb') `using` parList rseq) (ReceivedMsg dig bdy Nothing)
+      Right (CMDWire !(ce,nid,rid)) -> do
+        !v <- return $! Command ce nid rid $ ReceivedMsg dig bdy Nothing
+        return $ v `seq` v
+  {-# INLINE toWirePar #-}
+  {-# INLINE fromWirePar #-}
+
+instance WireFormatPar CommandBatch where
+  toWirePar nid pubKey privKey CommandBatch{..} = case _cmdbProvenance of
+    NewMsg -> let bdy = encode $ (toWire nid pubKey privKey <$> _cmdbBatch)
+                  sig = dsign privKey bdy
+                  dig = Digest nid sig pubKey CMDB
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWirePar !ks s@(SignedRPC !dig !bdy) = do
+    !sigOkay <- return $! verifySignedRPC' ks s
+    if _digType dig /= CMDB
+    then error $! "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
+    else case decode bdy of
+      Left !err -> throw $ WireFormatError $ "Failure to decode CMDBWire: " ++ err
+      --Right !cmdb' -> Right $ CommandBatch ((either error id . fromWire Nothing ks <$> cmdb') `using` parList rseq) (ReceivedMsg dig bdy Nothing)
+      Right !cmdb' -> do
+        !cmdbs <- mapConcurrently (\s -> do !s' <- force <$> fromWirePar ks s; return s' ) cmdb'
+        return $ CommandBatch cmdbs (ReceivedMsg dig bdy Nothing)
+  {-# INLINE toWirePar #-}
+  {-# INLINE fromWirePar #-}
+
+parMap' :: (a -> Either String b) -> [a] -> Eval [Either String b]
+parMap' _ [] = return []
+parMap' f (a:as) = do
+   b <- rpar $! f a
+   bs <- parMap' f as
+   rseq b
+   case b of
+     Left !err -> err `seq` return $! ((Left err):bs)
+     Right !v -> v `seq` return $! ((Right v):bs)
+{-# INLINE parMap' #-}
+
+class WireFormatParNF a where
+  toWireParNF   :: NodeID -> PublicKey -> SecretKey -> a -> SignedRPC
+  fromWireParNF :: KeySet -> SignedRPC -> Either String a
+
+instance NFData ReceivedAt
+instance NFData CommandBatch
+instance NFData Command
+instance NFData SignedRPC
+instance NFData Digest
+instance NFData Provenance
+instance NFData Signature
+instance NFData PublicKey
+instance NFData NodeID
+instance NFData MsgType
+instance NFData RequestId
+instance NFData CommandEntry
+
+instance WireFormatParNF CommandBatch where
+  toWireParNF nid pubKey privKey CommandBatch{..} = case _cmdbProvenance of
+    NewMsg -> let bdy = encode ((toWire nid pubKey privKey <$> _cmdbBatch) `using` parList rdeepseq)
+                  sig = dsign privKey bdy
+                  dig = Digest nid sig pubKey CMDB
+              in SignedRPC dig bdy
+    ReceivedMsg{..} -> SignedRPC _pDig _pOrig
+  fromWireParNF ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+    Left err -> Left err
+    Right False -> error "Invariant Failure: verification came back as Right False"
+    Right True -> if _digType dig /= CMDB
+      then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
+      else case decode bdy of
+        Left err -> Left $ "Failure to decode CMDBWire: " ++ err
+        Right cmdb' -> gatherValidCmdbs (ReceivedMsg dig bdy Nothing) $! parMap rseq (\s -> do !s' <- return $! fromWire Nothing ks s; s' `seq` s') cmdb'
+
+gatherValidCmdbs :: Provenance -> [Either String Command] -> Either String CommandBatch
+gatherValidCmdbs prov ec = go ec []
+  where
+    go [] s = Right $ CommandBatch (reverse s) prov
+    go ((Right cmd):cmds) s = go cmds (cmd:s)
+    go ((Left err):_) _ = Left err
+{-# INLINE gatherValidCmdbs #-}
+
+
+decodeCmdbWire' :: KeySet -> SignedRPC -> Command
+decodeCmdbWire' ks srpc = either error id $ fromWire Nothing ks srpc
+{-# INLINE decodeCmdbWire' #-}
+
+coreTest :: KeySet -> [SignedRPC] -> Either String CommandBatch
+coreTest ks s = gatherValidCmdbs' ((strictFromWire ks <$> s) `using` parList rseq)
+{-# INLINE coreTest #-}
+
+coreTest' :: KeySet -> [SignedRPC] -> [Command]
+coreTest' ks s = (either error id . fromWire Nothing ks <$> s `using` parList rseq)
+
+strictFromWire :: WireFormat a => KeySet -> SignedRPC -> Either String a
+strictFromWire ks !srpc = do
+  !cmd <- return $! fromWire Nothing ks srpc
+  cmd
+
+gatherValidCmdbs' :: [Either String Command] -> Either String CommandBatch
+gatherValidCmdbs' ec = go ec []
+  where
+    go [] s = Right $! CommandBatch (reverse s) NewMsg
+    go ((Right cmd):cmds) s = go cmds (cmd:s)
+    go ((Left err):_) _ = Left err
