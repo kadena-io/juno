@@ -28,6 +28,7 @@ import qualified Data.Aeson as JSON
 import Snap.CORS
 import Data.List
 import Data.Monoid
+import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Control.Concurrent.MVar
 import qualified Control.Concurrent.Lifted as CL
@@ -111,15 +112,14 @@ snapServer toCommand cmdStatusMap = httpServe serverConf $
     (ifTop (writeBS "use /hopper for commands") <|>
      route [ ("/api/juno/v1/accounts/create", createAccounts toCommand cmdStatusMap)
            , ("/api/juno/v1/accounts/adjust", adjustAccounts toCommand cmdStatusMap)
+           , ("/api/juno/v1/poll", pollForResults cmdStatusMap)
            , ("hopper", hopperHandler toCommand cmdStatusMap)
            , ("swift", swiftHandler toCommand cmdStatusMap)
            , ("api/swift-submit", swiftSubmission toCommand cmdStatusMap)
            , ("api/ledger-query", ledgerQuery toCommand cmdStatusMap)
            ])
 
--- |
--- good: curl -H "Content-Type: application/json" -X POST -d '{ "payload" : { "account": "TSLA" }, "digest": { "hash" : "mhash", "key" : "mykey"} }' http://localhost:8000/api/juno/v1/accounts/create
--- bad: curl -H "Content-Type: application/json" -X POST -d '{ "payloadGarb" : { "account": "KALE" }, "digest": { "hash" : "mhash", "key" : "mykey", "garbage" : "jsonError"} }' http://localhost:8000/api/juno/v1/accounts/create
+-- create an account returns cmdId see: juno/jmeter/juno_API_jmeter_test.jmx
 createAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 createAccounts toCommand cmdStatusMap = do
     maybeCreateAccount <- liftM JSON.decode (readRequestBody 1000)
@@ -133,8 +133,7 @@ createAccounts toCommand cmdStatusMap = do
   where
     createAccountBS' acct = BSC.pack $ "CreateAccount " ++ acct
 
--- |
---  curl -H "Content-Type: application/json" -X POST -d '{ "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }' http://localhost:8000/api/juno/v1/accounts/adjust
+-- Adjusts Account (negative, positive) returns cmdIds: juno/jmeter/juno_API_jmeter_test.jmx
 adjustAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 adjustAccounts toCommand cmdStatusMap = do
    maybeAdjustAccount <- liftM JSON.decode (readRequestBody 1000)
@@ -146,6 +145,25 @@ adjustAccounts toCommand cmdStatusMap = do
      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
      where
        adjustAccountBS acct amt = BSC.pack $ "AdjustAccount " ++ ( T.unpack acct) ++ " " ++ (show $ toRational amt)
+
+-- poll for a list of cmdIds, returning the applied results or error
+-- see juno/jmeter/juno_API_jmeter_test.jmx
+pollForResults :: CommandMVarMap -> Snap ()
+pollForResults cmdStatusMap = do
+  maybePoll <- liftM JSON.decode (readRequestBody 1000)
+  case maybePoll of
+    Just (PollPayloadRequest (PollPayload cmdids) _) -> do
+      (CommandMap _ m) <- liftIO $ readMVar cmdStatusMap
+      let rids = fmap (RequestId . read . T.unpack) cmdids
+      let results = PollResponse $ fmap (toRepresentation . flipIt m) rids
+      writeBS . BL.toStrict $ JSON.encode results
+    Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+ where
+   flipIt :: Map RequestId CommandStatus ->  RequestId -> Maybe (RequestId, CommandStatus)
+   flipIt m rId = (fmap . fmap) (\cmd -> (rId, cmd)) ((flip Map.lookup) $ m) rId
+   toRepresentation :: Maybe (RequestId, CommandStatus) -> PollResult
+   toRepresentation (Just ((RequestId rid), cmdStatus)) = cmdStatus2PollResult (RequestId rid) cmdStatus
+   toRepresentation Nothing = cmdStatusError
 
 swiftSubmission :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 swiftSubmission toCommand cmdStatusMap = do

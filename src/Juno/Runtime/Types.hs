@@ -581,7 +581,6 @@ data Role = Follower
 
 data CommandStatus = CmdSubmitted -- client sets when sending command
                    | CmdAccepted  -- Raft client has recieved command and submitted
-                   | CmdCommitted -- Raft has Committed the command, not yet applied
                    | CmdApplied { result :: CommandResult }  -- We have a result
                    deriving (Show)
 

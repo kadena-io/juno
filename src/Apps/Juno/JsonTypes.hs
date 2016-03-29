@@ -7,9 +7,7 @@
 module Apps.Juno.JsonTypes where
 
 import           Control.Monad (mzero)
-import           Data.Aeson (encode
-                            , decode
-                            , genericParseJSON
+import           Data.Aeson ( genericParseJSON
                             , genericToJSON
                             , parseJSON
                             , toJSON
@@ -23,10 +21,12 @@ import           Data.Aeson.Types (defaultOptions
                                   ,(.=)
                                   )
 import           Data.Aeson (Value(..))
-import qualified Data.ByteString.Lazy.Char8 as BL
-import           GHC.Generics
 import qualified Data.Text as T
 import           Data.Text (Text)
+import           GHC.Generics
+import           Juno.Runtime.Types (CommandStatus(..),
+                                     RequestId(..)
+                                    )
 
 removeUnderscore :: String -> String
 removeUnderscore = drop 1
@@ -101,54 +101,94 @@ instance FromJSON AccountAdjustRequest where
                              v .: "digest"
     parseJSON _ = mzero
 
--- Tests
-test :: Bool
-test = testCAEncode && testCAEncode && testCADecode'
+-- | Polling for commands
+data PollPayload = PollPayload {
+      _cmdids :: [Text]
+    } deriving (Eq, Generic, Show)
 
-bytesCreateAccount :: BL.ByteString
-bytesCreateAccount = BL.pack "{\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"},\"payload\":{\"account\":\"TSLA\"}}"
+instance ToJSON PollPayload where
+    toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
+instance FromJSON PollPayload where
+    parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
 
-bytesDigest :: BL.ByteString
-bytesDigest = BL.pack "{\"hash\":\"hashy\",\"key\":\"mykey\"}"
+data PollPayloadRequest = PollPayloadRequest {
+      _pollPayload :: PollPayload,
+      _pollDigest :: Digest
+    } deriving (Eq, Generic, Show)
 
-testCADecode :: Bool
-testCADecode =  (decode bytesCreateAccount :: Maybe CreateAccountRequest) == (Just (CreateAccountRequest {_payload = AccountPayload {_account = "TSLA"}, _digest = Digest {_hash = "hashy", _key = "mykey"}}))
+instance ToJSON PollPayloadRequest where
+    toJSON (PollPayloadRequest payload digest) = object ["payload" .= payload, "digest" .= digest]
+instance FromJSON PollPayloadRequest where
+    parseJSON (Object v) = PollPayloadRequest <$>
+                             v .: "payload" <*>
+                             v .: "digest"
+    parseJSON _ = mzero
 
-testCADecode' :: Bool
-testCADecode' = case (decode bytesCreateAccount :: Maybe CreateAccountRequest) of
-                  Just (CreateAccountRequest (AccountPayload _) _) -> True
-                  Nothing -> False
+-- {
+--  "results": [
+--    {
+--      "status": "PENDING",
+--      "cmdid": "string",
+--      "logidx": "string",
+--      "message": "string",
+--      "payload": {}
+--    }
+--  ]
+-- }
 
-testDecodeDigest :: Bool
-testDecodeDigest = case (decode bytesDigest :: Maybe Digest) of
-                     Just (Digest _ _) -> True
-                     Nothing -> False
-testCAEncode :: Bool
-testCAEncode = (encode (CreateAccountRequest (AccountPayload (T.pack "TSLA")) (Digest (T.pack "hashy") (T.pack "mykey")))) == ("{\"payload\":{\"account\":\"TSLA\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}")
+data PollResult = PollResult { _pollStatus :: Text
+                             , _pollCmdId :: Text
+                             , _logidx :: Int
+                             , _pollMessage :: Text
+                             , _pollResPayload :: Text
+                             } deriving (Eq, Generic, Show, FromJSON)
+instance ToJSON PollResult where
+    toJSON (PollResult status cmdid logidx msg payload) = object [
+                                                           "status" .= status,
+                                                           "cmdid" .= cmdid,
+                                                           "logidx" .= logidx,
+                                                           "message" .= msg,
+                                                           "payload" .= payload
 
--- | Test account adjust
+                                                        ]
 
-testAdjustPayloadDecode :: Bool
-testAdjustPayloadDecode = (decode $ BL.pack "{\"amount\":100,\"account\":\"TSLA\"}" :: Maybe AccountAdjustPayload) ==
-                          Just (AccountAdjustPayload {_adjustAccount = "TSLA", _adjustAmount = 100.0})
+-- TODO: logindex, payload after Query/Observe Accounts is added.
+cmdStatus2PollResult :: RequestId -> CommandStatus -> PollResult
+cmdStatus2PollResult (RequestId rid) CmdSubmitted = PollResult {
+                                                      _pollStatus = "PENDING"
+                                                    , _pollCmdId = toText rid
+                                                    , _logidx = (-1)
+                                                    , _pollMessage = ""
+                                                    , _pollResPayload = ""
+                                                    }
+cmdStatus2PollResult (RequestId rid) CmdAccepted = PollResult {
+                                                      _pollStatus = "PENDING"
+                                                    , _pollCmdId = toText rid
+                                                    , _logidx = (-1)
+                                                    , _pollMessage = ""
+                                                    , _pollResPayload = ""
+                                                    }
+cmdStatus2PollResult (RequestId rid) (CmdApplied _) = PollResult {
+                                                      _pollStatus = "ACCEPTED"
+                                                    , _pollCmdId = toText rid
+                                                    , _logidx = (-1)
+                                                    , _pollMessage = ""
+                                                    , _pollResPayload = ""
+                                                    }
+cmdStatusError :: PollResult
+cmdStatusError = PollResult {
+                   _pollStatus = "ERROR"
+                 , _pollCmdId = "errorID"
+                 , _logidx = (-1)
+                 , _pollMessage = "nothing to say"
+                 , _pollResPayload = "no payload"
+                 }
 
-testAdjustPayloadEncode :: Bool
-testAdjustPayloadEncode = (encode $ AccountAdjustPayload "TSLA" 100) == "{\"amount\":100,\"account\":\"TSLA\"}"
+toText :: Show a => a -> Text
+toText = (T.pack . show)
 
-bytesAdjustRequestPayload :: BL.ByteString
-bytesAdjustRequestPayload =  BL.pack "{\"payload\":{\"amount\":100,\"account\":\"TSLA\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}"
+data PollResponse = PollResponse { _results :: [PollResult] }
+                    deriving (Eq, Generic, Show)
 
-testAdjustRequestEncode :: BL.ByteString
-testAdjustRequestEncode = encode $
-                          AccountAdjustRequest (AccountAdjustPayload (T.pack "TSLA") 100)
-                                        (Digest (T.pack "hashy") (T.pack "mykey"))
-
-testAdjustRequestDecode :: Bool
-testAdjustRequestDecode = (decode $ bytesAdjustRequestPayload :: Maybe AccountAdjustRequest) ==
-                   Just (
-                         AccountAdjustRequest {
-                           _adjustAccountPayload = AccountAdjustPayload
-                           {_adjustAccount = "TSLA", _adjustAmount = 100.0}
-                         , _adjustAccountDigest = Digest {_hash = "hashy", _key = "mykey"}
-                         }
-                        )
+instance ToJSON PollResponse where
+    toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
