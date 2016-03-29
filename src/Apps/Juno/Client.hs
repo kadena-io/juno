@@ -144,7 +144,7 @@ adjustAccounts toCommand cmdStatusMap = do
          (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
      where
-       adjustAccountBS acct amt = BSC.pack $ "AdjustAccount " ++ ( T.unpack acct) ++ " " ++ (show $ toRational amt)
+       adjustAccountBS acct amt = BSC.pack $ "AdjustAccount " ++ T.unpack acct ++ " " ++ show (toRational amt)
 
 -- poll for a list of cmdIds, returning the applied results or error
 -- see juno/jmeter/juno_API_jmeter_test.jmx
@@ -160,9 +160,9 @@ pollForResults cmdStatusMap = do
     Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
  where
    flipIt :: Map RequestId CommandStatus ->  RequestId -> Maybe (RequestId, CommandStatus)
-   flipIt m rId = (fmap . fmap) (\cmd -> (rId, cmd)) ((flip Map.lookup) $ m) rId
+   flipIt m rId = (fmap . fmap) (\cmd -> (rId, cmd)) (`Map.lookup` m) rId
    toRepresentation :: Maybe (RequestId, CommandStatus) -> PollResult
-   toRepresentation (Just ((RequestId rid), cmdStatus)) = cmdStatus2PollResult (RequestId rid) cmdStatus
+   toRepresentation (Just (RequestId rid, cmdStatus)) = cmdStatus2PollResult (RequestId rid) cmdStatus
    toRepresentation Nothing = cmdStatusError
 
 swiftSubmission :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
@@ -236,14 +236,14 @@ swiftToHopper m = hopperProgram to' from' inter' amt'
                Beneficiary -> branchB2BranchA
                _ -> branchA2BranchB
     amt' :: Ratio Int
-    amt' = (fromIntegral $ view (sCode32A . vcsSettlementAmount . vWhole) m) + (view (sCode32A . vcsSettlementAmount . vPart) m)
+    amt' = fromIntegral (view (sCode32A . vcsSettlementAmount . vWhole) m) + view (sCode32A . vcsSettlementAmount . vPart) m
     hopperProgram :: String -> String -> String -> Ratio Int -> String
     hopperProgram t f i a = "transfer(" ++ f ++ "->" ++ i ++ "->" ++ t ++ "," ++ show a ++ ")"
 
 hopperHandler :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 hopperHandler toCommand cmdStatusMap = do
     bdy <- readRequestBody 1000000
-    logError $ "hopper: " <> (BLC.toStrict bdy)
+    logError $ "hopper: " <> BLC.toStrict bdy
     cmd <- return $ BLC.toStrict bdy
     case readHopper cmd of
       Left err -> errDone 400 $ BSC.pack err

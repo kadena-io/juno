@@ -1,32 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Apps.Juno.JsonTypes where
 
 import           Control.Monad (mzero)
-import           Data.Aeson ( genericParseJSON
-                            , genericToJSON
-                            , parseJSON
-                            , toJSON
-                            , ToJSON
-                            , FromJSON
-                            )
-import           Data.Aeson.Types (defaultOptions
-                                  ,object
-                                  ,Options(..)
-                                  ,(.:)
-                                  ,(.=)
-                                  )
-import           Data.Aeson (Value(..))
+import           Data.Aeson (genericParseJSON,genericToJSON,parseJSON,toJSON,ToJSON,FromJSON,Value(..))
+import           Data.Aeson.Types (defaultOptions,object,Options(..),(.:),(.=))
 import qualified Data.Text as T
 import           Data.Text (Text)
 import           GHC.Generics
-import           Juno.Runtime.Types (CommandStatus(..),
-                                     RequestId(..)
-                                    )
+import           Juno.Runtime.Types (CommandStatus(..),RequestId(..))
 
 removeUnderscore :: String -> String
 removeUnderscore = drop 1
@@ -103,26 +87,25 @@ instance FromJSON AccountAdjustRequest where
 
 -- | Polling for commands
 data PollPayload = PollPayload {
-      _cmdids :: [Text]
-    } deriving (Eq, Generic, Show)
+  _cmdids :: [Text]
+  } deriving (Eq, Generic, Show)
 
 instance ToJSON PollPayload where
-    toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
+  toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
 instance FromJSON PollPayload where
-    parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
+  parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
 
 data PollPayloadRequest = PollPayloadRequest {
-      _pollPayload :: PollPayload,
-      _pollDigest :: Digest
-    } deriving (Eq, Generic, Show)
+  _pollPayload :: PollPayload,
+  _pollDigest :: Digest
+  } deriving (Eq, Generic, Show)
 
 instance ToJSON PollPayloadRequest where
-    toJSON (PollPayloadRequest payload digest) = object ["payload" .= payload, "digest" .= digest]
+  toJSON (PollPayloadRequest payload digest) = object ["payload" .= payload, "digest" .= digest]
 instance FromJSON PollPayloadRequest where
-    parseJSON (Object v) = PollPayloadRequest <$>
-                             v .: "payload" <*>
-                             v .: "digest"
-    parseJSON _ = mzero
+  parseJSON (Object v) = PollPayloadRequest <$> v .: "payload"
+                                            <*> v .: "digest"
+  parseJSON _ = mzero
 
 -- {
 --  "results": [
@@ -136,59 +119,45 @@ instance FromJSON PollPayloadRequest where
 --  ]
 -- }
 
-data PollResult = PollResult { _pollStatus :: Text
-                             , _pollCmdId :: Text
-                             , _logidx :: Int
-                             , _pollMessage :: Text
-                             , _pollResPayload :: Text
-                             } deriving (Eq, Generic, Show, FromJSON)
+data PollResult = PollResult
+  { _pollStatus :: Text
+  , _pollCmdId :: Text
+  , _logidx :: Int
+  , _pollMessage :: Text
+  , _pollResPayload :: Text
+  } deriving (Eq, Generic, Show, FromJSON)
 instance ToJSON PollResult where
-    toJSON (PollResult status cmdid logidx msg payload) = object [
-                                                           "status" .= status,
-                                                           "cmdid" .= cmdid,
-                                                           "logidx" .= logidx,
-                                                           "message" .= msg,
-                                                           "payload" .= payload
-
-                                                        ]
+    toJSON (PollResult status cmdid logidx msg payload) =
+      object [ "status" .= status
+             , "cmdid" .= cmdid
+             , "logidx" .= logidx
+             , "message" .= msg
+             , "payload" .= payload
+             ]
 
 -- TODO: logindex, payload after Query/Observe Accounts is added.
 cmdStatus2PollResult :: RequestId -> CommandStatus -> PollResult
-cmdStatus2PollResult (RequestId rid) CmdSubmitted = PollResult {
-                                                      _pollStatus = "PENDING"
-                                                    , _pollCmdId = toText rid
-                                                    , _logidx = (-1)
-                                                    , _pollMessage = ""
-                                                    , _pollResPayload = ""
-                                                    }
-cmdStatus2PollResult (RequestId rid) CmdAccepted = PollResult {
-                                                      _pollStatus = "PENDING"
-                                                    , _pollCmdId = toText rid
-                                                    , _logidx = (-1)
-                                                    , _pollMessage = ""
-                                                    , _pollResPayload = ""
-                                                    }
-cmdStatus2PollResult (RequestId rid) (CmdApplied _) = PollResult {
-                                                      _pollStatus = "ACCEPTED"
-                                                    , _pollCmdId = toText rid
-                                                    , _logidx = (-1)
-                                                    , _pollMessage = ""
-                                                    , _pollResPayload = ""
-                                                    }
+cmdStatus2PollResult (RequestId rid) CmdSubmitted =
+  PollResult{_pollStatus = "PENDING", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = ""}
+cmdStatus2PollResult (RequestId rid) CmdAccepted =
+  PollResult{_pollStatus = "PENDING", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = ""}
+cmdStatus2PollResult (RequestId rid) (CmdApplied _) =
+  PollResult{_pollStatus = "ACCEPTED", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = ""}
+
 cmdStatusError :: PollResult
-cmdStatusError = PollResult {
-                   _pollStatus = "ERROR"
-                 , _pollCmdId = "errorID"
-                 , _logidx = (-1)
-                 , _pollMessage = "nothing to say"
-                 , _pollResPayload = "no payload"
-                 }
+cmdStatusError = PollResult
+  { _pollStatus = "ERROR"
+  , _pollCmdId = "errorID"
+  , _logidx = -1
+  , _pollMessage = "nothing to say"
+  , _pollResPayload = "no payload"
+  }
 
 toText :: Show a => a -> Text
-toText = (T.pack . show)
+toText = T.pack . show
 
 data PollResponse = PollResponse { _results :: [PollResult] }
-                    deriving (Eq, Generic, Show)
+  deriving (Eq, Generic, Show)
 
 instance ToJSON PollResponse where
-    toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
+  toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
