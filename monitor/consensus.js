@@ -24,10 +24,17 @@ export default function Transactions({data}) {
   // <div>Current Leader: {current_leader}</div>
 
   return (
-    <div>
-      <h2>TRANSACTIONS</h2>
-      <div>Commit Index: {commit_index}</div>
-      <div>Term: {term}</div>
+    <div className="section">
+      <h2>
+        TRANSACTIONS
+        <div className="border-underline" />
+      </h2>
+      <div className="transaction-point">
+        Commit Index: <span className="transaction-datum">{commit_index}</span>
+      </div>
+      <div className="transaction-point">
+        Term: <span className="transaction-datum">{term}</span>
+      </div>
     </div>
   );
 }

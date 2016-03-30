@@ -34,7 +34,8 @@
     "node-libs-browser": "1.0.0",
     "react": "0.14.7",
     "react-d3-basic": "^1.6.11",
-    "react-dom": "0.14.7"
+    "react-dom": "0.14.7",
+    "react-radio-group": "^2.2.0"
   },
   "devDependencies": {
     "babel-core": "6.7.0",

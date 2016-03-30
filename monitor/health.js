@@ -2,61 +2,80 @@ import React from 'react';
 import d3 from 'd3';
 
 const width = 500;
-const height = 400;
-
-const styles = {
-  quorum: { backgroundColor: '#8ac' },
-  avail: { backgroundColor: '#678' },
-  size: { backgroundColor: '#456' },
-};
-
-const data = [
-  { label: 'quorum', size: 26 },
-  { label: 'avail', size: 47 },
-  { label: 'size', size: 50 },
-];
+const height = 40;
 
 function clusterStatus(data) {
   const cluster = data.juno.cluster;
-  return {
-    quorum: cluster.quorum_size.val,
-    avail: cluster.available_size.val,
-    size: cluster.size.val,
-  };
+  return [
+    { title: 'quorum', value: cluster.quorum_size.val },
+    { title: 'avail', value: cluster.available_size.val },
+    { title: 'size', value: cluster.size.val },
+  ];
+}
+
+function Tick({ text, transform }) {
+  return (
+    <g className="tick" transform={`translate(${transform}, 0)`}>
+      <line x1={0} y1={0} x2={0} y2={0} />
+      <text dy=".71em" x={0} y={0} style={{textAnchor: 'middle'}}>{text}</text>
+    </g>
+  );
+}
+
+function Axis({ scale }) {
+  const ticks = scale.domain();
+  const tickElems = ticks.map(tick => (
+    <Tick text={tick} key={tick} transform={scale(tick)} />
+  ));
+
+  return (
+    <g className="axis" transform={`translate(0, 20)`}>
+      {tickElems}
+    </g>
+  );
+}
+
+function Rects({ scale, data }) {
+  const rects = data.map(datum => (
+    <rect
+      className="bar"
+      key={datum.title}
+      width={scale(datum.title)}
+      height={height}
+    />
+  ));
+
+  return (
+    <g className="rects">{rects}</g>
+  );
 }
 
 export default class Health extends React.Component {
   render() {
+    const {data} = this.props;
+    const d3data = data != null ? clusterStatus(data) : [];
+
+    // XXX this is so wrong
+    const scale = d3.scale.ordinal()
+      .domain(['quorum', 'avail', 'size'])
+      .rangePoints([25, width-25]);
+
     return (
-      <div>
-        <h2>HEALTH</h2>
-        <div ref={ref => this._d3 = ref} />
+      <div className="section">
+        <h2>
+          HEALTH
+          <div className="border-underline" />
+        </h2>
+        <svg
+          className="health"
+          ref={ref => this._d3 = ref}
+          width={width}
+          height={height}
+        >
+          <Axis scale={scale} />
+          <Rects scale={scale} data={d3data} />
+        </svg>
       </div>
     );
-  }
-
-  componentDidMount() {
-    this._renderD3();
-  }
-
-  componentDidUpdate() {
-    this._renderD3();
-  }
-
-  _renderD3() {
-    const {data} = this.props;
-    if (data == null) {
-      return;
-    }
-
-    const d3data = d3.map(clusterStatus(data)).entries();
-
-    d3.select(this._d3)
-      .selectAll('div')
-        .data(d3data)
-      .enter().append('div')
-        .style('width', d => `${d.value * 10}px`)
-        .style('background-color', d => styles[d.key].backgroundColor)
-        .text(d => d.key);
   }
 }

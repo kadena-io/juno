@@ -1,27 +1,94 @@
 :root {
   --font-family: Monaco, monospace;
-  --font-size: 12px;
-  --background: white;
-  --color: #aaa;
-  --yellow: #FFD601;
+  --font-size: 14px;
 }
 
-body {
+#myApp {
   font-size: var(--font-size);
   font-family: var(--font-family);
+  padding: 40px;
+}
 
-  background-color: var(--background);
-  color: var(--color);
+h1.cluster-header {
+  font-size: 1.5rem;
+  margin-bottom: 40px;
+}
+
+#myApp h2 {
+  font-size: 1.25rem;
+  margin-bottom: 20px;
 }
 
 .chart div {
   text-align: right;
   padding: 3px;
   margin: 1px;
-  color: white;
 }
 
-.mg-line1-legend-color {
-  color: var(--yellow);
-  fill: var(--yellow);
+div.border-underline {
+  width: 100px;
+  height: 4px;
+  margin-top: 4px;
+}
+
+div.section {
+  margin: 60px 0;
+}
+
+div.transaction-point {
+  margin: 10px 0;
+}
+
+span.transaction-datum {
+  font-weight: bold;
+}
+
+li.node-option {
+  margin: 10px 0 10px -6px;
+
+  & input[type=radio] {
+    position: absolute;
+    visibility: hidden;
+  }
+
+  & label {
+    display: block;
+    position: relative;
+    cursor: pointer;
+  }
+
+  & .check {
+    border-width: 6px 2px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0);
+    margin-right: 5px;
+    display: inline-block;
+  }
+}
+
+input[type=radio]:checked ~ .check {
+  border-color: #DE6262;
+}
+
+div.node {
+  display: flex;
+  flex-direction: row;
+}
+
+h3.node-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+div.node-body {
+}
+
+div.nodes-selector {
+  display: flex;
+  flex-direction: row;
+
+  & > div {
+    margin-right: 50px;
+  }
 }
