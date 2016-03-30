@@ -7,9 +7,9 @@
   --dark-text: #747475;
   --light-text: #B1AF95;
 
-  --follower: #71C37F;
-  --leader: #8764AB;
-  --candidate: #61A8DC;
+  --follower: #71C37F; /* green */
+  --leader: #61A8DC; /* blue */
+  --candidate: #737172; /* gray */
 }
 
 body {
@@ -19,6 +19,7 @@ body {
 
 #myApp {
   border-top: 6px solid var(--border-red);
+  border-bottom: 6px solid var(--border-red);
   color: var(--dark-text);
 }
 
@@ -27,6 +28,10 @@ body {
 
 .chart div {
   color: white;
+}
+
+div.div-bar {
+  background-color: color(steelblue alpha(-80%));
 }
 
 .health {
@@ -52,6 +57,10 @@ span.transaction-datum {
   color: color(var(--dark-text) blackness(20%));
 }
 
+div.node-lost-centerer {
+  color: var(--border-red);
+}
+
 span.node-role-Follower {
   color: var(--follower);
 }
@@ -62,4 +71,16 @@ span.node-role-Leader {
 
 span.node-role-Candidate {
   color: var(--candidate);
+}
+
+input[type=radio]:checked ~ .check {
+  background-color: #DE6262;
+}
+
+#myApp path.mg-line1-color {
+  stroke: #E45A5A;
+}
+
+#myApp path.mg-area1-color {
+  fill: #E45A5A;
 }

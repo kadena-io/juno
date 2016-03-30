@@ -8,39 +8,21 @@ import {LineChart} from 'react-d3-basic';
 import Health from './health';
 import Nodes from './nodes';
 import Consensus from './consensus';
-// import rd3 from './d3';
 
-// const metrics = {
-//   'commit period': wrapMetric((data, prev) =>
-//     data.juno.consensus.commit_period.mean - prev.juno.consensus.commit_period.mean
-//   ),
-//   // 'cpu time': wrapMetric(data => data.rts.gc.cpu_ms.val),
-//   // 'wall ms': wrapMetric(data => data.rts.gc.wall_ms.val),
-//   // 'bytes allocated': wrapMetric(data => data.rts.gc.bytes_allocated.val),
-//   // 'gcs': wrapMetric(data => data.rts.gc.num_gcs.val),
-//   'applied index': wrapMetric(data => data.juno.node.applied_index.val),
-// };
-
-function computeDatum(prev, curr) {
-  const date = new Date(curr.ekg.server_timestamp_ms.val);
-  const commitPeriod = prev == null
-    ? 0
-    : curr.juno.consensus.commit_period.mean- prev.juno.consensus.commit_period.mean;
-  const commitPeriodSd = prev == null
-    ? 0
-    : curr.juno.consensus.commit_period.variance / 1000000;
-
-  return {
-    date,
-    commitPeriod,
-    commitPeriodSd,
-  };
-}
 
 const ports = [10000, 10001, 10002, 10003];
 
-// number of datapoints to keep around (5 mins)
-const dataWindow = 60 * 5;
+// number of datapoints to keep around (5 mins + 1 min)
+const dataWindow = 60 * 6;
+
+const emptyNodeData = {
+  data: [],
+  role: 'Unknown',
+  appliedIndex: null,
+};
+
+const LOST_NODE = 'LOST_NODE';
+
 
 class App extends React.Component {
   constructor(props) {
@@ -48,11 +30,7 @@ class App extends React.Component {
 
     const data = {}
     for (let port of ports) {
-      data[`127.0.0.1:${port}`] = {
-        computedData: [],
-        prevDatum: null,
-        role: 'Unknown',
-      };
+      data[`127.0.0.1:${port}`] = LOST_NODE;
     };
 
     this.state = {
@@ -64,14 +42,18 @@ class App extends React.Component {
   render() {
     const {leaderData, data} = this.state;
     return (
-      <div>
+      <div className="app">
         <h1 className="cluster-header">
           JUNO CLUSTER
           <div className="border-underline" />
         </h1>
-        <Consensus data={leaderData} />
-        <Health data={leaderData} />
-        <Nodes data={data} />
+        <div className="float-section">
+          <Consensus data={leaderData} />
+          <Health data={leaderData} />
+        </div>
+        <div className="float-section">
+          <Nodes data={data} />
+        </div>
       </div>
     );
   }
@@ -89,44 +71,53 @@ class App extends React.Component {
       const id = `_id${port}`;
       window.clearInterval(this[id]);
       this[id] = window.setInterval(() => {
-        this._fetch(port+80);
+        this._fetch(port);
       }, 1000);
     }
   }
 
   _fetch(port: number) {
-    fetch(`//localhost:${port}`, {
+    fetch(`//localhost:${port+80}`, {
       method: 'get',
       headers: new Headers({
         'Accept': 'application/json',
       }),
       mode: 'cors'
     }).then(response => response.json())
-      .then(newData => {
-        const id = newData.juno.node.id.val;
-        const role = newData.juno.node.role.val;
-        const leaderData = role === "Leader" ? newData : this.state.leaderData;
+      .then(newDatum => {
+        const nodeDatum = newDatum.juno.node;
+        const id = nodeDatum.id.val;
+        const role = nodeDatum.role.val;
+        const appliedIndex = nodeDatum.applied_index.val;
+        const leaderData = role === "Leader" ? newDatum : this.state.leaderData;
         const stateData = this.state.data;
-        const computedDatum = computeDatum(stateData[id].prevDatum, newData);
 
-        // Add in new data and cap the size at the number of data points we
-        // track
-        const computedData = stateData[id]
-          .computedData
-          .concat([computedDatum])
-          .slice(-dataWindow);
+        // re-initialize if we've found it again; add in new data and cap the
+        // size at the number of data points we track
+        const newData = stateData[id] === LOST_NODE
+          ? [newDatum]
+          : stateData[id].data.concat([newDatum]).slice(-dataWindow);
 
         const data = {
           ...stateData,
           [id]: {
-            prevDatum: newData,
-            computedData,
-            role
+            data: newData,
+            role,
+            appliedIndex,
           },
         };
 
         this.setState({ data, leaderData });
-    }).catch(err => console.log(err));
+    }).catch(err => {
+      const id = `127.0.0.1:${port}`;
+      const stateData = this.state.data;
+      const data = {
+        ...stateData,
+        [id]: LOST_NODE,
+      };
+
+      this.setState({data});
+    });
   }
 
 }
