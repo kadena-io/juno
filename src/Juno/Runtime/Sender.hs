@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -93,7 +94,7 @@ sendAllAppendEntriesResponse = do
   (_, lindex, lhash) <- lastLogInfo <$> use logEntries
   aer <- return $ createAppendEntriesResponse' True True ct nid lindex lhash
   oNodes <- view (cfg.otherNodes)
-  sendRPCs $ (\n -> (n,aer)) <$> Set.toList oNodes
+  sendRPCs $ (,aer) <$> Set.toList oNodes
 
 createRequestVoteResponse :: MonadWriter [String] m => Term -> LogIndex -> NodeID -> NodeID -> Bool -> m RequestVoteResponse
 createRequestVoteResponse term' logIndex' myNodeId' target vote = do

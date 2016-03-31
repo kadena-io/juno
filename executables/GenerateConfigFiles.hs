@@ -73,6 +73,6 @@ createClientConfig clusterPubMap (privMap, pubMap) nid = Config
   , _myPublicKey          = pubMap Map.! nid
   , _electionTimeoutRange = (3000000,6000000)
   , _heartbeatTimeout     = 1500000
-  , _enableDebug          = True
+  , _enableDebug          = False
   , _clientTimeoutLimit   = 50000
   }
