@@ -16,7 +16,7 @@ import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
 import qualified Data.ByteString as B
 
-import Juno.Runtime.Types
+import Juno.Runtime.Types hiding (valid)
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendResults)
 

@@ -17,7 +17,7 @@ import Juno.Consensus.ByzRaft.Commit (doCommit,makeCommandResponse')
 import Juno.Consensus.ByzRaft.Log (addLogEntryAndHash)
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendRPC,sendAllAppendEntries,sendAllAppendEntriesResponse)
-import Juno.Util.Util (debug, getCmdSigOrInvariantError)
+import Juno.Util.Util (getCmdSigOrInvariantError)
 
 import qualified Juno.Runtime.Types as JT
 

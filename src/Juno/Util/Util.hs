@@ -104,9 +104,11 @@ messageReceiver = do
         -- So print the msg (to get your attention) and then print the error under it... TODO: better logging
         debug $ "Failed to deserialize to SignedRPC [Msg]: " ++ show msg
         debug $ "Failed to deserialize to SignedRPC [Error]: " ++ err
-      Right v -> case signedRPCtoRPC (Just ts) ks v of
-        Left err -> debug err
-        Right rpc -> enqueueEvent $ ERPC rpc
+      Right v -> do
+        debug $ "Got a SignedRPC of type: " ++ show (_digType $ _sigDigest v)
+        case signedRPCtoRPC (Just ts) ks v of
+          Left err -> debug err
+          Right rpc -> enqueueEvent $ ERPC rpc
 
 setTerm :: Monad m => Term -> Raft m ()
 setTerm t = do

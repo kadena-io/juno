@@ -19,8 +19,9 @@ packages:
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
 - SHA2-0.2.5
-- ed25519-0.0.5.0
+- ed25519-donna-0.1.1
 - unagi-chan-0.4.0.0
+- ed25519-donna-0.1.1
 - AES-0.2.9
 - megaparsec-4.2.0
 # Are these required because a dependency of this project is using data-dword, or because masala is using data-dword and extra-deps aren't propagated?

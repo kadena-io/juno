@@ -5,15 +5,18 @@
 module Main where
 
 import Criterion.Main
-import Crypto.Sign.Ed25519
+--import Crypto.Sign.Ed25519
+import qualified Crypto.Ed25519.Pure as Donna
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as SB8
 import Control.Parallel.Strategies
 -- import qualified Data.Either.Strict as Strict
-import Control.Concurrent.Async
+
 import Control.Exception
 import Data.Typeable
--- import Control.DeepSeq
+import Data.Maybe
+import Control.DeepSeq
+
 
 main :: IO ()
 main = defaultMain
@@ -34,11 +37,11 @@ main = defaultMain
 --    , bench "IO mapConcurrently" $
 --        whnfIO $ simpleTest6 signedMsgs
 --    ]
---    bgroup "Chunking Test" [
+--  bgroup "Chunking Test" [
 --      bench "no chunking" $
 --        whnf simpleTest2 signedMsgs
---    , bench "chunk size = 2" $
---        whnf (chunkTest 2) signedMsgs
+--    bench "chunk size = 2" $
+--      whnf (chunkTest 2) signedMsgs
 --    , bench "chunk size = 3" $
 --        whnf (chunkTest 3) signedMsgs
 --    , bench "chunk size = 4" $
@@ -76,72 +79,89 @@ main = defaultMain
 --    , bench "chunk size = 20" $
 --        whnf (chunkTest 20) signedMsgs
 --    ]
-    bgroup "Signing Test" [
+    bgroup "Chunking Test - Donna" [
       bench "sequential" $
-        whnf signTestSeq unsignedScript
+        whnf simpleTestDonna signedMsgsDonna
     , bench "no chunking" $
-        whnf signTestNoChunk unsignedScript
+        whnf simpleTestDonna2 signedMsgsDonna
+    , bench "chunk size = 2" $
+        whnf (chunkTestDonna 2) signedMsgsDonna
+    , bench "chunk size = 3" $
+        whnf (chunkTestDonna 3) signedMsgsDonna
+    , bench "chunk size = 4" $
+        whnf (chunkTestDonna 4) signedMsgsDonna
+    , bench "chunk size = 5" $
+        whnf (chunkTestDonna 5) signedMsgsDonna
+    , bench "chunk size = 6" $
+        whnf (chunkTestDonna 6) signedMsgsDonna
+    , bench "chunk size = 7" $
+        whnf (chunkTestDonna 7) signedMsgsDonna
+    , bench "chunk size = 8" $
+        whnf (chunkTestDonna 8) signedMsgsDonna
+    , bench "chunk size = 9" $
+        whnf (chunkTestDonna 9) signedMsgsDonna
+    , bench "chunk size = 10" $
+        whnf (chunkTestDonna 10) signedMsgsDonna
+    , bench "chunk size = 11" $
+        whnf (chunkTestDonna 11) signedMsgsDonna
+    , bench "chunk size = 12" $
+        whnf (chunkTestDonna 12) signedMsgsDonna
+    , bench "chunk size = 13" $
+        whnf (chunkTestDonna 13) signedMsgsDonna
+    , bench "chunk size = 14" $
+        whnf (chunkTestDonna 14) signedMsgsDonna
+    , bench "chunk size = 15" $
+        whnf (chunkTestDonna 15) signedMsgsDonna
+    , bench "chunk size = 16" $
+        whnf (chunkTestDonna 16) signedMsgsDonna
+    , bench "chunk size = 17" $
+        whnf (chunkTestDonna 17) signedMsgsDonna
+    , bench "chunk size = 18" $
+        whnf (chunkTestDonna 18) signedMsgsDonna
+    , bench "chunk size = 19" $
+        whnf (chunkTestDonna 19) signedMsgsDonna
+    , bench "chunk size = 20" $
+        whnf (chunkTestDonna 20) signedMsgsDonna
+    ]
+--, bgroup "Signing Test" [
+--    bench "sequential" $
+--      whnf signTestSeq unsignedScript
+--  , bench "no chunking" $
+--      whnf signTestNoChunk unsignedScript
+--  , bench "chunk = 5" $
+--      whnf (signTestChunk 5) unsignedScript
+--  , bench "chunk = 10" $
+--      whnf (signTestChunk 10) unsignedScript
+--  , bench "chunk = 25" $
+--      whnf (signTestChunk 25) unsignedScript
+--  , bench "chunk = 50" $
+--      whnf (signTestChunk 50) unsignedScript
+--  , bench "chunk = 100" $
+--      whnf (signTestChunk 100) unsignedScript
+--  ]
+  , bgroup "Signing Test - Donna" [
+      bench "sequential" $
+        whnf signTestSeqDonna unsignedScript
+    , bench "no chunking" $
+        whnf signTestNoChunkDonna unsignedScript
     , bench "chunk = 5" $
-        whnf (signTestChunk 5) unsignedScript
+        whnf (signTestChunkDonna 5) unsignedScript
     , bench "chunk = 10" $
-        whnf (signTestChunk 10) unsignedScript
+        whnf (signTestChunkDonna 10) unsignedScript
     , bench "chunk = 25" $
-        whnf (signTestChunk 25) unsignedScript
+        whnf (signTestChunkDonna 25) unsignedScript
     , bench "chunk = 50" $
-        whnf (signTestChunk 50) unsignedScript
+        whnf (signTestChunkDonna 50) unsignedScript
     , bench "chunk = 100" $
-        whnf (signTestChunk 100) unsignedScript
+        whnf (signTestChunkDonna 100) unsignedScript
     ]
   ]
-
-privKey :: SecretKey
-privKey = SecretKey "\132h\138\225\233\237%\\\SOnZH\196\138\232\&7\239c'p)YE\192\136\DC3\217\170N\231n\236\199\NAK\238\171\\\161\222\247\186/\DC3\204Qqd\225}\202\150e~q\255;\223\233\211:\211\SUBT\145"
-
-pubKey :: PublicKey
-pubKey = toPublicKey privKey
-
-mySigned :: ByteString -> Int
-mySigned b = SB8.length $! unSignature $! dsign privKey b
-
-signedMsgs :: [(Signature, ByteString)]
-signedMsgs =  take 2000 ((\(i :: Int) -> (dsign privKey $ SB8.pack $ show i, SB8.pack $ show i)) <$> [1..])
-
-unsignedScript :: [ByteString]
-unsignedScript = take 2000 (SB8.pack . show <$> ([1..] :: [Int]))
-
-signTestSeq :: [ByteString] -> Int
-signTestSeq s = sum $! (mySigned <$> s)
-
-signTestNoChunk :: [ByteString] -> Int
-signTestNoChunk s = sum $! ((mySigned <$> s) `using` parList rdeepseq)
-
-signTestChunk :: Int -> [ByteString] -> Int
-signTestChunk n s = sum $! ((mySigned <$> s) `using` parListChunk n rdeepseq)
-
-instance NFData Signature
-
-verifySig :: PublicKey -> (Signature,ByteString) -> Int
-verifySig pk (s,b) = if dverify pk b s
-                     then read $! SB8.unpack b
-                     else error "Failed to verify!"
-
-verifySig' :: PublicKey -> (Signature,ByteString) -> Either String Int
-verifySig' pk (s,b) = if dverify pk b s
-                     then Right $! read $ SB8.unpack b
-                     else Left $! "Invalid Sig for: " ++ SB8.unpack b
-
--- verifySig'' :: PublicKey -> (Signature,ByteString) -> Strict.Either String Int
--- verifySig'' pk (s,b) = if dverify pk b s
---                      then Strict.Right $ read $ SB8.unpack b
---                      else Strict.Left $ "Invalid Sig for: " ++ SB8.unpack b
 
 data SimpleError = SimpleError String deriving (Eq, Show, Typeable)
 instance Exception SimpleError
 
-verifySigExcept :: PublicKey -> (Signature,ByteString) -> Int
-verifySigExcept pk (s,b) = if dverify pk b s
-                     then read $ SB8.unpack b
-                     else throw $ SimpleError "InvalidSig"
+unsignedScript :: [ByteString]
+unsignedScript = take 2000 (SB8.pack . show <$> ([1..] :: [Int]))
 
 collectResults :: [Either String Int] -> Either String [Int]
 collectResults ec = go ec []
@@ -150,6 +170,49 @@ collectResults ec = go ec []
     go ((Right cmd):cmds) s = go cmds (cmd:s)
     go ((Left err):_) _ = Left err
 
+--privKey :: SecretKey
+--privKey = SecretKey "\132h\138\225\233\237%\\\SOnZH\196\138\232\&7\239c'p)YE\192\136\DC3\217\170N\231n\236\199\NAK\238\171\\\161\222\247\186/\DC3\204Qqd\225}\202\150e~q\255;\223\233\211:\211\SUBT\145"
+--
+--pubKey :: PublicKey
+--pubKey = toPublicKey privKey
+--
+--mySigned :: ByteString -> Int
+--mySigned b = SB8.length $! unSignature $! dsign privKey b
+--
+--signedMsgs :: [(Signature, ByteString)]
+--signedMsgs =  take 2000 ((\(i :: Int) -> (dsign privKey $ SB8.pack $ show i, SB8.pack $ show i)) <$> [1..])
+--
+--signTestSeq :: [ByteString] -> Int
+--signTestSeq s = sum $! (mySigned <$> s)
+--
+--signTestNoChunk :: [ByteString] -> Int
+--signTestNoChunk s = sum $! ((mySigned <$> s) `using` parList rdeepseq)
+--
+--signTestChunk :: Int -> [ByteString] -> Int
+--signTestChunk n s = sum $! ((mySigned <$> s) `using` parListChunk n rdeepseq)
+--
+--instance NFData Signature
+--
+--verifySig :: PublicKey -> (Signature,ByteString) -> Int
+--verifySig pk (s,b) = if dverify pk b s
+--                     then read $! SB8.unpack b
+--                     else error "Failed to verify!"
+--
+--verifySig' :: PublicKey -> (Signature,ByteString) -> Either String Int
+--verifySig' pk (s,b) = if dverify pk b s
+--                     then Right $! read $ SB8.unpack b
+--                     else Left $! "Invalid Sig for: " ++ SB8.unpack b
+--
+-- verifySig'' :: PublicKey -> (Signature,ByteString) -> Strict.Either String Int
+-- verifySig'' pk (s,b) = if dverify pk b s
+--                      then Strict.Right $ read $ SB8.unpack b
+--                      else Strict.Left $ "Invalid Sig for: " ++ SB8.unpack b
+--
+--verifySigExcept :: PublicKey -> (Signature,ByteString) -> Int
+--verifySigExcept pk (s,b) = if dverify pk b s
+--                     then read $ SB8.unpack b
+--                     else throw $ SimpleError "InvalidSig"
+--
 -- collectResults' :: [Strict.Either String Int] -> Strict.Either String [Int]
 -- collectResults' ec = go ec []
 --   where
@@ -157,22 +220,22 @@ collectResults ec = go ec []
 --     go ((Strict.Right cmd):cmds) s = go cmds (cmd:s)
 --     go ((Strict.Left err):_) _ = Strict.Left err
 
--- ~1.4 sec
-simpleTest0 :: [(Signature,ByteString)] -> Int
-simpleTest0 s = sum ((either error id . verifySig' pubKey) <$> s)
-
--- ~540 milliseconds
-simpleTest1 :: [(Signature,ByteString)] -> Int
-simpleTest1 s = sum ((verifySig pubKey) <$> s `using` parList rdeepseq)
-
--- ~540 milliseconds
-simpleTest2 :: [(Signature,ByteString)] -> Int
-simpleTest2 s = either error sum $ collectResults ((verifySig' pubKey) <$> s `using` parList rseq)
-
--- ~550 milliseconds
-simpleTest3 :: [(Signature,ByteString)] -> Int
-simpleTest3 s = either error sum $ collectResults ((verifySig' pubKey) <$> s `using` parList rdeepseq)
-
+---- ~1.4 sec
+--simpleTest0 :: [(Signature,ByteString)] -> Int
+--simpleTest0 s = sum ((either error id . verifySig' pubKey) <$> s)
+--
+---- ~540 milliseconds
+--simpleTest1 :: [(Signature,ByteString)] -> Int
+--simpleTest1 s = sum ((verifySig pubKey) <$> s `using` parList rdeepseq)
+--
+---- ~540 milliseconds
+--simpleTest2 :: [(Signature,ByteString)] -> Int
+--simpleTest2 s = either error sum $ collectResults ((verifySig' pubKey) <$> s `using` parList rseq)
+--
+---- ~550 milliseconds
+--simpleTest3 :: [(Signature,ByteString)] -> Int
+--simpleTest3 s = either error sum $ collectResults ((verifySig' pubKey) <$> s `using` parList rdeepseq)
+--
 -- ~550 milliseconds
 -- simpleTest4 :: [(Signature,ByteString)] -> Int
 -- simpleTest4 s = Strict.either error sum $ collectResults' ((verifySig'' pubKey) <$> s `using` parList rseq)
@@ -181,14 +244,62 @@ simpleTest3 s = either error sum $ collectResults ((verifySig' pubKey) <$> s `us
 -- simpleTest5 :: [(Signature,ByteString)] -> Int
 -- simpleTest5 s = Strict.either error sum $ collectResults' ((verifySig'' pubKey) <$> s `using` parList rdeepseq)
 
--- ~540 milliseconds
-simpleTest6 :: [(Signature,ByteString)] -> IO Int
-simpleTest6 s = do
-  ints <- mapConcurrently (\v -> return $! verifySigExcept pubKey v) s
-  return $ sum ints
+---- ~540 milliseconds
+--simpleTest6 :: [(Signature,ByteString)] -> IO Int
+--simpleTest6 s = do
+--  ints <- mapConcurrently (\v -> return $! verifySigExcept pubKey v) s
+--  return $ sum ints
+--
+--chunkTest :: Int -> [(Signature,ByteString)] -> Int
+--chunkTest n s = either error sum $ collectResults ((verifySig' pubKey) <$> s `using` parListChunk n rseq)
+--
+privKeyDonna :: Donna.PrivateKey
+privKeyDonna = fromJust $ Donna.importPrivate "\166\ESC\DC4\195\&3Pn\137\140uyV\n\v\DC4\225\143\172@\138\151\189\229\FS8\208A\NUL,\254m\179"
 
-chunkTest :: Int -> [(Signature,ByteString)] -> Int
-chunkTest n s = either error sum $ collectResults ((verifySig' pubKey) <$> s `using` parListChunk n rseq)
+pubKeyDonna :: Donna.PublicKey
+pubKeyDonna = fromJust $ Donna.importPublic "\228\159L\239\STX@\ACK\249\DLE\131\RSW\240\138W&\178\131\155\DLE\254\165\\:\238\EM\DC3\179o\EOTu\149"
+
+mySignedDonna :: ByteString -> Int
+mySignedDonna b = SB8.length $! (\(Donna.Sig b') -> b') $ Donna.sign b privKeyDonna pubKeyDonna
+
+signedMsgsDonna :: [(Donna.Signature, ByteString)]
+signedMsgsDonna =  take 2000 ((\(i :: Int) -> (Donna.sign (SB8.pack $ show i) privKeyDonna pubKeyDonna, SB8.pack $ show i)) <$> [1..])
+
+signTestSeqDonna :: [ByteString] -> Int
+signTestSeqDonna s = sum $! (mySignedDonna <$> s)
+
+signTestNoChunkDonna :: [ByteString] -> Int
+signTestNoChunkDonna s = sum $! ((mySignedDonna <$> s) `using` parList rdeepseq)
+
+signTestChunkDonna :: Int -> [ByteString] -> Int
+signTestChunkDonna n s = sum $! ((mySignedDonna <$> s) `using` parListChunk n rdeepseq)
+
+instance NFData Donna.Signature where
+  rnf (Donna.Sig b) = rnf b
+
+verifySigDonna :: Donna.PublicKey -> (Donna.Signature,ByteString) -> Int
+verifySigDonna pk (s,b) = if Donna.valid b pk s
+                     then read $! SB8.unpack b
+                     else error "Failed to verify!"
+
+verifySigDonna' :: Donna.PublicKey -> (Donna.Signature,ByteString) -> Either String Int
+verifySigDonna' pk (s,b) = if Donna.valid b pk s
+                     then Right $! read $ SB8.unpack b
+                     else Left $! "Invalid Sig for: " ++ SB8.unpack b
+
+verifySigExceptDonna :: Donna.PublicKey -> (Donna.Signature,ByteString) -> Int
+verifySigExceptDonna pk (s,b) = if Donna.valid b pk s
+                     then read $ SB8.unpack b
+                     else throw $ SimpleError "InvalidSig"
+
+simpleTestDonna :: [(Donna.Signature,ByteString)] -> Int
+simpleTestDonna s = either error sum $ collectResults ((verifySigDonna' pubKeyDonna) <$> s)
+
+simpleTestDonna2 :: [(Donna.Signature,ByteString)] -> Int
+simpleTestDonna2 s = either error sum $ collectResults ((verifySigDonna' pubKeyDonna) <$> s `using` parList rseq)
+
+chunkTestDonna :: Int -> [(Donna.Signature,ByteString)] -> Int
+chunkTestDonna n s = either error sum $ collectResults ((verifySigDonna' pubKeyDonna) <$> s `using` parListChunk n rseq)
 
 -- Script Size = 10k
 --benchmarking Simple Test/sequential

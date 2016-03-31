@@ -1,0 +1,35 @@
+_nodeId:
+  _host: '127.0.0.1'
+  _port: 10003
+_otherNodes:
+- _host: '127.0.0.1'
+  _port: 10000
+- _host: '127.0.0.1'
+  _port: 10001
+- _host: '127.0.0.1'
+  _port: 10002
+_electionTimeoutRange:
+- 3000000
+- 6000000
+_clientPublicKeys:
+- - _host: '127.0.0.1'
+    _port: 10004
+  - 7b0d8dec135a522a6423b8287f5bde9e249b49849af56e0077cc4b2dbb14c94a
+_heartbeatTimeout: 1500000
+_enableDebug: true
+_publicKeys:
+- - _host: '127.0.0.1'
+    _port: 10000
+  - c2eb0f8faba4a98b4651ae06b02644d03c2cd2e4e30f48f910257c11b9fa7027
+- - _host: '127.0.0.1'
+    _port: 10001
+  - 8ce494791677400fbcfc1aa049fdeb83e2ae6ca7ee086c48546fa930e4c7b72e
+- - _host: '127.0.0.1'
+    _port: 10002
+  - cc7b6087492e110a740904c3bfd72948aa647040508079052ede264fb7b97d3b
+- - _host: '127.0.0.1'
+    _port: 10003
+  - 9d70cdce1846ac5133acc64563f7c07046cacc25e7b7a71ad1ac259613262b95
+_myPublicKey: 9d70cdce1846ac5133acc64563f7c07046cacc25e7b7a71ad1ac259613262b95
+_clientTimeoutLimit: 50000
+_myPrivateKey: 5d16c9b2a42af800db9e5f01c5d05f90ab4efed49127c4e5426c3a0192a4f9fc

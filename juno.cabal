@@ -60,6 +60,7 @@ library
                      , async
                      , attoparsec
                      , base < 5
+                     , base16-bytestring
                      , base64-bytestring >= 1.0.0.1 && < 1.1
                      , binary-serialise-cbor
                      , binary-serialise-cbor
@@ -70,7 +71,7 @@ library
                      , criterion
                      , crypto-api
                      , deepseq >= 1.4.1.1
-                     , ed25519
+                     , ed25519-donna
                      , ekg >= 0.4 && < 0.5
                      , ekg-core >= 0.1.1.0 && < 0.2
                      , enclosed-exceptions
@@ -99,23 +100,25 @@ library
                      , transformers
                      , unagi-chan
                      , vector-space >= 0.10.2 && < 0.11
+                     , yaml
                      , zeromq4-haskell >= 0.6.3
                      , zlib
   hs-source-dirs:      src
-  ghc-options:         -Wall -fno-warn-unused-do-bind
+  ghc-options:         -Wall -fno-warn-unused-do-bind -O2 -with-rtsopts="-N4"
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
-executable genkeys
-  main-is:             GenerateKeys.hs
+executable genconfs
+  main-is:             GenerateConfigFiles.hs
   build-depends:       base < 5
                      , juno
-                     , ed25519
+                     , ed25519-donna
                      , containers
                      , crypto-api
                      , network
                      , directory
                      , filepath
+                     , yaml
   hs-source-dirs:      executables
   ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010
@@ -144,7 +147,7 @@ executable simplepartest
                      , bytestring
                      , criterion
                      , deepseq >= 1.4.1.1
-                     , ed25519
+                     , ed25519-donna
                      , parallel
                      , async
   hs-source-dirs:      criterion
@@ -161,7 +164,7 @@ executable serialization
                      , containers
                      , criterion
                      , deepseq >= 1.4.1.1
-                     , ed25519
+                     , ed25519-donna
                      , juno
                      , parallel
                      , async

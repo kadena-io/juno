@@ -53,18 +53,19 @@ module Juno.Runtime.Types
   , SignedRPC(..)
   , ReceivedAt(..)
   -- for simplicity, re-export some core types that we need all over the place
-  , PublicKey(..), SecretKey(..), Signature(..), dsign, dverify, toPublicKey
+  , PublicKey, PrivateKey, Signature(..), sign, valid, importPublic, importPrivate
   -- for testing & benchmarks
   , LEWire(..), encodeLEWire, decodeLEWire, decodeRVRWire
   , verifySignedRPC, CMDWire(..)
   ) where
 
-
+import Control.Monad (mzero)
 import Control.Parallel.Strategies
 import Control.Concurrent (ThreadId)
 import Control.Lens hiding (Index, (|>))
 import Control.Monad.RWS (RWST)
-import Crypto.Sign.Ed25519 (PublicKey(..), SecretKey(..), Signature(..), dsign, dverify, toPublicKey)
+import Crypto.Ed25519.Pure ( PublicKey, PrivateKey, Signature(..), sign, valid
+                           , importPublic, importPrivate, exportPublic, exportPrivate)
 import Data.Sequence (Seq, (|>))
 import qualified Data.Sequence as Seq
 import Data.Map (Map)
@@ -72,13 +73,17 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Base16 as B16
 import Data.Serialize (Serialize)
 import qualified Data.Serialize as S
 import Data.Word (Word64)
 import Data.Foldable
+import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Data.Thyme.Clock
 import Data.Thyme.Time.Core ()
 import Data.Thyme.Internal.Micro (Micro)
+import Data.Yaml (ToJSON(..), FromJSON(..), Value(..))
 
 import qualified Data.Binary.Serialise.CBOR.Class as CBC
 
@@ -96,6 +101,8 @@ newtype CommandResult = CommandResult { unCommandResult :: ByteString }
 data NodeID = NodeID { _host :: !String, _port :: !Word64 }
   deriving (Eq,Ord,Read,Show,Generic)
 instance Serialize NodeID
+instance ToJSON NodeID
+instance FromJSON NodeID
 
 newtype Term = Term Int
   deriving (Show, Read, Eq, Enum, Num, Ord, Generic, Serialize, CBC.Serialise)
@@ -123,7 +130,7 @@ data Config = Config
   , _nodeId               :: !NodeID
   , _publicKeys           :: !(Map NodeID PublicKey)
   , _clientPublicKeys     :: !(Map NodeID PublicKey)
-  , _myPrivateKey         :: !SecretKey
+  , _myPrivateKey         :: !PrivateKey
   , _myPublicKey          :: !PublicKey
   , _electionTimeoutRange :: !(Int,Int)
   , _heartbeatTimeout     :: !Int
@@ -132,6 +139,8 @@ data Config = Config
   }
   deriving (Show, Generic)
 makeLenses ''Config
+instance ToJSON Config
+instance FromJSON Config
 
 data KeySet = KeySet
   { _ksCluster :: !(Map NodeID PublicKey)
@@ -152,10 +161,66 @@ data Digest = Digest
   , _digPubkey :: !PublicKey
   , _digType   :: !MsgType
   } deriving (Show, Eq, Ord, Generic)
-instance Serialize Signature
-instance Serialize PublicKey
-deriving instance Read PublicKey
-deriving instance Read SecretKey
+deriving instance Eq Signature
+deriving instance Ord Signature
+instance Serialize Signature where
+  put (Sig s) = S.put s
+  get = Sig <$> (S.get >>= S.getByteString)
+
+instance Eq PublicKey where
+  b == b' = exportPublic b == exportPublic b'
+instance Ord PublicKey where
+  b < b' = exportPublic b < exportPublic b'
+  b <= b' = exportPublic b <= exportPublic b'
+  b > b' = exportPublic b > exportPublic b'
+  b >= b' = exportPublic b >= exportPublic b'
+instance ToJSON PublicKey where
+  toJSON = toJSON . decodeUtf8 . B16.encode . exportPublic
+instance FromJSON PublicKey where
+  parseJSON (String s) = do
+    (s',leftovers) <- return $ B16.decode $ encodeUtf8 s
+    if leftovers == B.empty
+      then case importPublic s' of
+             Just pk -> return pk
+             Nothing -> mzero
+      else mzero
+  parseJSON _ = mzero
+instance ToJSON (Map NodeID PublicKey) where
+  toJSON = toJSON . Map.toList
+instance FromJSON (Map NodeID PublicKey) where
+  parseJSON = fmap Map.fromList . parseJSON
+instance Eq PrivateKey where
+  b == b' = exportPrivate b == exportPrivate b'
+instance Ord PrivateKey where
+  b < b' = exportPrivate b < exportPrivate b'
+  b <= b' = exportPrivate b <= exportPrivate b'
+  b > b' = exportPrivate b > exportPrivate b'
+  b >= b' = exportPrivate b >= exportPrivate b'
+instance ToJSON PrivateKey where
+  toJSON = toJSON . decodeUtf8 . B16.encode . exportPrivate
+instance FromJSON PrivateKey where
+  parseJSON (String s) = do
+    (s',leftovers) <- return $ B16.decode $ encodeUtf8 s
+    if leftovers == B.empty
+      then case importPrivate s' of
+             Just pk -> return pk
+             Nothing -> mzero
+      else mzero
+  parseJSON _ = mzero
+instance ToJSON (Map NodeID PrivateKey) where
+  toJSON = toJSON . Map.toList
+instance FromJSON (Map NodeID PrivateKey) where
+  parseJSON = fmap Map.fromList . parseJSON
+
+
+-- These instances suck, but I can't figure out how to use the Get monad to fail out if not
+-- length = 32. For the record, if the getByteString 32 works the imports will not fail
+instance Serialize PublicKey where
+  put s = S.putByteString (exportPublic s)
+  get = maybe (error "Invalid PubKey") id . importPublic <$> S.getByteString (32::Int)
+instance Serialize PrivateKey where
+  put s = S.putByteString (exportPrivate s)
+  get = maybe (error "Invalid PubKey") id . importPrivate <$> S.getByteString (32::Int)
 instance Serialize Digest
 
 -- | Type that is serialized and sent over the wire
@@ -193,7 +258,7 @@ verifySignedRPC !KeySet{..} !s@(SignedRPC !Digest{..} !bdy)
         !Nothing -> Left $! "PubKey not found for NodeID: " ++ show _digNodeId
         Just !key
           | key /= _digPubkey -> Left $! "Public key in storage doesn't match digest's key for msg: " ++ show s
-          | otherwise -> if not $ dverify key bdy _digSig
+          | otherwise -> if not $ valid bdy key _digSig
                          then Left $! "Unable to verify SignedRPC sig: " ++ show s
                          else Right ()
   | otherwise =
@@ -201,13 +266,13 @@ verifySignedRPC !KeySet{..} !s@(SignedRPC !Digest{..} !bdy)
         Nothing -> Left $! "PubKey not found for NodeID: " ++ show _digNodeId
         Just !key
           | key /= _digPubkey -> Left $! "Public key in storage doesn't match digest's key for msg: " ++ show s
-          | otherwise -> if not $ dverify key bdy _digSig
+          | otherwise -> if not $ valid bdy key _digSig
                          then Left $! "Unable to verify SignedRPC sig: " ++ show s
                          else Right ()
 {-# INLINE verifySignedRPC #-}
 
 class WireFormat a where
-  toWire   :: NodeID -> PublicKey -> SecretKey -> a -> SignedRPC
+  toWire   :: NodeID -> PublicKey -> PrivateKey -> a -> SignedRPC
   fromWire :: Maybe ReceivedAt -> KeySet -> SignedRPC -> Either String a
 
 data Command = Command
@@ -225,7 +290,7 @@ instance Serialize CMDWire
 instance WireFormat Command where
   toWire nid pubKey privKey Command{..} = case _cmdProvenance of
     NewMsg -> let bdy = S.encode $ CMDWire (_cmdEntry, _cmdClientId, _cmdRequestId)
-                  sig = dsign privKey bdy
+                  sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey CMD
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
@@ -251,8 +316,8 @@ instance Serialize CMDBWire
 
 instance WireFormat CommandBatch where
   toWire nid pubKey privKey CommandBatch{..} = case _cmdbProvenance of
-    NewMsg -> let bdy = S.encode $ (toWire nid pubKey privKey <$> _cmdbBatch)
-                  sig = dsign privKey bdy
+    NewMsg -> let bdy = S.encode $ ((toWire nid pubKey privKey <$> _cmdbBatch) `using` parList rseq)
+                  sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey CMDB
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
@@ -262,7 +327,7 @@ instance WireFormat CommandBatch where
       then error $! "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
       else case S.decode bdy of
         Left !err -> Left $ "Failure to decode CMDBWire: " ++ err
-        Right !cmdb' -> gatherValidCmdbs (ReceivedMsg dig bdy ts) ((fromWire ts ks <$> cmdb') `using` parListChunk 2 rseq)
+        Right !cmdb' -> gatherValidCmdbs (ReceivedMsg dig bdy ts) ((fromWire ts ks <$> cmdb') `using` parList rseq)
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
 
@@ -286,7 +351,7 @@ instance Serialize CMDRWire
 instance WireFormat CommandResponse where
   toWire nid pubKey privKey CommandResponse{..} = case _cmdrProvenance of
     NewMsg -> let bdy = S.encode $ CMDRWire (_cmdrResult,_cmdrLeaderId,_cmdrNodeId,_cmdrRequestId)
-                  sig = dsign privKey bdy
+                  sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey CMDR
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
@@ -336,7 +401,7 @@ decodeLEWire !ts !ks !les = go les Seq.empty
       Right cmd' -> go ls (v |> LogEntry t cmd' hsh)
 {-# INLINE decodeLEWire #-}
 
-encodeLEWire :: NodeID -> PublicKey -> SecretKey -> Seq LogEntry -> [LEWire]
+encodeLEWire :: NodeID -> PublicKey -> PrivateKey -> Seq LogEntry -> [LEWire]
 encodeLEWire nid pubKey privKey les =
   (\LogEntry{..} -> LEWire (_leTerm, toWire nid pubKey privKey _leCommand, _leHash)) <$> toList les
 {-# INLINE encodeLEWire #-}
@@ -364,7 +429,7 @@ instance WireFormat AppendEntries where
                                           ,_prevLogTerm
                                           ,encodeLEWire nid pubKey privKey _aeEntries
                                           ,toWire nid pubKey privKey <$> toList _aeQuorumVotes)
-                  sig = dsign privKey bdy
+                  sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey AE
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
@@ -375,8 +440,8 @@ instance WireFormat AppendEntries where
       else case S.decode bdy of
         Left err -> Left $! "Failure to decode AEWire: " ++ err
         Right (AEWire (t,lid,pli,pt,les,vts)) -> runEval $ do
-          eLes <- rpar (toSeqLogEntry ((decodeLEWire' ts ks <$> les) `using` parListChunk 2 rseq))
-          eRvr <- rseq (toSetRvr ((fromWire ts ks <$> vts) `using` parListChunk 2 rseq))
+          eLes <- rpar (toSeqLogEntry ((decodeLEWire' ts ks <$> les) `using` parList rseq))
+          eRvr <- rseq (toSetRvr ((fromWire ts ks <$> vts) `using` parList rseq))
           case eRvr of
             Left !err -> return $! Left $! "Caught an invalid RVR in an AE: " ++ err
             Right !vts' -> do
@@ -410,7 +475,7 @@ instance WireFormat AppendEntriesResponse where
                                                , _aerConvinced
                                                , _aerIndex
                                                , _aerHash)
-                  sig = dsign privKey bdy
+                  sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey AER
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
@@ -443,7 +508,7 @@ instance WireFormat RequestVote where
                                           , _rvCandidateId
                                           , _lastLogIndex
                                           , _lastLogTerm)
-                  sig = dsign privKey bdy
+                  sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey RV
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
@@ -474,7 +539,7 @@ instance Serialize RVRWire
 instance WireFormat RequestVoteResponse where
   toWire nid pubKey privKey RequestVoteResponse{..} = case _rvrProvenance of
     NewMsg -> let bdy = S.encode $ RVRWire (_rvrTerm,_rvrCurLogIndex,_rvrNodeId,_voteGranted,_rvrCandidateId)
-                  sig = dsign privKey bdy
+                  sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey RVR
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
@@ -523,7 +588,7 @@ instance Serialize REVWire
 instance WireFormat Revolution where
   toWire nid pubKey privKey Revolution{..} = case _revProvenance of
     NewMsg -> let bdy = S.encode $ REVWire (_revClientId,_revLeaderId,_revRequestId)
-                  sig = dsign privKey bdy
+                  sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey REV
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
@@ -558,7 +623,7 @@ signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ CMDB) _) = (\rpc -> rpc `seq` CM
 signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ REV)  _) = (\rpc -> rpc `seq` REV'  rpc) <$> fromWire ts ks s
 {-# INLINE signedRPCtoRPC #-}
 
-rpcToSignedRPC :: NodeID -> PublicKey -> SecretKey -> RPC -> SignedRPC
+rpcToSignedRPC :: NodeID -> PublicKey -> PrivateKey -> RPC -> SignedRPC
 rpcToSignedRPC nid pubKey privKey (AE' v) = toWire nid pubKey privKey v
 rpcToSignedRPC nid pubKey privKey (AER' v) = toWire nid pubKey privKey v
 rpcToSignedRPC nid pubKey privKey (RV' v) = toWire nid pubKey privKey v

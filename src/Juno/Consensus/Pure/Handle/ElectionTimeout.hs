@@ -30,7 +30,7 @@ data ElectionTimeoutEnv = ElectionTimeoutEnv {
     , _otherNodes :: Set.Set NodeID
     , _logEntries :: Seq LogEntry
     , _leaderWithoutFollowers :: Bool
-    , _myPrivateKey :: SecretKey
+    , _myPrivateKey :: PrivateKey
     , _myPublicKey :: PublicKey
     }
 makeLenses ''ElectionTimeoutEnv

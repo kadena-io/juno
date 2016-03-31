@@ -99,15 +99,15 @@ nodeIdLeader = NodeID "localhost" 10000
 nodeIdFollower = NodeID "localhost" 10001
 nodeIdClient = NodeID "localhost" 10002
 
-privKeyLeader, privKeyFollower, privKeyClient :: SecretKey
-privKeyLeader = SecretKey "\132h\138\225\233\237%\\\SOnZH\196\138\232\&7\239c'p)YE\192\136\DC3\217\170N\231n\236\199\NAK\238\171\\\161\222\247\186/\DC3\204Qqd\225}\202\150e~q\255;\223\233\211:\211\SUBT\145"
-privKeyFollower = SecretKey "\244\228\130\r\213\134\171\205!\141z\238\nJd\170\208%_\188\196\150\152$\178\153\SO\240\192\&4\202Q\164}\DC2`\245Bh-Mj!\227\220A\EOTfN\129\&5\213Z\ENQ\155\129\155d\SUB\129\194&\SUB4"
-privKeyClient = SecretKey "h\129\140\207.\166\210\253\STXo\FS\201\186\185a\202\240\158\234\132\254\212\ETB\138\220\189a2\232K\128\SOH[\DC4\228\242  \209A\161\219\179\223(ty\FS$!{(\230\DC4V\184~\133>\255|\RS,\231"
+privKeyLeader, privKeyFollower, privKeyClient :: PrivateKey
+privKeyLeader = maybe (error "bad leader key") id $ importPrivate "\204m\223Uo|\211.\144\131\&5Xmlyd$\165T\148\&11P\142m\249\253$\216\232\220c"
+privKeyFollower = maybe (error "bad leader key") id $ importPrivate "$%\181\214\b\138\246(5\181%\199\186\185\t!\NUL\253'\t\ENQ\212^\236O\SOP\217\ACK\EOT\170<"
+privKeyClient = maybe (error "bad leader key") id $ importPrivate "8H\r\198a;\US\249\233b\DLE\211nWy\176\193\STX\236\SUB\151\206\152\tm\205\205\234(\CAN\254\181"
 
 pubKeyLeader, pubKeyFollower, pubKeyClient :: PublicKey
-pubKeyLeader = toPublicKey privKeyLeader
-pubKeyFollower = toPublicKey privKeyFollower
-pubKeyClient = toPublicKey privKeyClient
+pubKeyLeader = maybe (error "bad leader key") id $ importPublic "f\t\167y\197\140\&2c.L\209;E\181\146\157\226\137\155$\GS(\189\215\SUB\199\r\158\224\FS\190|"
+pubKeyFollower = maybe (error "bad leader key") id $ importPublic "\187\182\129\&4\139\197s\175Sc!\237\&8L \164J7u\184;\CANiC\DLE\243\ESC\206\249\SYN\189\ACK"
+pubKeyClient = maybe (error "bad leader key") id $ importPublic "@*\228W(^\231\193\134\239\254s\ETBN\208\RS\137\201\208,bEk\213\221\185#\152\&7\237\234\DC1"
 
 keySet :: KeySet
 keySet = KeySet
