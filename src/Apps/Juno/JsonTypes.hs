@@ -6,11 +6,12 @@ module Apps.Juno.JsonTypes where
 
 import           Control.Monad (mzero)
 import           Data.Aeson (genericParseJSON,genericToJSON,parseJSON,toJSON,ToJSON,FromJSON,Value(..))
+import           Data.Text.Encoding (decodeUtf8)
 import           Data.Aeson.Types (defaultOptions,object,Options(..),(.:),(.=))
 import qualified Data.Text as T
 import           Data.Text (Text)
 import           GHC.Generics
-import           Juno.Runtime.Types (CommandStatus(..),RequestId(..))
+import           Juno.Runtime.Types (CommandStatus(..),CommandResult(..),RequestId(..))
 
 removeUnderscore :: String -> String
 removeUnderscore = drop 1
@@ -78,7 +79,7 @@ data AccountAdjustRequest = AccountAdjustRequest {
     } deriving (Eq, Generic, Show)
 
 instance ToJSON AccountAdjustRequest where
-    toJSON (AccountAdjustRequest payload digest) = object ["payload" .= payload, "digest" .= digest]
+    toJSON (AccountAdjustRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
 instance FromJSON AccountAdjustRequest where
     parseJSON (Object v) = AccountAdjustRequest <$>
                              v .: "payload" <*>
@@ -101,7 +102,7 @@ data PollPayloadRequest = PollPayloadRequest {
   } deriving (Eq, Generic, Show)
 
 instance ToJSON PollPayloadRequest where
-  toJSON (PollPayloadRequest payload digest) = object ["payload" .= payload, "digest" .= digest]
+  toJSON (PollPayloadRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
 instance FromJSON PollPayloadRequest where
   parseJSON (Object v) = PollPayloadRequest <$> v .: "payload"
                                             <*> v .: "digest"
@@ -127,12 +128,12 @@ data PollResult = PollResult
   , _pollResPayload :: Text
   } deriving (Eq, Generic, Show, FromJSON)
 instance ToJSON PollResult where
-    toJSON (PollResult status cmdid logidx msg payload) =
+    toJSON (PollResult status cmdid logidx msg payload') =
       object [ "status" .= status
              , "cmdid" .= cmdid
              , "logidx" .= logidx
              , "message" .= msg
-             , "payload" .= payload
+             , "payload" .= payload'
              ]
 
 -- TODO: logindex, payload after Query/Observe Accounts is added.
@@ -141,8 +142,8 @@ cmdStatus2PollResult (RequestId rid) CmdSubmitted =
   PollResult{_pollStatus = "PENDING", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = ""}
 cmdStatus2PollResult (RequestId rid) CmdAccepted =
   PollResult{_pollStatus = "PENDING", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = ""}
-cmdStatus2PollResult (RequestId rid) (CmdApplied _) =
-  PollResult{_pollStatus = "ACCEPTED", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = ""}
+cmdStatus2PollResult (RequestId rid) (CmdApplied (CommandResult res)) =
+  PollResult{_pollStatus = "ACCEPTED", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = decodeUtf8 res}
 
 cmdStatusError :: PollResult
 cmdStatusError = PollResult
@@ -161,3 +162,51 @@ data PollResponse = PollResponse { _results :: [PollResult] }
 
 instance ToJSON PollResponse where
   toJSON = genericToJSON $ defaultOptions { fieldLabelModifier = removeUnderscore }
+
+-- {
+-- "payload": {
+--   "filter": "string"
+-- },
+-- "digest": {
+--   "hash": "string",
+--   "key": "string"
+-- }
+data QueryJson = QueryJson {  _queryAcct :: Maybe Text
+                            , _queryTx :: Maybe Integer
+                            , _querySender :: Maybe Text
+                            , _queryReceiver :: Maybe Text
+                            } deriving (Eq, Generic, Show)
+instance ToJSON QueryJson where
+  toJSON (QueryJson acct tx sender receiver) = object [
+                                                "account" .= Just acct
+                                               , "tx" .= Just tx
+                                               , "sender" .= Just sender
+                                               , "receiver" .= Just receiver
+                                               ]
+instance FromJSON QueryJson where
+  parseJSON (Object v) = QueryJson <$> v .: "account"
+                                   <*> v .: "tx"
+                                   <*> v .: "sender"
+                                   <*> v .: "receiver"
+  parseJSON _ = mzero
+
+
+data LedgerQueryBody = LedgerQueryBody { _filter :: QueryJson }
+                       deriving (Show, Generic, Eq)
+
+instance ToJSON LedgerQueryBody where
+    toJSON (LedgerQueryBody fil) = object ["filter" .= fil]
+instance FromJSON LedgerQueryBody where
+     parseJSON (Object v) = LedgerQueryBody <$> v .: "filter"
+     parseJSON _ = mzero
+
+data LedgerQueryRequest = LedgerQueryRequest {
+      payload :: LedgerQueryBody,
+      digest :: Digest
+    } deriving (Show, Generic, Eq)
+instance ToJSON LedgerQueryRequest where
+  toJSON (LedgerQueryRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
+instance FromJSON LedgerQueryRequest where
+  parseJSON (Object v) = LedgerQueryRequest <$> v .: "payload"
+                                            <*> v .: "digest"
+  parseJSON _ = mzero

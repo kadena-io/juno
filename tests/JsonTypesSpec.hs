@@ -13,9 +13,10 @@ import qualified Data.Text as T
 
 spec :: Spec
 spec = do
-  describe "JsonTypes Create Account for Juno REST API." testJsonCreateAccount
-  describe "JsonTypes Adjust Account for Juno REST API." testJsonAdjustAccount
-  describe "JsonTypes Poll Commands for Juno REST API." testJsonPoll
+  describe "JsonTypes `create account` for Juno REST API." testJsonCreateAccount
+  describe "JsonTypes `adjust account` for Juno REST API." testJsonAdjustAccount
+  describe "JsonTypes `poll commands` for Juno REST API." testJsonPoll
+  describe "JsonTypes `ledger query` for Juno REST API." testJsonQuery
 
 testJsonCreateAccount :: Spec
 testJsonCreateAccount = do
@@ -50,7 +51,7 @@ testJsonAdjustAccount = do
 
   it "encoding adjust account bytestring" $
      encodeAdjustRequest
-     `shouldBe` bytesAdjustRequestPayload'
+     `shouldBe` adjustRequestPayloadBS
 
 testJsonPoll :: Spec
 testJsonPoll = do
@@ -75,6 +76,20 @@ testJsonPoll = do
      `shouldBe`
      Just (PollPayload {_cmdids = ["1","2","3"]})
 
+
+testJsonQuery :: Spec
+testJsonQuery = do
+
+  it "encoding ledger request" $
+     ledgerQueryRequestEncode
+     `shouldBe`
+      ledgerQueryRequestBS
+
+  it "decoding ledger reqeust" $
+     (decode $ ledgerQueryRequestBS :: Maybe LedgerQueryRequest)
+      `shouldBe`
+      Just ledgerQueryRequestTX
+
 ------------------------------------------------------------------------------------------------
 --- Local Helper Functions
 ------------------------------------------------------------------------------------------------
@@ -91,10 +106,6 @@ encodeCreateAccountRequest = encode (CreateAccountRequest (AccountPayload (T.pac
 
 createAccountByteString :: BL.ByteString
 createAccountByteString = BL.pack "{\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"},\"payload\":{\"account\":\"TSLA\"}}"
---
-bytesAdjustRequestPayload' :: BL.ByteString
-bytesAdjustRequestPayload' =  BL.pack "{\"payload\":{\"amount\":100,\"account\":\"TSLA\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}"
-
 
 -- | Adjust account helpers
 
@@ -146,3 +157,52 @@ encodePollResult = encode $ PollResult {
                              , _pollMessage = "nothing to say"
                              , _pollResPayload = "res payload"
                             }
+
+--- ledger Query
+queryTxOne :: QueryJson
+queryTxOne =  (QueryJson Nothing (Just 1) Nothing Nothing)
+
+queryTxOneEncode :: BL.ByteString
+queryTxOneEncode = encode $ queryTxOne
+
+ledgerQueryEncode :: BL.ByteString
+ledgerQueryEncode = encode $ LedgerQueryBody queryTxOne
+
+ledgerQueryDecode :: Maybe LedgerQueryBody
+ledgerQueryDecode = (decode $ "{\"filter\":{\"tx\":1,\"sender\":null,\"receiver\":null,\"account\":null}}") :: Maybe LedgerQueryBody
+
+ledgerQueryRequestEncode :: BL.ByteString
+ledgerQueryRequestEncode = encode $ LedgerQueryRequest (LedgerQueryBody queryTxOne) dig
+
+ledgerQueryRequestBS :: BL.ByteString
+ledgerQueryRequestBS = "{\"payload\":{\"filter\":{\"tx\":1,\"sender\":null,\"account\":null,\"receiver\":null}},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}"
+
+ledgerQueryRequestDecode :: Maybe LedgerQueryRequest
+ledgerQueryRequestDecode = (decode $ "{\"payload\":{\"filter\":{\"tx\":1,\"sender\":\"\",\"receiver\":\"\",\"account\":\"\"}},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}") :: Maybe LedgerQueryRequest
+
+ledgerQueryRequest :: LedgerQueryRequest
+ledgerQueryRequest = LedgerQueryRequest {
+                       payload = LedgerQueryBody {
+                                 _filter = QueryJson {
+                                             _queryAcct = Just ""
+                                           , _queryTx = Just 1
+                                           , _querySender = Just ""
+                                           , _queryReceiver = Just ""}
+                                 },
+                       digest = Digest {_hash = "hashy", _key = "mykey"}
+                     }
+
+ledgerQueryRequestTX ::LedgerQueryRequest
+ledgerQueryRequestTX = LedgerQueryRequest {
+                       payload = LedgerQueryBody {
+                                 _filter = QueryJson {
+                                             _queryAcct = Nothing
+                                           , _queryTx = Just 1
+                                           , _querySender = Nothing
+                                           , _queryReceiver = Nothing}
+                                 },
+                       digest = Digest {_hash = "hashy", _key = "mykey"}
+                     }
+
+dig :: Digest
+dig = Digest {_hash = "hashy", _key = "mykey"}

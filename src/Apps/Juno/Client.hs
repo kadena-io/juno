@@ -113,6 +113,7 @@ snapServer toCommand cmdStatusMap = httpServe serverConf $
      route [ ("/api/juno/v1/accounts/create", createAccounts toCommand cmdStatusMap)
            , ("/api/juno/v1/accounts/adjust", adjustAccounts toCommand cmdStatusMap)
            , ("/api/juno/v1/poll", pollForResults cmdStatusMap)
+           , ("/api/juno/v1/query", ledgerQueryAPI toCommand cmdStatusMap)
            , ("hopper", hopperHandler toCommand cmdStatusMap)
            , ("swift", swiftHandler toCommand cmdStatusMap)
            , ("api/swift-submit", swiftSubmission toCommand cmdStatusMap)
@@ -123,6 +124,7 @@ snapServer toCommand cmdStatusMap = httpServe serverConf $
 createAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 createAccounts toCommand cmdStatusMap = do
     maybeCreateAccount <- liftM JSON.decode (readRequestBody 1000)
+    modifyResponse $ setHeader "Content-Type" "application/json"
     case maybeCreateAccount of
       Just (CreateAccountRequest (AccountPayload acct) _) -> do
         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
@@ -137,6 +139,7 @@ createAccounts toCommand cmdStatusMap = do
 adjustAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
 adjustAccounts toCommand cmdStatusMap = do
    maybeAdjustAccount <- liftM JSON.decode (readRequestBody 1000)
+   modifyResponse $ setHeader "Content-Type" "application/json"
    case maybeAdjustAccount of
      Just (AccountAdjustRequest (AccountAdjustPayload acct amt) _) -> do
          reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
@@ -146,11 +149,29 @@ adjustAccounts toCommand cmdStatusMap = do
      where
        adjustAccountBS acct amt = BSC.pack $ "AdjustAccount " ++ T.unpack acct ++ " " ++ show (toRational amt)
 
+--
+ledgerQueryAPI :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
+ledgerQueryAPI toCommand cmdStatusMap = do
+   maybeQuery <- liftM JSON.decode (readRequestBody 100000)
+   modifyResponse $ setHeader "Content-Type" "application/json"
+   case maybeQuery of
+     Just (LedgerQueryRequest (LedgerQueryBody (QueryJson acct tx sender receiver)) _) -> do
+         let mByBoth = (ByAcctName Both) <$> acct
+         let mSwiftId =  BySwiftId <$> tx
+         let mBySender = (ByAcctName Sender) <$> sender
+         let mByReceiver = (ByAcctName Receiver) <$> receiver
+         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
+         let query = And $ catMaybes [ mSwiftId, mBySender, mByReceiver, mByBoth ]
+         liftIO $ writeChan toCommand (reqestId, CommandEntry $ BLC.toStrict $ encode query)
+         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
+     Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" (T.pack $ "Malformed input, could not decode input JSON.")
+
 -- poll for a list of cmdIds, returning the applied results or error
 -- see juno/jmeter/juno_API_jmeter_test.jmx
 pollForResults :: CommandMVarMap -> Snap ()
 pollForResults cmdStatusMap = do
-  maybePoll <- liftM JSON.decode (readRequestBody 1000)
+  maybePoll <- liftM JSON.decode (readRequestBody 1000000)
+  modifyResponse $ setHeader "Content-Type" "application/json"
   case maybePoll of
     Just (PollPayloadRequest (PollPayload cmdids) _) -> do
       (CommandMap _ m) <- liftIO $ readMVar cmdStatusMap
@@ -159,10 +180,13 @@ pollForResults cmdStatusMap = do
       writeBS . BL.toStrict $ JSON.encode results
     Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
  where
+
    flipIt :: Map RequestId CommandStatus ->  RequestId -> Maybe (RequestId, CommandStatus)
    flipIt m rId = (fmap . fmap) (\cmd -> (rId, cmd)) (`Map.lookup` m) rId
+
    toRepresentation :: Maybe (RequestId, CommandStatus) -> PollResult
-   toRepresentation (Just (RequestId rid, cmdStatus)) = cmdStatus2PollResult (RequestId rid) cmdStatus
+   toRepresentation (Just (RequestId rid, cmdStatus)) =
+       cmdStatus2PollResult (RequestId rid) cmdStatus
    toRepresentation Nothing = cmdStatusError
 
 swiftSubmission :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
