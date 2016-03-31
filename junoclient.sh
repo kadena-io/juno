@@ -7,4 +7,4 @@ else
   BFT_PORT=$1
 fi
 
-rlwrap stack exec -- junoclient -c conf/10004.yaml
+rlwrap stack exec -- junoclient -c conf/10004-client.yaml

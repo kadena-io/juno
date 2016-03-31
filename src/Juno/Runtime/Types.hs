@@ -83,7 +83,8 @@ import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Data.Thyme.Clock
 import Data.Thyme.Time.Core ()
 import Data.Thyme.Internal.Micro (Micro)
-import Data.Yaml (ToJSON(..), FromJSON(..), Value(..))
+import Data.Aeson (genericParseJSON,genericToJSON,parseJSON,toJSON,ToJSON,FromJSON,Value(..))
+import Data.Aeson.Types (defaultOptions,Options(..))
 
 import qualified Data.Binary.Serialise.CBOR.Class as CBC
 
@@ -101,8 +102,10 @@ newtype CommandResult = CommandResult { unCommandResult :: ByteString }
 data NodeID = NodeID { _host :: !String, _port :: !Word64 }
   deriving (Eq,Ord,Read,Show,Generic)
 instance Serialize NodeID
-instance ToJSON NodeID
-instance FromJSON NodeID
+instance ToJSON NodeID where
+  toJSON = (genericToJSON defaultOptions { fieldLabelModifier = drop 1 })
+instance FromJSON NodeID where
+  parseJSON = (genericParseJSON defaultOptions { fieldLabelModifier = drop 1 })
 
 newtype Term = Term Int
   deriving (Show, Read, Eq, Enum, Num, Ord, Generic, Serialize, CBC.Serialise)
@@ -139,8 +142,10 @@ data Config = Config
   }
   deriving (Show, Generic)
 makeLenses ''Config
-instance ToJSON Config
-instance FromJSON Config
+instance ToJSON Config where
+  toJSON = (genericToJSON defaultOptions { fieldLabelModifier = drop 1 })
+instance FromJSON Config where
+  parseJSON = (genericParseJSON defaultOptions { fieldLabelModifier = drop 1 })
 
 data KeySet = KeySet
   { _ksCluster :: !(Map NodeID PublicKey)
@@ -211,7 +216,6 @@ instance ToJSON (Map NodeID PrivateKey) where
   toJSON = toJSON . Map.toList
 instance FromJSON (Map NodeID PrivateKey) where
   parseJSON = fmap Map.fromList . parseJSON
-
 
 -- These instances suck, but I can't figure out how to use the Get monad to fail out if not
 -- length = 32. For the record, if the getByteString 32 works the imports will not fail

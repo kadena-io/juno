@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Control.Arrow
 import Crypto.Random
 import Crypto.Ed25519.Pure
 import Text.Read
@@ -27,22 +28,46 @@ keyMaps ls = (Map.fromList $ zip nodes (fst <$> ls), Map.fromList $ zip nodes (s
 
 main :: IO ()
 main = do
-  putStrLn "Number for config files to generate?"
+  putStrLn "Number of cluster nodes?"
   hFlush stdout
   mn <- fmap readMaybe getLine
-  case mn of
-    Just n  -> do
+  putStrLn "Number of client nodes?"
+  hFlush stdout
+  cn <- fmap readMaybe getLine
+  case (mn,cn) of
+    (Just n,Just c)-> do
       g <- newGenIO :: IO SystemRandom
-      keyMaps' <- return $! keyMaps $ makeKeys n g
-      confs <- return ((`createConfig` keyMaps') <$> take n nodes)
-      mapM_ (\c -> Y.encodeFile ("conf" </> show (_port $ _nodeId c) ++ ".yaml") c) confs
-    Nothing -> putStrLn "Please specify a number of keys to generate."
+      keyMaps' <- return $! keyMaps $ makeKeys (n+c) g
+      clientIds <- return $ take c $ drop n nodes
+      let isAClient nid _ = Set.member nid (Set.fromList clientIds)
+      let isNotAClient nid _ = not $ Set.member nid (Set.fromList clientIds)
+      clusterKeyMaps <- return $ (Map.filterWithKey isNotAClient *** Map.filterWithKey isNotAClient) keyMaps'
+      clientKeyMaps <- return $ (Map.filterWithKey isAClient *** Map.filterWithKey isAClient) keyMaps'
+      clusterConfs <- return ((createClusterConfig clusterKeyMaps (snd clientKeyMaps)) <$> take n nodes)
+      clientConfs <- return ((createClientConfig (snd clusterKeyMaps) clientKeyMaps) <$> clientIds)
+      mapM_ (\c' -> Y.encodeFile ("conf" </> show (_port $ _nodeId c') ++ "-cluster.yaml") c') clusterConfs
+      mapM_ (\c' -> Y.encodeFile ("conf" </> show (_port $ _nodeId c') ++ "-client.yaml") c') clientConfs
+    _ -> putStrLn "Failed to read either input into a number, please try again"
 
-createConfig :: NodeID -> (Map NodeID PrivateKey, Map NodeID PublicKey) -> Config
-createConfig nid (privMap, pubMap) = Config
+createClusterConfig :: (Map NodeID PrivateKey, Map NodeID PublicKey) -> Map NodeID PublicKey -> NodeID -> Config
+createClusterConfig (privMap, pubMap) clientPubMap nid = Config
   { _otherNodes           = Set.delete nid $ Map.keysSet pubMap
   , _nodeId               = nid
   , _publicKeys           = pubMap
+  , _clientPublicKeys     = clientPubMap
+  , _myPrivateKey         = privMap Map.! nid
+  , _myPublicKey          = pubMap Map.! nid
+  , _electionTimeoutRange = (3000000,6000000)
+  , _heartbeatTimeout     = 1500000
+  , _enableDebug          = True
+  , _clientTimeoutLimit   = 50000
+  }
+
+createClientConfig :: Map NodeID PublicKey -> (Map NodeID PrivateKey, Map NodeID PublicKey) -> NodeID -> Config
+createClientConfig clusterPubMap (privMap, pubMap) nid = Config
+  { _otherNodes           = Map.keysSet clusterPubMap
+  , _nodeId               = nid
+  , _publicKeys           = clusterPubMap
   , _clientPublicKeys     = pubMap
   , _myPrivateKey         = privMap Map.! nid
   , _myPublicKey          = pubMap Map.! nid
