@@ -6,15 +6,17 @@ module Juno.Consensus.ByzRaft.Commit
   ,makeCommandResponse')
 where
 
+import Data.List
 import Control.Lens
 import Control.Monad
 import Data.AffineSpace ((.-.))
 import Data.Int (Int64)
 import Data.Thyme.Clock (UTCTime, microseconds)
-import qualified Data.Set as Set
+
+import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
-import qualified Data.ByteString as B
+
 import Data.Foldable (toList)
 
 import Juno.Runtime.Types hiding (valid)
@@ -110,39 +112,41 @@ updateCommitIndex = do
   qsize <- view quorumSize
   es <- use logEntries
 
-  -- get all indices in the log past commitIndex
+  -- get the bound for things we can deal with
   -- TODO: look into the overloading of LogIndex w.r.t. Seq Length/entry location
-  let inds = [(ci + 1)..(fromIntegral $ Seq.length es - 1)]
+  let maxLogIndex = Seq.length es - 1
 
-  -- get the prefix of these indices where a quorum of nodes have
-  -- provided proof of having replicated that entry
-  let qcinds = takeWhile (\i -> (not . Map.null) (Map.filterWithKey (\k s -> k >= i && Set.size s + 1 >= qsize) proof)) inds
+  -- this gets us all of the evidence we have, in order of largest LogIndex to smallest
+  let evidence = reverse $ sortOn _aerIndex $ Map.elems proof
 
-  case qcinds of
-    [] -> do
-      debug "No new commit proof to check"
+  case checkCommitProof qsize es maxLogIndex evidence of
+    Nothing -> do
+      debug "Not enough evidence to commit yet"
       return False
-    _  -> do
-      let qci = last qcinds
-      debug $ "checking commit proof for: " ++ show qci
-      case Map.lookup qci proof of
-        Just s -> do
-          let lhash = _leHash (Seq.index es $ fromIntegral qci)
-          valid <- return $ checkCommitProof qci lhash s
-          if valid
-            then do
-              commitIndex .= qci
-              logCommitChange ci qci
-              commitProof %= Map.filterWithKey (\k _ -> k >= qci)
-              debug $ "Commit index is now: " ++ show qci
-              return True
-            else do
-              debug $ "Invalid Commit Proof found for " ++ show qci ++ " and " ++ show lhash
-              debug $ "Evidence was: " ++ show ((\a -> (_aerIndex a, _aerHash a)) <$> Set.toList s)
-              return False
-        Nothing -> do
-          debug $ "No proof found at: " ++ show qci
-          return False
+    Just qci -> if qci > ci
+                then do
+                  commitIndex .= qci
+                  logCommitChange ci qci
+                  commitProof %= Map.filter (\a -> qci > _aerIndex a)
+                  debug $ "Commit index is now: " ++ show qci
+                  return True
+                else do
+                  if maxLogIndex > fromIntegral ci
+                  then debug "Not enough evidence to commit yet" >> return False
+                  else return False
 
-checkCommitProof :: LogIndex -> B.ByteString -> Set.Set AppendEntriesResponse -> Bool
-checkCommitProof ci lhash aers = all (\AppendEntriesResponse{..} -> _aerHash == lhash && _aerIndex == ci) aers
+checkCommitProof :: Int -> Seq LogEntry -> Int -> [AppendEntriesResponse] -> Maybe LogIndex
+checkCommitProof qsize les maxLogIdx evidence = go 0 evidence
+  where
+    go _ [] = Nothing -- no update
+    go n (ev:evs) = if fromIntegral (_aerIndex ev) > maxLogIdx || fromIntegral (_aerIndex ev) < (0::Int)
+                    -- we can't do the lookup as we haven't replicated the entry yet, so pass till next time
+                    then go n evs
+                    else if (_aerHash ev) == (_leHash $ Seq.index les (fromIntegral $ _aerIndex ev))
+                         -- hashes check out, if we have enough evidence then we can commit
+                         then if (n+1) >= qsize
+                              then Just $ _aerIndex ev
+                              -- keep checking the evidence
+                              else go (n+1) evs
+                         -- hash check failed, can't count this one...
+                         else go n evs

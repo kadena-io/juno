@@ -751,7 +751,7 @@ data RaftState = RaftState
   , _logEntries       :: Seq LogEntry -- Handler,Role,Sender
   , _commitIndex      :: LogIndex -- Handler
   , _lastApplied      :: LogIndex -- Handler
-  , _commitProof      :: Map LogIndex (Set AppendEntriesResponse) -- Handler
+  , _commitProof      :: Map NodeID AppendEntriesResponse -- Handler
   , _timerThread      :: Maybe ThreadId -- Timer
   , _timeSinceLastAER :: Int -- microseconds
   , _replayMap        :: Map (NodeID, Signature) (Maybe CommandResult) -- Handler

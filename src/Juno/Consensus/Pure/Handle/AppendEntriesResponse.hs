@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -12,12 +13,12 @@ import Control.Monad.State (get)
 import Control.Monad.Writer.Strict
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Set (Set)
+
 import qualified Data.Set as Set
 
 import Juno.Consensus.ByzRaft.Commit (doCommit)
 import Juno.Consensus.Pure.Types
-import Juno.Runtime.Sender (sendAppendEntries)
+
 import Juno.Runtime.Timer (resetElectionTimerLeader)
 import Juno.Util.Util (debug, updateLNextIndex)
 import qualified Juno.Runtime.Types as JT
@@ -27,20 +28,13 @@ data AEResponseEnv = AEResponseEnv {
     _role             :: Role
   , _term             :: Term
   , _commitIndex      :: LogIndex
-  , _commitProof      :: Map LogIndex (Set AppendEntriesResponse)
+  , _commitProof      :: Map NodeID AppendEntriesResponse
   }
 makeLenses ''AEResponseEnv
 
 data AEResponseOut = AEResponseOut
-  { _stateMergeCommitProof :: MergeCommitProof
+  { _stateMergeCommitProof :: Map NodeID AppendEntriesResponse
   , _leaderState :: LeaderState }
-
-data MergeCommitProof =
-  Ignore |
-  SetFirstCommitProof {
-    _stateCommitProof :: (LogIndex, (Set AppendEntriesResponse))} |
-  AddToCommitProof {
-    _stateAdditionCommitProof :: (LogIndex, AppendEntriesResponse) }
 
 data LeaderState =
   DoNothing |
@@ -66,7 +60,7 @@ data RequestTermStatus = OldRequestTerm | CurrentRequestTerm | NewerRequestTerm
 handleAEResponse :: (MonadWriter [String] m, MonadReader AEResponseEnv m) => AppendEntriesResponse -> m AEResponseOut
 handleAEResponse aer@AppendEntriesResponse{..} = do
     tell ["got an appendEntriesResponse RPC"]
-    mcp <- mergeCommitProof aer
+    mcp <- updateCommitProofMap aer <$> view commitProof
     role' <- view role
     currentTerm' <- view term
     if (role' == Leader)
@@ -93,27 +87,23 @@ handleAEResponse aer@AppendEntriesResponse{..} = do
                         then CurrentRequestTerm
                         else if _aerTerm < ct then OldRequestTerm else NewerRequestTerm
 
-mergeCommitProof :: (MonadWriter [String] m, MonadReader AEResponseEnv m) => AppendEntriesResponse -> m MergeCommitProof
-mergeCommitProof aer@AppendEntriesResponse{..} = do
-  commitIndex' <- view commitIndex
-  if (_aerIndex > commitIndex')
-    then do
-      tell [ "merging commit proof for index: " ++ show _aerIndex]
-      commitProof' <- view (commitProof . at _aerIndex)
-      aer' <- return $ aer {_aerProvenance = _aerProvenance {_pTimeStamp = Nothing }}
-      case commitProof' of
-        Nothing -> return $ SetFirstCommitProof (_aerIndex, Set.singleton aer')
-        Just _ -> return $ AddToCommitProof (_aerIndex, aer')
-    else do
-      tell ["commit proof was for a previous log index: " ++ show _aerIndex]
-      return Ignore
-
-applyMergeCommitProof :: Monad m => MergeCommitProof -> JT.Raft m ()
-applyMergeCommitProof Ignore = return ()
-applyMergeCommitProof (SetFirstCommitProof (aerIndex', proofSet')) =
-  JT.commitProof %= Map.insert aerIndex' proofSet'
-applyMergeCommitProof (AddToCommitProof (aerIndex', proofToInsert')) =
-  JT.commitProof %= Map.adjust (Set.insert proofToInsert') aerIndex'
+updateCommitProofMap :: AppendEntriesResponse -> Map NodeID AppendEntriesResponse -> Map NodeID AppendEntriesResponse
+updateCommitProofMap aerNew m = Map.alter go nid m
+  where
+    nid :: NodeID
+    nid = _aerNodeId aerNew
+    go = \case
+      Nothing   -> Just aerNew
+      Just aerOld -> if _aerIndex aerNew > _aerIndex aerOld
+                     then -- NB: we don't check the hash here for a couple reasons.
+                          --   - The LogEntry for the index may not exist, but the AER may be valid in the
+                          --     future when new entries are added
+                          --   - The node may be giving bad hashes always, in which case we really don't care
+                          --     as every node can only give evidence once per doCommit cycle
+                          --   - It's more efficient to check later as we may get many AER's from that node
+                          --     in a given batch cycle
+                       Just aerNew
+                     else Just aerOld
 
 handle :: Monad m => AppendEntriesResponse -> JT.Raft m ()
 handle ae = do
@@ -125,7 +115,7 @@ handle ae = do
               (JT._commitProof s)
   (AEResponseOut{..}, l) <- runReaderT (runWriterT (handleAEResponse ae)) ape
   mapM_ debug l
-  applyMergeCommitProof _stateMergeCommitProof
+  JT.commitProof .= _stateMergeCommitProof
   doCommit
   case _leaderState of
     NotLeader -> return ()
