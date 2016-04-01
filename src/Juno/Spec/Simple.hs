@@ -100,6 +100,7 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
     , _applyLogEntry   = applyFn
       -- send messages using msgSend
     , _sendMessage     = liftIO2 (sendMsg outboxWrite)
+    , _sendMessages    = liftIO . sendMsgs outboxWrite
       -- get messages using getMsg
     , _getMessage      = liftIO $ readChan inboxRead
       -- use the debug function given by the caller
@@ -120,11 +121,20 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
 
     -- _dequeue :: OutChan (Event nt et rt) -> m (Event nt et rt)
     , _dequeue = liftIO $ readChan eventRead
+    , _dequeueNonBlock = liftIO $ tryReadChan eventRead >>= tryRead . fst
 
     }
 
 nodeIDtoAddr :: NodeID -> Addr String
 nodeIDtoAddr (NodeID _ p) = Addr $ "tcp://127.0.0.1:" ++ show p
+
+toMsg :: NodeID -> msg -> OutBoundMsg String msg
+toMsg n b = OutBoundMsg (ROne $ nodeIDtoAddr n) b
+
+sendMsgs :: InChan (OutBoundMsg String ByteString) -> [(NodeID, ByteString)] -> IO ()
+sendMsgs outboxWrite ns = do
+  writeList2Chan outboxWrite $! uncurry toMsg <$> ns
+  yield
 
 sendMsg :: InChan (OutBoundMsg String ByteString) -> NodeID -> ByteString -> IO ()
 sendMsg outboxWrite n s = do

@@ -4,7 +4,7 @@ module Apps.Juno.Client
   ( main
   ) where
 
-import Control.Concurrent.Chan.Unagi.Bounded
+import Control.Concurrent.Chan.Unagi
 import Control.Applicative
 import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent.Lifted (threadDelay)
@@ -27,6 +27,7 @@ import qualified Data.Aeson as JSON
 
 import Snap.CORS
 import Data.List
+import Text.Read (readMaybe)
 import Data.Monoid
 import           Data.Map (Map)
 import qualified Data.Map as Map
@@ -96,6 +97,16 @@ runREPL toCommands cmdStatusMap = do
         writeChan toCommands (rId, [CommandEntry cmd'])
         threadDelay 1000
         runREPL toCommands cmdStatusMap
+      else if take 10 cmd == "many test:"
+      then
+        case readMaybe $ drop 10 cmd of
+          Just n -> do
+            cmds <- replicateM n
+                      (do rid <- setNextCmdRequestId cmdStatusMap; return (rid, [CommandEntry "transfer(Acct1->Acct2, 1%1)"]))
+            writeList2Chan toCommands cmds
+            threadDelay 1000
+            runREPL toCommands cmdStatusMap
+          Nothing -> runREPL toCommands cmdStatusMap
       else
         case readHopper cmd' of
           Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommands cmdStatusMap
@@ -299,7 +310,7 @@ hopperHandler toCommands cmdStatusMap = do
 -- Simple fixes nt to 'HostPort' and mt to 'String'.
 main :: IO ()
 main = do
-  (toCommands, fromCommands) <- newChan 1
+  (toCommands, fromCommands) <- newChan
   -- `toResult` is unused. There seem to be API's that use/block on fromResult.
   -- Either we need to kill this channel full stop or `toResult` needs to be used.
   cmdStatusMap <- initCommandMap

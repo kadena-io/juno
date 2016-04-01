@@ -2,10 +2,11 @@ module Main (main) where
 
 import Control.Arrow
 import Crypto.Random
+import Data.Ratio
 import Crypto.Ed25519.Pure
 import Text.Read
 import Juno.Runtime.Types
-
+import Data.Thyme.Clock
 import System.IO
 import System.FilePath
 import qualified Data.Yaml as Y
@@ -58,7 +59,8 @@ createClusterConfig (privMap, pubMap) clientPubMap nid = Config
   , _myPrivateKey         = privMap Map.! nid
   , _myPublicKey          = pubMap Map.! nid
   , _electionTimeoutRange = (3000000,6000000)
-  , _heartbeatTimeout     = 1500000
+  , _heartbeatTimeout     = 1500000              -- seems like a while...
+  , _batchTimeDelta       = fromSeconds' (1%100) -- default to 10ms
   , _enableDebug          = True
   , _clientTimeoutLimit   = 50000
   }
@@ -73,6 +75,7 @@ createClientConfig clusterPubMap (privMap, pubMap) nid = Config
   , _myPublicKey          = pubMap Map.! nid
   , _electionTimeoutRange = (3000000,6000000)
   , _heartbeatTimeout     = 1500000
+  , _batchTimeDelta       = fromSeconds' (1%100) -- default to 10ms
   , _enableDebug          = False
   , _clientTimeoutLimit   = 50000
   }

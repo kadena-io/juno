@@ -131,11 +131,9 @@ handle ae = do
     NotLeader -> return ()
     DoNothing -> resetElectionTimerLeader
     StatelessSendAE{..} -> do
-      sendAppendEntries _sendAENodeID
       resetElectionTimerLeader
     Unconvinced{..} -> do
       JT.lConvinced %= Set.delete _deleteConvinced
-      sendAppendEntries _sendAENodeID
       resetElectionTimerLeader
     ConvincedAndSuccessful{..} -> do
       updateLNextIndex $ Map.insert _incrementNextIndexNode $ _incrementNextIndexLogIndex + 1
@@ -143,5 +141,4 @@ handle ae = do
       resetElectionTimerLeader
     ConvincedAndUnsuccessful{..} -> do
       updateLNextIndex $ Map.adjust (subtract 1) _decrementNextIndex
-      sendAppendEntries _sendAENodeID
       resetElectionTimerLeader

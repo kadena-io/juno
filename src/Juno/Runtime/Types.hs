@@ -14,9 +14,9 @@ module Juno.Runtime.Types
   ( Raft
   , RaftSpec(..)
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
-  , readVotedFor, writeVotedFor, applyLogEntry
-  , sendMessage, getMessage, debugPrint, publishMetric, getTimestamp, random
-  , enqueue, dequeue, enqueueLater, killEnqueued
+  , readVotedFor, writeVotedFor, applyLogEntry, sendMessage
+  , sendMessages, getMessage, debugPrint, publishMetric, getTimestamp, random
+  , enqueue, dequeue, enqueueLater, killEnqueued, dequeueNonBlock
   , NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
@@ -26,7 +26,7 @@ module Juno.Runtime.Types
   , RequestId(..), startRequestId, toRequestId
   , Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
   , enableDebug, publicKeys, clientPublicKeys, myPrivateKey, clientTimeoutLimit
-  , myPublicKey
+  , myPublicKey, batchTimeDelta
   , Role(..)
   , Metric(..)
   , RaftEnv(..), cfg, clusterSize, quorumSize, rs
@@ -35,7 +35,7 @@ module Juno.Runtime.Types
   , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
   , lastCommitTime, numTimeouts, pendingRequests, currentRequestId
-  , timeSinceLastAER
+  , timeSinceLastAER, lLastBatchUpdate
   , initialRaftState
   -- * RPC
   , AppendEntries(..)
@@ -79,10 +79,13 @@ import Data.Serialize (Serialize)
 import qualified Data.Serialize as S
 import Data.Word (Word64)
 import Data.Foldable
+import Text.Read (readMaybe)
+import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Data.Thyme.Clock
 import Data.Thyme.Time.Core ()
 import Data.Thyme.Internal.Micro (Micro)
+
 import Data.Aeson (genericParseJSON,genericToJSON,parseJSON,toJSON,ToJSON,FromJSON,Value(..))
 import Data.Aeson.Types (defaultOptions,Options(..))
 
@@ -137,11 +140,19 @@ data Config = Config
   , _myPublicKey          :: !PublicKey
   , _electionTimeoutRange :: !(Int,Int)
   , _heartbeatTimeout     :: !Int
+  , _batchTimeDelta       :: !NominalDiffTime
   , _enableDebug          :: !Bool
   , _clientTimeoutLimit   :: !Int
   }
   deriving (Show, Generic)
 makeLenses ''Config
+instance ToJSON NominalDiffTime where
+  toJSON = toJSON . show . toSeconds'
+instance FromJSON NominalDiffTime where
+  parseJSON (String s) = case readMaybe $ Text.unpack s of
+    Just s' -> return $ fromSeconds' s'
+    Nothing -> mzero
+  parseJSON _ = mzero
 instance ToJSON Config where
   toJSON = (genericToJSON defaultOptions { fieldLabelModifier = drop 1 })
 instance FromJSON Config where
@@ -703,6 +714,9 @@ data RaftSpec m = RaftSpec
     -- ^ Function to send a message to a node.
   , _sendMessage      :: NodeID -> ByteString -> m () -- Simple,Sender
 
+    -- ^ Send more than one message at once
+  , _sendMessages     :: [(NodeID,ByteString)] -> m () -- Simple,Sender
+
     -- ^ Function to get the next message.
   , _getMessage       :: m (ReceivedAt, ByteString) -- Simple,Util(messageReceiver)
 
@@ -723,6 +737,7 @@ data RaftSpec m = RaftSpec
 
   , _dequeue          :: m Event -- Simple,Util(dequeueEvent)
 
+  , _dequeueNonBlock  :: m (Maybe Event)
   }
 makeLenses (''RaftSpec)
 
@@ -745,7 +760,7 @@ data RaftState = RaftState
   , _lNextIndex       :: Map NodeID LogIndex -- Handler,Role,Sender
   , _lMatchIndex      :: Map NodeID LogIndex -- Role (never read?)
   , _lConvinced       :: Set NodeID -- Handler,Role,Sender
-
+  , _lLastBatchUpdate :: (UTCTime, ByteString)
   -- used for metrics
   , _lastCommitTime   :: Maybe UTCTime
 
@@ -776,6 +791,7 @@ initialRaftState = RaftState
   Map.empty  -- lNextIndex
   Map.empty  -- lMatchIndex
   Set.empty  -- lConvinced
+  (minBound, B.empty)   -- lLastBatchUpdate (when we start up, we want batching to fire immediately)
   Nothing    -- lastCommitTime
   Map.empty  -- pendingRequests
   0          -- nextRequestId

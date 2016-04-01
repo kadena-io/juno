@@ -15,6 +15,7 @@ import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
 import qualified Data.ByteString as B
+import Data.Foldable (toList)
 
 import Juno.Runtime.Types hiding (valid)
 import Juno.Util.Util
@@ -38,9 +39,16 @@ applyLogEntries = do
   let leToApply = Seq.drop (fromIntegral $ la + 1) . Seq.take (fromIntegral $ ci + 1) $ le
   results <- mapM (applyCommand . _leCommand) leToApply
   r <- use role
-  when (r == Leader) $ sendResults results
   lastApplied .= ci
   logMetric $ MetricAppliedIndex ci
+  if length results > 0
+    then do
+      if r == Leader
+        then do
+          debug $ "Applied and Responded to " ++ show (length results) ++ " CMD(s)"
+          sendResults $! toList results
+        else debug $ "Applied " ++ show (length results) ++ " CMD(s)"
+    else debug $ "Applied log entries but did not send results?"
 
 interval :: UTCTime -> UTCTime -> Int64
 interval start end = view microseconds $ end .-. start
@@ -111,9 +119,12 @@ updateCommitIndex = do
   let qcinds = takeWhile (\i -> (not . Map.null) (Map.filterWithKey (\k s -> k >= i && Set.size s + 1 >= qsize) proof)) inds
 
   case qcinds of
-    [] -> return False
+    [] -> do
+      debug "No new commit proof to check"
+      return False
     _  -> do
       let qci = last qcinds
+      debug $ "checking commit proof for: " ++ show qci
       case Map.lookup qci proof of
         Just s -> do
           let lhash = _leHash (Seq.index es $ fromIntegral qci)
@@ -125,9 +136,13 @@ updateCommitIndex = do
               commitProof %= Map.filterWithKey (\k _ -> k >= qci)
               debug $ "Commit index is now: " ++ show qci
               return True
-            else
+            else do
+              debug $ "Invalid Commit Proof found for " ++ show qci ++ " and " ++ show lhash
+              debug $ "Evidence was: " ++ show ((\a -> (_aerIndex a, _aerHash a)) <$> Set.toList s)
               return False
-        Nothing -> return False
+        Nothing -> do
+          debug $ "No proof found at: " ++ show qci
+          return False
 
 checkCommitProof :: LogIndex -> B.ByteString -> Set.Set AppendEntriesResponse -> Bool
 checkCommitProof ci lhash aers = all (\AppendEntriesResponse{..} -> _aerHash == lhash && _aerIndex == ci) aers

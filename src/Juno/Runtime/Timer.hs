@@ -2,10 +2,14 @@ module Juno.Runtime.Timer
   ( resetElectionTimer
   , resetElectionTimerLeader
   , resetHeartbeatTimer
+  , resetLastBatchUpdate
   , hasElectionTimerLeaderFired
   , cancelTimer
   ) where
 
+import qualified Data.ByteString as B
+import Data.Sequence
+import Control.Monad
 import Control.Lens hiding (Index)
 import Juno.Runtime.Types
 import Juno.Util.Util
@@ -79,3 +83,12 @@ setTimedEvent e t = do
   cancelTimer
   tmr <- enqueueEventLater t e -- forks, no state
   timerThread .= Just tmr
+
+resetLastBatchUpdate :: Monad m => Raft m ()
+resetLastBatchUpdate = do
+  les <- use logEntries
+  latestLogHash <- return $ case viewr les of
+    EmptyR -> B.empty
+    _ :> LogEntry _ _ h -> h
+  curTime <- join $ view (rs.getTimestamp)
+  lLastBatchUpdate .= (curTime, latestLogHash)

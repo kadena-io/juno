@@ -122,6 +122,7 @@ executable genconfs
                      , crypto-api
                      , network
                      , directory
+                     , thyme
                      , filepath
                      , yaml
   hs-source-dirs:      executables

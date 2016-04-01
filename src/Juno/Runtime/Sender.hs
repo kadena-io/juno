@@ -16,7 +16,7 @@ import Control.Lens
 import Control.Arrow (second)
 import Control.Parallel.Strategies
 import Control.Monad.Writer
-import Data.Foldable (traverse_)
+
 import Data.ByteString (ByteString)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -28,7 +28,7 @@ import Data.Serialize
 
 import Juno.Util.Util
 import Juno.Runtime.Types
-
+import Juno.Runtime.Timer (resetLastBatchUpdate)
 
 createAppendEntries' :: NodeID
                    -> Map NodeID LogIndex
@@ -58,6 +58,7 @@ sendAppendEntries target = do
   vts <- use lConvinced
   yesVotes <- use cYesVotes
   sendRPC target $ createAppendEntries' target lNextIndex' es ct nid vts yesVotes
+  resetLastBatchUpdate
   debug $ "sendAppendEntries: " ++ show ct
 
 -- no state update
@@ -71,6 +72,7 @@ sendAllAppendEntries = do
   yesVotes <- use cYesVotes
   oNodes <- view (cfg.otherNodes)
   sendRPCs $ (\target -> (target, createAppendEntries' target lNextIndex' es ct nid vts yesVotes)) <$> Set.toList oNodes
+  resetLastBatchUpdate
   debug "Sent All AppendEntries"
 
 createAppendEntriesResponse' :: Bool -> Bool -> Term -> NodeID -> LogIndex -> ByteString -> RPC
@@ -102,8 +104,8 @@ createRequestVoteResponse term' logIndex' myNodeId' target vote = do
   return $ RequestVoteResponse term' logIndex' myNodeId' vote target NewMsg
 
 -- no state update
-sendResults :: Monad m => Seq (NodeID, CommandResponse) -> Raft m ()
-sendResults results = traverse_ (\(target,cmdr) -> sendRPC target $ CMDR' cmdr) results
+sendResults :: Monad m => [(NodeID, CommandResponse)] -> Raft m ()
+sendResults results = sendRPCs $ second CMDR' <$> results
 
 -- called by leaders sending appendEntries.
 -- given a replica's nextIndex, get the index and term to send as
@@ -135,9 +137,9 @@ encodedRPC myNodeId privKey pubKey rpc = encode $! rpcToSignedRPC myNodeId pubKe
 
 sendRPCs :: Monad m => [(NodeID, RPC)] -> Raft m ()
 sendRPCs rpcs = do
-  send <- view (rs.sendMessage)
+  send <- view (rs.sendMessages)
   myNodeId <- view (cfg.nodeId)
   privKey <- view (cfg.myPrivateKey)
   pubKey <- view (cfg.myPublicKey)
   msgs <- return ((second (encodedRPC myNodeId privKey pubKey) <$> rpcs ) `using` parList rseq)
-  traverse_ (uncurry send) msgs
+  send msgs

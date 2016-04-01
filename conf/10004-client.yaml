@@ -2,21 +2,21 @@ clientTimeoutLimit: 50000
 publicKeys:
 - - host: '127.0.0.1'
     port: 10000
-  - f9476cf80f545ac0bfcd96dc5aec88fbfa518b75b519bee86862963db831a80c
+  - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
 - - host: '127.0.0.1'
     port: 10001
-  - f0f15889c730c032d9f50c943a215b33170c37e3724b5815f143a3410aeb0a65
+  - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
 - - host: '127.0.0.1'
     port: 10002
-  - 77263ee0f1fdee8a6f2279068c457146ca2dd1ffb33d85706cecf0038bb07f54
+  - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
 - - host: '127.0.0.1'
     port: 10003
-  - c669d61883cf41c779197bb67cb57f117672fdb7771e360bb495997097ff62ff
+  - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
 heartbeatTimeout: 1500000
 clientPublicKeys:
 - - host: '127.0.0.1'
     port: 10004
-  - 286d9933053987bcd4cab91a81f27bc5459906e96f6faf5956a057f3603ae489
+  - 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
 electionTimeoutRange:
 - 3000000
 - 6000000
@@ -29,9 +29,10 @@ otherNodes:
   port: 10002
 - host: '127.0.0.1'
   port: 10003
-myPublicKey: 286d9933053987bcd4cab91a81f27bc5459906e96f6faf5956a057f3603ae489
+myPublicKey: 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
 nodeId:
   host: '127.0.0.1'
   port: 10004
 enableDebug: false
-myPrivateKey: aee9e01d20063aa2ac37a57f912da5cd9c348da3dc9f71aaad646599f9789641
+myPrivateKey: 5ba30a2164d6e36e600e4203b80c575e1b04667e3351b22a5319ab3fcc3da602
+batchTimeDelta: 1 % 100

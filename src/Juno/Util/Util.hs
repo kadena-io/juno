@@ -10,6 +10,7 @@ module Juno.Util.Util
   , runRWS_
   , enqueueEvent, enqueueEventLater
   , dequeueEvent
+  , dequeueEventNonBlock
   , logMetric
   , logStaticMetrics
   , messageReceiver
@@ -81,6 +82,9 @@ enqueueEventLater t event = view (rs.enqueueLater) >>= \f -> f t event
 dequeueEvent :: Monad m => Raft m Event
 dequeueEvent = join $ view (rs.dequeue)
 
+dequeueEventNonBlock :: Monad m => Raft m (Maybe Event)
+dequeueEventNonBlock = join $ view (rs.dequeueNonBlock)
+
 logMetric :: Monad m => Metric -> Raft m ()
 logMetric metric = view (rs.publishMetric) >>= \f -> f metric
 
@@ -105,7 +109,7 @@ messageReceiver = do
         debug $ "Failed to deserialize to SignedRPC [Msg]: " ++ show msg
         debug $ "Failed to deserialize to SignedRPC [Error]: " ++ err
       Right v -> do
-        debug $ "Got a SignedRPC of type: " ++ show (_digType $ _sigDigest v)
+--        debug $ "Got a SignedRPC of type: " ++ show (_digType $ _sigDigest v)
         case signedRPCtoRPC (Just ts) ks v of
           Left err -> debug err
           Right rpc -> enqueueEvent $ ERPC rpc
