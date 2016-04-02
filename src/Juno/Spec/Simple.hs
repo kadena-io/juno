@@ -146,8 +146,8 @@ runServer applyFn = do
   let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
   runRaftServer rconf raftSpec
 
-runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, CommandEntry) -> CommandMVarMap -> IO ()
-runClient applyFn getEntry cmdStatusMap = do
+runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
+runClient applyFn getEntries cmdStatusMap = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
   (inboxWrite, inboxRead) <- newChan -- client writes to inbox, raft reads
@@ -157,7 +157,7 @@ runClient applyFn getEntry cmdStatusMap = do
   pubMetric <- startMonitoring rconf
   runMsgServer inboxWrite outboxRead me [] -- ZMQ
   let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
-  runRaftClient getEntry cmdStatusMap rconf raftSpec
+  runRaftClient getEntries cmdStatusMap rconf raftSpec
 
 
 -- | lift a two-arg action into MonadIO

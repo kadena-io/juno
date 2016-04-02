@@ -64,10 +64,12 @@ waitForCommand cmdMap rId =
       (CommandMap _ m) <- readMVar cmdMap
       case Map.lookup rId m of
         Nothing -> return $ BSC.pack "Sorry, something went wrong."
-        Just (CmdApplied (CommandResult x)) ->
-          return $ (BSC.pack . show) $ CommandResult x
-        Just _ -> -- not applied yet, loop and wait
-          waitForCommand cmdMap rId
+        --Just (CmdApplied (CommandResult x)) ->
+        --  return $ (BSC.pack . show) $ CommandResult x
+        Just cmd -> -- not applied yet, loop and wait
+          return $ (BSC.pack . show) $ cmd
+        --Just _ -> -- not applied yet, loop and wait
+        --  waitForCommand cmdMap rId
 
 -- should we poll here till we get a result?
 showResult :: CommandMVarMap -> RequestId -> IO ()
@@ -81,54 +83,55 @@ showResult cmdStatusMap rId =
         showResult cmdStatusMap rId
 
 --  -> OutChan CommandResult
-runREPL :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> IO ()
-runREPL toCommand cmdStatusMap = do
+runREPL :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
+runREPL toCommands cmdStatusMap = do
   cmd <- readPrompt
   case cmd of
-    "" -> runREPL toCommand cmdStatusMap
+    "" -> runREPL toCommands cmdStatusMap
     _ -> do
       cmd' <- return $ BSC.pack cmd
       if take 11 cmd == "batch test:"
       then do
         rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-        writeChan toCommand (rId, CommandEntry cmd')
+        writeChan toCommands (rId, [CommandEntry cmd'])
         threadDelay 1000
-        runREPL toCommand cmdStatusMap
+        runREPL toCommands cmdStatusMap
       else
         case readHopper cmd' of
-          Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommand cmdStatusMap
+          Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommands cmdStatusMap
           Right _ -> do
             rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-            writeChan toCommand (rId, CommandEntry cmd')
+            writeChan toCommands (rId, [CommandEntry cmd'])
             showResult cmdStatusMap rId
-            runREPL toCommand cmdStatusMap
+            runREPL toCommands cmdStatusMap
 
 serverConf :: MonadSnap m => Config m a
 serverConf = setErrorLog (ConfigFileLog "log/error.log") $ setAccessLog (ConfigFileLog "log/access.log") defaultConfig
 
-snapServer :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> IO ()
-snapServer toCommand cmdStatusMap = httpServe serverConf $
+snapServer :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
+snapServer toCommands cmdStatusMap = httpServe serverConf $
     applyCORS defaultOptions $ methods [GET, POST]
     (ifTop (writeBS "use /hopper for commands") <|>
-     route [ ("/api/juno/v1/accounts/create", createAccounts toCommand cmdStatusMap)
-           , ("/api/juno/v1/accounts/adjust", adjustAccounts toCommand cmdStatusMap)
+     route [ ("/api/juno/v1/accounts/create", createAccounts toCommands cmdStatusMap)
+           , ("/api/juno/v1/accounts/adjust", adjustAccounts toCommands cmdStatusMap)
+           , ("/api/juno/v1/accounts/adjust/batch", adjustAccountsBatchTest toCommands cmdStatusMap)
            , ("/api/juno/v1/poll", pollForResults cmdStatusMap)
-           , ("/api/juno/v1/query", ledgerQueryAPI toCommand cmdStatusMap)
-           , ("hopper", hopperHandler toCommand cmdStatusMap)
-           , ("swift", swiftHandler toCommand cmdStatusMap)
-           , ("api/swift-submit", swiftSubmission toCommand cmdStatusMap)
-           , ("api/ledger-query", ledgerQuery toCommand cmdStatusMap)
+           , ("/api/juno/v1/query", ledgerQueryAPI toCommands cmdStatusMap)
+           , ("hopper", hopperHandler toCommands cmdStatusMap)
+           , ("swift", swiftHandler toCommands cmdStatusMap)
+           , ("api/swift-submit", swiftSubmission toCommands cmdStatusMap)
+           , ("api/ledger-query", ledgerQuery toCommands cmdStatusMap)
            ])
 
 -- create an account returns cmdId see: juno/jmeter/juno_API_jmeter_test.jmx
-createAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
-createAccounts toCommand cmdStatusMap = do
+createAccounts :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+createAccounts toCommands cmdStatusMap = do
     maybeCreateAccount <- liftM JSON.decode (readRequestBody 1000)
     modifyResponse $ setHeader "Content-Type" "application/json"
     case maybeCreateAccount of
       Just (CreateAccountRequest (AccountPayload acct) _) -> do
         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
-        liftIO $ writeChan toCommand (reqestId, CommandEntry $ createAccountBS' $ T.unpack acct)
+        liftIO $ writeChan toCommands (reqestId, [CommandEntry $ createAccountBS' $ T.unpack acct])
         -- byz/client updates successfully
         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
       Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
@@ -136,22 +139,38 @@ createAccounts toCommand cmdStatusMap = do
     createAccountBS' acct = BSC.pack $ "CreateAccount " ++ acct
 
 -- Adjusts Account (negative, positive) returns cmdIds: juno/jmeter/juno_API_jmeter_test.jmx
-adjustAccounts :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
-adjustAccounts toCommand cmdStatusMap = do
+adjustAccounts :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+adjustAccounts toCommands cmdStatusMap = do
    maybeAdjustAccount <- liftM JSON.decode (readRequestBody 1000)
    modifyResponse $ setHeader "Content-Type" "application/json"
    case maybeAdjustAccount of
      Just (AccountAdjustRequest (AccountAdjustPayload acct amt) _) -> do
          reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
-         liftIO $ writeChan toCommand (reqestId, CommandEntry $ adjustAccountBS acct amt)
+         liftIO $ writeChan toCommands (reqestId, [CommandEntry $ adjustAccountBS acct amt])
          (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
      where
        adjustAccountBS acct amt = BSC.pack $ "AdjustAccount " ++ T.unpack acct ++ " " ++ show (toRational amt)
 
+-- Adjusts Account (negative, positive) returns cmdIds: juno/jmeter/juno_API_jmeter_test.jmx
+adjustAccountsBatchTest :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+adjustAccountsBatchTest toCommands cmdStatusMap = do
+   maybeAdjustAccount <- liftM JSON.decode (readRequestBody 1000)
+   modifyResponse $ setHeader "Content-Type" "application/json"
+   case maybeAdjustAccount of
+     Just (AccountAdjustRequest (AccountAdjustPayload acct amt) _) -> do
+         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
+         let adjustBatch = take 40 $ (repeat $ adjustAccountCommand acct amt)
+         liftIO $ writeChan toCommands (reqestId, adjustBatch)
+         (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
+     Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+  where
+       --adjustAccountCommands = CommandEntry $ BSC.pack $ "AdjustAccount TSLA 1000%1"
+       adjustAccountCommand acct amt = CommandEntry $ BSC.pack $ "AdjustAccount " ++ T.unpack acct ++ " " ++ show (toRational amt)
+
 --
-ledgerQueryAPI :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
-ledgerQueryAPI toCommand cmdStatusMap = do
+ledgerQueryAPI :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+ledgerQueryAPI toCommands cmdStatusMap = do
    maybeQuery <- liftM JSON.decode (readRequestBody 100000)
    modifyResponse $ setHeader "Content-Type" "application/json"
    case maybeQuery of
@@ -162,7 +181,7 @@ ledgerQueryAPI toCommand cmdStatusMap = do
          let mByReceiver = (ByAcctName Receiver) <$> receiver
          reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
          let query = And $ catMaybes [ mSwiftId, mBySender, mByReceiver, mByBoth ]
-         liftIO $ writeChan toCommand (reqestId, CommandEntry $ BLC.toStrict $ encode query)
+         liftIO $ writeChan toCommands (reqestId, [CommandEntry $ BLC.toStrict $ encode query])
          (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" (T.pack $ "Malformed input, could not decode input JSON.")
 
@@ -189,8 +208,8 @@ pollForResults cmdStatusMap = do
        cmdStatus2PollResult (RequestId rid) cmdStatus
    toRepresentation Nothing = cmdStatusError
 
-swiftSubmission :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
-swiftSubmission toCommand cmdStatusMap = do
+swiftSubmission :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+swiftSubmission toCommands cmdStatusMap = do
   bdy <- readRequestBody 1000000
   cmd <- return $ BLC.toStrict bdy
   logError $ "swiftSubmission: " <> cmd
@@ -201,14 +220,14 @@ swiftSubmission toCommand cmdStatusMap = do
       -- TODO: maybe the swift blob should be serialized vs json-ified
       let blob = SwiftBlob unparsedSwift $ swiftToHopper v
       rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-      liftIO $ writeChan toCommand (rId, CommandEntry $ BLC.toStrict $ encode blob)
+      liftIO $ writeChan toCommands (rId, [CommandEntry $ BLC.toStrict $ encode blob])
       resp <- liftIO $ waitForCommand cmdStatusMap rId
       logError $ "swiftSubmission: " <> resp
       modifyResponse $ setHeader "Content-Type" "application/json"
       writeBS resp
 
-ledgerQuery :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
-ledgerQuery toCommand cmdStatusMap = do
+ledgerQuery :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+ledgerQuery toCommands cmdStatusMap = do
   mBySwift <- fmap BySwiftId <$> getIntegerParam "tx"
   mBySender <- fmap (ByAcctName Sender) <$> getTextParam "sender"
   mByReceiver <- fmap (ByAcctName Receiver) <$> getTextParam "receiver"
@@ -216,7 +235,7 @@ ledgerQuery toCommand cmdStatusMap = do
   let query = And $ catMaybes [mBySwift, mBySender, mByReceiver, mByBoth]
   -- TODO: if you are querying the ledger should we wait for the command to be applied here?
   rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-  liftIO $ writeChan toCommand (rId, CommandEntry $ BLC.toStrict $ encode query)
+  liftIO $ writeChan toCommands (rId, [CommandEntry $ BLC.toStrict $ encode query])
   resp <- liftIO $ waitForCommand cmdStatusMap rId
   modifyResponse $ setHeader "Content-Type" "application/json"
   writeBS resp
@@ -225,8 +244,8 @@ ledgerQuery toCommand cmdStatusMap = do
     getIntegerParam p = (>>= fmap fst . BSC.readInteger) <$> getQueryParam p
     getTextParam p = fmap decodeUtf8 <$> getQueryParam p
 
-swiftHandler :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
-swiftHandler toCommand cmdStatusMap = do
+swiftHandler :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+swiftHandler toCommands cmdStatusMap = do
   bdy <- readRequestBody 1000000
   cmd <- return $ BLC.toStrict bdy
   logError $ "swiftHandler: " <> cmd
@@ -234,7 +253,7 @@ swiftHandler toCommand cmdStatusMap = do
     Left err -> errDone 400 $ BLC.toStrict $ encode $ object ["status" .= ("Failure" :: T.Text), "reason" .= err]
     Right v -> do
         rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-        liftIO $ writeChan toCommand (rId, CommandEntry $ BSC.pack (swiftToHopper v))
+        liftIO $ writeChan toCommands (rId, [CommandEntry $ BSC.pack (swiftToHopper v)])
         resp <- liftIO $ waitForCommand cmdStatusMap rId
         modifyResponse $ setHeader "Content-Type" "application/json"
         logError $ "swiftHandler: SUCCESS: " <> resp
@@ -264,8 +283,8 @@ swiftToHopper m = hopperProgram to' from' inter' amt'
     hopperProgram :: String -> String -> String -> Ratio Int -> String
     hopperProgram t f i a = "transfer(" ++ f ++ "->" ++ i ++ "->" ++ t ++ "," ++ show a ++ ")"
 
-hopperHandler :: InChan (RequestId, CommandEntry) -> CommandMVarMap -> Snap ()
-hopperHandler toCommand cmdStatusMap = do
+hopperHandler :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+hopperHandler toCommands cmdStatusMap = do
     bdy <- readRequestBody 1000000
     logError $ "hopper: " <> BLC.toStrict bdy
     cmd <- return $ BLC.toStrict bdy
@@ -273,7 +292,7 @@ hopperHandler toCommand cmdStatusMap = do
       Left err -> errDone 400 $ BSC.pack err
       Right _ -> do
         rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-        liftIO $ writeChan toCommand (rId, CommandEntry cmd)
+        liftIO $ writeChan toCommands (rId, [CommandEntry cmd])
         resp <- liftIO $ waitForCommand cmdStatusMap rId
         writeBS resp
 
@@ -281,17 +300,29 @@ hopperHandler toCommand cmdStatusMap = do
 -- Simple fixes nt to 'HostPort' and mt to 'String'.
 main :: IO ()
 main = do
-  (toCommand, fromCommand) <- newChan 1
+  (toCommands, fromCommands) <- newChan 1
   -- `toResult` is unused. There seem to be API's that use/block on fromResult.
   -- Either we need to kill this channel full stop or `toResult` needs to be used.
   cmdStatusMap <- initCommandMap
-  void $ CL.fork $ snapServer toCommand cmdStatusMap
+  void $ CL.fork $ snapServer toCommands cmdStatusMap
   let -- getEntry :: (IO et)
-      getEntry :: IO (RequestId, CommandEntry)
-      getEntry = readChan fromCommand
+      getEntries :: IO (RequestId, [CommandEntry])
+      getEntries = readChan fromCommands
       -- applyFn :: et -> IO rt
       applyFn :: CommandEntry -> IO CommandResult
       applyFn _x = return $ CommandResult "Failure"
-  void $ CL.fork $ runClient applyFn getEntry cmdStatusMap
+  void $ CL.fork $ runClient applyFn getEntries cmdStatusMap
   threadDelay 100000
-  runREPL toCommand cmdStatusMap
+  runREPL toCommands cmdStatusMap
+
+
+testQueues :: IO [CommandEntry]
+testQueues = do
+  (toCommands, fromCommands) <- newChan 1
+  let cmds = take 10 $ repeat (CommandEntry $ adjustAccountBS)
+  liftIO $ writeChan toCommands cmds
+  cmds@(CommandEntry _:rest) <- liftIO $ readChan fromCommands
+  --entries@(([CommandEntry _])) <- liftIO $ readChan fromCommands
+  return cmds
+ where
+   adjustAccountBS = BSC.pack $ "AdjustAccount TSLA 10%1"
