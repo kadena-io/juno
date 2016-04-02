@@ -104,28 +104,41 @@ commandGetter' getEntry cmdStatusMap = do
       liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert rid CmdAccepted m)))
       enqueueEvent $ ERPC $ CMD' $ Command entry nid rid' NewMsg
 
+-- get commands with getEntry and put them on the event queue to be sent
+-- THREAD: CLIENT COMMAND
 commandGetter :: MonadIO m => Raft m (RequestId, [CommandEntry]) -> CommandMVarMap -> Raft m ()
 commandGetter getEntries cmdStatusMap = do
   nid <- view (cfg.nodeId)
   forever $ do
     (rid@(RequestId _), cmdEntries) <- getEntries
+    -- support for special REPL command "> batch test:5000", runs hardcoded batch job
+    cmds' <- case cmdEntries of
+               (CommandEntry cmd):[] | SB8.take 11 cmd == "batch test:" -> do
+                                          let missiles = take (batchSize cmd) $ repeat $ hardcodedTransfers nid
+                                          liftIO $ sequence $ missiles
+               _ -> liftIO $ sequence $ fmap (nextRid nid) cmdEntries
     -- set current requestId in Raft to the value associated with this request.
     rid' <- setNextRequestId rid
     liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert rid CmdAccepted m)))
-    -- let cmds = fmap (\entry -> Command entry nid rid' NewMsg) cmdEntries
-    let cmds = fmap (nextIt cmdStatusMap nid) cmdEntries
     -- hack set the head to the org rid
-    cmds' <- liftIO $ sequence cmds
     let cmds'' = case cmds' of
                    ((Command entry nid' _ NewMsg):rest) -> (Command entry nid' rid' NewMsg):rest
                    [] -> []
-    --liftIO $ putStrLn $ show cmds''
     enqueueEvent $ ERPC $ CMDB' $ CommandBatch cmds'' NewMsg
+  where
+    batchSize :: (Num c, Read c) => SB8.ByteString -> c
+    batchSize cmd = maybe 500 id . readMaybe $ drop 11 $ SB8.unpack cmd
 
-nextIt :: CommandMVarMap -> NodeID -> CommandEntry -> IO Command
-nextIt cmdStatusMap nid entry = do
-    rid <- (setNextCmdRequestId cmdStatusMap)
-    return (Command entry nid rid NewMsg)
+    nextRid :: NodeID -> CommandEntry -> IO Command
+    nextRid nid entry = do
+      rid <- (setNextCmdRequestId cmdStatusMap)
+      return (Command entry nid rid NewMsg)
+
+    hardcodedTransfers :: NodeID -> IO Command
+    hardcodedTransfers nid = nextRid nid transferCmdEntry
+
+    transferCmdEntry :: CommandEntry
+    transferCmdEntry = (CommandEntry "transfer(Acct1->Acct2, 1 % 1)")
 
 batchScript :: NodeID -> RequestId -> Int -> [Command]
 batchScript nid (RequestId rid) cnt = transfers

@@ -165,7 +165,6 @@ adjustAccountsBatchTest toCommands cmdStatusMap = do
          (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
   where
-       --adjustAccountCommands = CommandEntry $ BSC.pack $ "AdjustAccount TSLA 1000%1"
        adjustAccountCommand acct amt = CommandEntry $ BSC.pack $ "AdjustAccount " ++ T.unpack acct ++ " " ++ show (toRational amt)
 
 --
