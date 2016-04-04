@@ -86,6 +86,7 @@ class Node extends React.Component {
           <XYPlot
             width={600}
             height={200}
+            margin={{left: 75, right: 40, top: 10, bottom: 10}}
             animation={{duration: 50}}
             opacity={0.2}
             color="steelblue"
