@@ -11,8 +11,6 @@ module Juno.Consensus.ByzRaft.Client
 
 import Control.Lens hiding (Index)
 import Control.Monad.RWS
-import Control.Applicative
-
 import Data.Foldable (traverse_)
 import           Data.Map (Map)
 import qualified Data.Map as Map
@@ -86,26 +84,6 @@ raftClient getEntries cmdStatusMap = do
 
 -- get commands with getEntry and put them on the event queue to be sent
 -- THREAD: CLIENT COMMAND
-commandGetter' :: MonadIO m => Raft m (RequestId, CommandEntry) -> CommandMVarMap -> Raft m ()
-commandGetter' getEntry cmdStatusMap = do
-  nid <- view (cfg.nodeId)
-  forever $ do
-    (rid@(RequestId _), entry@(CommandEntry cmd)) <- getEntry
-    if SB8.take 11 cmd == "batch test:"
-    then do
-      let missiles = batchScript nid rid howManyMissiles
-          lastCmd = last missiles
-          howManyMissiles = maybe 500 id . readMaybe $ drop 11 $ SB8.unpack cmd
-      liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert (_cmdRequestId lastCmd) CmdAccepted m)))
-      enqueueEvent $ ERPC $ CMDB' $ CommandBatch missiles NewMsg
-      liftIO $ prettyScript missiles
-    else do
-      rid' <- setNextRequestId rid -- set current requestId to the value associated with this request.
-      liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert rid CmdAccepted m)))
-      enqueueEvent $ ERPC $ CMD' $ Command entry nid rid' NewMsg
-
--- get commands with getEntry and put them on the event queue to be sent
--- THREAD: CLIENT COMMAND
 commandGetter :: MonadIO m => Raft m (RequestId, [CommandEntry]) -> CommandMVarMap -> Raft m ()
 commandGetter getEntries cmdStatusMap = do
   nid <- view (cfg.nodeId)
@@ -123,7 +101,7 @@ commandGetter getEntries cmdStatusMap = do
     -- hack set the head to the org rid
     let cmds'' = case cmds' of
                    ((Command entry nid' _ NewMsg):rest) -> (Command entry nid' rid' NewMsg):rest
-                   [] -> []
+                   _ -> [] -- TODO: fix this
     enqueueEvent $ ERPC $ CMDB' $ CommandBatch cmds'' NewMsg
   where
     batchSize :: (Num c, Read c) => SB8.ByteString -> c
@@ -139,28 +117,6 @@ commandGetter getEntries cmdStatusMap = do
 
     transferCmdEntry :: CommandEntry
     transferCmdEntry = (CommandEntry "transfer(Acct1->Acct2, 1 % 1)")
-
-batchScript :: NodeID -> RequestId -> Int -> [Command]
-batchScript nid (RequestId rid) cnt = transfers
-  where
-    dollarTransfer :: RequestId -> Command
-    dollarTransfer r = Command (CommandEntry "transfer(Acct1->Acct2, 1 % 1)") nid r NewMsg
-    transfers :: [Command]
-    transfers = dollarTransfer <$> take cnt rids
-    rids :: [RequestId]
-    rids = RequestId <$> [rid..]
-
-prettyScript :: [Command] -> IO ()
-prettyScript cmds = do
-  let fstCmd = head cmds
-      lstCmd = last cmds
-      cnt = _cmdRequestId lstCmd - _cmdRequestId fstCmd
-      rawCmd (CommandEntry s) = SB8.unpack s
-      pp Command{..} = show _cmdRequestId ++ " => " ++ rawCmd _cmdEntry
-  putStrLn $ "Issued a batch of " ++ show cnt ++ " independent transactions"
-  putStrLn $ pp fstCmd
-  putStrLn "... through ..."
-  putStrLn $ pp lstCmd
 
 -- THREAD: CLIENT COMMAND. updates state!
 -- TODO: used in revolution, should take this from MVar map as well?

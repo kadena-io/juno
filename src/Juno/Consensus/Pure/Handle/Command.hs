@@ -13,10 +13,10 @@ import Control.Monad.Writer
 import Data.ByteString as B
 import qualified Data.Map as Map
 
-import Juno.Consensus.ByzRaft.Commit (doCommit,makeCommandResponse')
+import Juno.Consensus.ByzRaft.Commit (makeCommandResponse')
 import Juno.Consensus.ByzRaft.Log (addLogEntryAndHash)
 import Juno.Consensus.Pure.Types
-import Juno.Runtime.Sender (sendRPC,sendAllAppendEntries,sendAllAppendEntriesResponse)
+import Juno.Runtime.Sender (sendRPC)
 import Juno.Util.Util (getCmdSigOrInvariantError)
 
 import qualified Juno.Runtime.Types as JT

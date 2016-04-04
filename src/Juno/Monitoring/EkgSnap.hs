@@ -4,7 +4,6 @@ module Juno.Monitoring.EkgSnap
     ( startServer
     ) where
 
-import Control.Applicative ((<$>), (<|>))
 import Control.Exception (throwIO)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as S
@@ -23,8 +22,6 @@ import Snap.Core (MonadSnap, Request, Snap, finishWith, getHeaders, getRequest,
                   writeLBS)
 import Snap.Http.Server (httpServe)
 import qualified Snap.Http.Server.Config as Config
-import Snap.Util.FileServe (serveDirectory)
-import System.FilePath ((</>))
 
 import System.Metrics
 
