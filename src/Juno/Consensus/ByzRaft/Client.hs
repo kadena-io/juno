@@ -118,13 +118,6 @@ commandGetter getEntries cmdStatusMap = do
     transferCmdEntry :: CommandEntry
     transferCmdEntry = (CommandEntry "transfer(Acct1->Acct2, 1 % 1)")
 
--- THREAD: CLIENT COMMAND. updates state!
--- TODO: used in revolution, should take this from MVar map as well?
-nextRequestId :: Monad m => Raft m RequestId
-nextRequestId = do
-  currentRequestId += 1
-  use currentRequestId
-
 setNextRequestId :: Monad m => RequestId -> Raft m RequestId
 setNextRequestId rid = do
   currentRequestId .= rid

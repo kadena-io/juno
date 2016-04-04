@@ -27,7 +27,6 @@ data AEResponseEnv = AEResponseEnv {
 -- Old Constructors
     _role             :: Role
   , _term             :: Term
-  , _commitIndex      :: LogIndex
   , _commitProof      :: Map NodeID AppendEntriesResponse
   }
 makeLenses ''AEResponseEnv
@@ -111,7 +110,6 @@ handle ae = do
   let ape = AEResponseEnv
               (JT._role s)
               (JT._term s)
-              (JT._commitIndex s)
               (JT._commitProof s)
   (AEResponseOut{..}, l) <- runReaderT (runWriterT (handleAEResponse ae)) ape
   mapM_ debug l

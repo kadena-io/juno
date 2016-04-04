@@ -75,6 +75,6 @@ handleRPC rpc = case rpc of
   RV' rv          -> PureRequestVote.handle rv
   RVR' rvr        -> PureRequestVoteResponse.handle rvr
   CMD' cmd        -> PureCommand.handle cmd
-  CMDB' cmdb      -> debug "Got a CommandBatch" >> PureCommand.handleBatch cmdb >> debug "Completed CommandBatch Processing"
+  CMDB' cmdb      -> PureCommand.handleBatch cmdb
   CMDR' _         -> debug "got a command response RPC"
   REV' rev        -> PureRevolution.handle rev
