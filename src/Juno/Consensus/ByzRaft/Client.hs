@@ -132,6 +132,7 @@ clientHandleEvents cmdStatusMap = forever $ do
     ERPC (CMD' cmd)     -> clientSendCommand cmd -- these are commands coming from the commandGetter thread
     ERPC (CMDR' cmdr)   -> clientHandleCommandResponse cmdStatusMap cmdr
     HeartbeatTimeout _ -> do
+      debug "caught a heartbeat"
       timeouts <- use numTimeouts
       if timeouts > 3
       then do
@@ -141,7 +142,7 @@ clientHandleEvents cmdStatusMap = forever $ do
         pendingRequests .= Map.empty -- this will reset the timer on resend
         traverse_ clientSendCommand reqs
         numTimeouts += 1
-      else numTimeouts += 1
+      else resetHeartbeatTimer >> numTimeouts += 1
     _ -> return ()
 
 -- THREAD: CLIENT MAIN. updates state
@@ -186,10 +187,11 @@ clientSendCommandBatch cmdb@CommandBatch{..} = do
   case mlid of
     Just lid -> do
       sendRPC lid $ CMDB' cmdb
+      prcount <- fmap Map.size (use pendingRequests)
       -- if this will be our only pending request, start the timer
       -- otherwise, it should already be running
-      resetHeartbeatTimer
       let lastCmd = last _cmdbBatch
+      when (prcount == 0) resetHeartbeatTimer
       pendingRequests %= Map.insert (_cmdRequestId lastCmd) lastCmd -- TODO should we update CommandMap here?
     Nothing  -> do
       setLeaderToFirst
@@ -198,7 +200,7 @@ clientSendCommandBatch cmdb@CommandBatch{..} = do
 -- THREAD: CLIENT MAIN. updates state
 -- Command has been applied
 clientHandleCommandResponse :: MonadIO m => CommandMVarMap -> CommandResponse -> Raft m ()
-clientHandleCommandResponse cmdStatusMap CommandResponse{..} = do
+clientHandleCommandResponse cmdStatusMap cmdr@CommandResponse{..} = do
   prs <- use pendingRequests
   when (Map.member _cmdrRequestId prs) $ do
     setCurrentLeader $ Just _cmdrLeaderId

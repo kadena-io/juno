@@ -4,7 +4,8 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Juno.Consensus.Pure.Handle.AppendEntriesResponse
-  (handle)
+  (handle
+  ,updateCommitProofMap)
 where
 
 import Control.Lens hiding (Index)

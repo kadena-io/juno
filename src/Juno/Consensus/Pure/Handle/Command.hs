@@ -13,10 +13,12 @@ import Control.Monad.Writer
 import Data.ByteString as B
 import qualified Data.Map as Map
 
+import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
+
 import Juno.Consensus.ByzRaft.Commit (makeCommandResponse')
 import Juno.Consensus.ByzRaft.Log (addLogEntryAndHash)
 import Juno.Consensus.Pure.Types
-import Juno.Runtime.Sender (sendRPC)
+import Juno.Runtime.Sender (sendRPC, createAppendEntriesResponse)
 import Juno.Util.Util (getCmdSigOrInvariantError)
 
 import qualified Juno.Runtime.Types as JT
@@ -96,6 +98,8 @@ handleSingleCommand cmd = do
     (CommitAndPropagate newEntry replayKey) -> do
                JT.logEntries %= addLogEntryAndHash newEntry
                JT.replayMap %= Map.insert replayKey Nothing
+               myEvidence <- createAppendEntriesResponse True True
+               JT.commitProof %= updateCommitProofMap myEvidence
 
 handle :: Monad m => Command -> JT.Raft m ()
 handle cmd = handleSingleCommand cmd

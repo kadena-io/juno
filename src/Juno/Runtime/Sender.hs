@@ -8,6 +8,7 @@ module Juno.Runtime.Sender
   , createRequestVoteResponse
   , sendAllAppendEntries
   , sendAllAppendEntriesResponse
+  , createAppendEntriesResponse
   , sendResults
   , sendRPC
   ) where
@@ -78,6 +79,15 @@ sendAllAppendEntries = do
 createAppendEntriesResponse' :: Bool -> Bool -> Term -> NodeID -> LogIndex -> ByteString -> RPC
 createAppendEntriesResponse' success convinced ct nid lindex lhash =
   AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
+
+createAppendEntriesResponse :: Monad m => Bool -> Bool -> Raft m AppendEntriesResponse
+createAppendEntriesResponse success convinced = do
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
+  case createAppendEntriesResponse' success convinced ct nid lindex lhash of
+    AER' aer -> return aer
+    _ -> error "deep invariant error"
 
 -- no state update but uses state
 sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
