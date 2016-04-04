@@ -313,15 +313,3 @@ main = do
   void $ CL.fork $ runClient applyFn getEntries cmdStatusMap
   threadDelay 100000
   runREPL toCommands cmdStatusMap
-
-
-testQueues :: IO [CommandEntry]
-testQueues = do
-  (toCommands, fromCommands) <- newChan 1
-  let cmds = take 10 $ repeat (CommandEntry $ adjustAccountBS)
-  liftIO $ writeChan toCommands cmds
-  cmds@(CommandEntry _:rest) <- liftIO $ readChan fromCommands
-  --entries@(([CommandEntry _])) <- liftIO $ readChan fromCommands
-  return cmds
- where
-   adjustAccountBS = BSC.pack $ "AdjustAccount TSLA 10%1"
