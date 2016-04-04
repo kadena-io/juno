@@ -84,3 +84,15 @@ input[type=radio]:checked ~ .check {
 #myApp path.mg-area1-color {
   fill: #E45A5A;
 }
+
+div.rv-xy-plot {
+  color: steelblue;
+}
+
+g.rv-xy-plot__axis__ticks {
+  stroke: rgba(0, 0, 0, 0.15);
+}
+
+g.rv-xy-plot__grid-lines {
+  stroke: rgba(0, 0, 0, 0.05);
+}

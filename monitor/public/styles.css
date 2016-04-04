@@ -91,7 +91,7 @@ h3.node-header {
     justify-content: center;
 
     height: 90px;
-    width: 100px;
+    width: 120px;
     border-right: 2px solid #d3d3d2;
   }
 
@@ -158,4 +158,8 @@ div.float-section {
    * margin-bottom to offset the extra margin adds to .section
    */
   margin: 0 100px -60px 0;
+}
+
+div.node-graph {
+  margin-left: 20px;
 }

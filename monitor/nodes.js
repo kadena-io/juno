@@ -1,7 +1,13 @@
 import 'metrics-graphics/dist/metricsgraphics.css';
 import React from 'react';
-import d3 from 'd3';
-import MG from 'metrics-graphics';
+import {
+  XYPlot,
+  XAxis,
+  YAxis,
+  VerticalGridLines,
+  HorizontalGridLines,
+  VerticalBarSeries,
+} from 'react-vis';
 import RadioGroup from 'react-radio-group';
 
 // how many data points to show (one per second)
@@ -9,13 +15,6 @@ const points = {
   '30 s': 30,
   '1 m': 60,
   '5 m': 300,
-};
-
-// TODO can we show a distribution-ish?
-const trailingFrame = {
-  '1 s': 1,
-  '10 s': 10,
-  '1 m': 60,
 };
 
 function expMovingAvg(dataWindow, trailing) {
@@ -43,7 +42,36 @@ function DeadNode({port}): React.Element {
 
 class Node extends React.Component {
   render(): React.Element {
-    const {port, role, appliedIndex} = this.props;
+    const {port, role, data, appliedIndex, selectedTime} = this.props;
+    const now = new Date();
+
+    const countPoints = points[selectedTime];
+    const commitIndices = data
+      .map(datum => datum.juno.consensus.commit_index.val)
+      .slice(-(points[selectedTime] + 1));
+    const firstValue = commitIndices[0];
+
+    while (commitIndices.length < countPoints + 1) {
+      commitIndices.unshift(firstValue);
+    }
+
+    // get last n points to show (plus points to diff off of)
+    const computedData = commitIndices
+      .map((datum, i, arr) => {
+        const prev = arr[i-1];
+        if (prev == null) {
+          return null;
+        }
+
+        const y = datum - prev;
+
+        return {x: i, y};
+      })
+
+      // first should be null, pop it
+      .filter(datum => datum != null);
+
+    computedData[0] = {x: 1, y: 0}; // HACK
 
     return (
       <div className="node">
@@ -54,68 +82,27 @@ class Node extends React.Component {
             <span className="node-index">index: {appliedIndex}</span>
           </div>
         </h3>
-        <div className="node-graph" ref={ref => this._d3 = ref} />
+        <div className="node-graph">
+          <XYPlot
+            width={600}
+            height={200}
+            animation={{duration: 50}}
+            opacity={0.2}
+            color="steelblue"
+          >
+            <HorizontalGridLines color="steelblue" />
+            <VerticalGridLines color="steelblue" />
+            <XAxis tickValues={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]} />
+            <YAxis />
+            <VerticalBarSeries
+              data={computedData}
+            />
+          </XYPlot>
+        </div>
       </div>
     );
   }
 
-  componentDidMount() {
-    this._renderD3();
-  }
-
-  componentWillReceiveProps() {
-    this._renderD3();
-  }
-
-  _renderD3() {
-    const {port, data, selectedTime} = this.props;
-    const now = new Date();
-
-    const trailing = trailingFrame['10 s'];
-
-    // get last n points to show (plus points to diff off of)
-    const computedData = data
-      .slice(-(points[selectedTime] + trailing))
-      .map((datum, i, arr) => {
-        // Is it posssible to even access the earlier datum?
-        const preIndex = i - trailing;
-        if (preIndex < 0) {
-          return null;
-        }
-
-        const date = new Date(datum.ekg.server_timestamp_ms.val);
-        const dataWindow = arr
-          .slice(i - trailing, i)
-          .map(windowDatum => [
-            new Date(windowDatum.ekg.server_timestamp_ms.val),
-            // windowDatum.juno.consensus.commit_period.count
-            windowDatum.juno.consensus.commit_index.val,
-          ]);
-        const avgFreq = expMovingAvg(dataWindow, trailing);
-
-        return {date, value: avgFreq};
-      })
-
-      // filter out the points too early to compute
-      .filter(datum => datum != null);
-
-    if (computedData.length > 0) {
-      MG.data_graphic({
-        title: '',
-        data: computedData,
-        width: 600,
-        height: 200,
-        target: this._d3,
-        x_accessor: 'date',
-        xax_format(f) {
-          const secsAgo = Math.round((now - f) / 1000, 0);
-          return `${secsAgo} s ago`;
-        },
-        y_accessor: 'value',
-        interpolate: 'monotone',
-      });
-    }
-  }
 }
 
 // different time domains we're equipped to show: 30 s, 1 m, 5 m

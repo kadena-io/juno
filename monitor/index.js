@@ -3,7 +3,6 @@ require('./public/light.css');
 require('./public/reset.css');
 import React from 'react';
 import ReactDOM from 'react-dom';
-import {LineChart} from 'react-d3-basic';
 
 import Health from './health';
 import Nodes from './nodes';
@@ -14,12 +13,6 @@ const ports = [10000, 10001, 10002, 10003];
 
 // number of datapoints to keep around (5 mins + 1 min)
 const dataWindow = 60 * 6;
-
-const emptyNodeData = {
-  data: [],
-  role: 'Unknown',
-  appliedIndex: null,
-};
 
 const LOST_NODE = 'LOST_NODE';
 

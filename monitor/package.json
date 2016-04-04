@@ -25,17 +25,11 @@
   },
   "homepage": "https://github.com/alicoding/react-webpack-babel#readme",
   "dependencies": {
-    "bootstrap": "3.3.5",
-    "cubism": "^1.6.0",
     "d3": "^3.5.16",
-    "json-loader": "^0.5.4",
-    "json5-loader": "^0.6.0",
-    "metrics-graphics": "^2.8.0",
-    "node-libs-browser": "1.0.0",
     "react": "0.14.7",
-    "react-d3-basic": "^1.6.11",
     "react-dom": "0.14.7",
-    "react-radio-group": "^2.2.0"
+    "react-radio-group": "^2.2.0",
+    "react-vis": "^0.2.0"
   },
   "devDependencies": {
     "babel-core": "6.7.0",
