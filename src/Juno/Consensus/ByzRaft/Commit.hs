@@ -127,7 +127,7 @@ updateCommitIndex = do
                 then do
                   commitIndex .= qci
                   logCommitChange ci qci
-                  commitProof %= Map.filter (\a -> qci > _aerIndex a)
+                  commitProof %= Map.filter (\a -> qci < _aerIndex a)
                   debug $ "Commit index is now: " ++ show qci
                   return True
                 else do
