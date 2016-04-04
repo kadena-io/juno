@@ -184,32 +184,16 @@ clientHandleEvents cmdStatusMap = forever $ do
     ERPC (CMDR' cmdr)   -> clientHandleCommandResponse cmdStatusMap cmdr
     HeartbeatTimeout _ -> do
       timeouts <- use numTimeouts
-      limit <- view (cfg.clientTimeoutLimit)
-      if timeouts > limit
-        then do
-          debug "starting a revolution"
-          nid <- view (cfg.nodeId)
-          mlid <- use currentLeader
-          case mlid of
-            Just lid -> do
-              rid <- nextRequestId
-              view (cfg.otherNodes) >>=
-                traverse_ (\n -> sendRPC n (REV' (Revolution nid lid rid NewMsg)))
-              numTimeouts .= 0
-              resetHeartbeatTimer
-            _ -> do
-              setLeaderToFirst
-              resetHeartbeatTimer
-        else if timeouts > 3
-             then do
-                debug "choosing a new leader and resending commands"
-                setLeaderToNext
-                reqs <- use pendingRequests
-                pendingRequests .= Map.empty -- this will reset the timer on resend
-                traverse_ clientSendCommand reqs
-                numTimeouts += 1
-             else numTimeouts += 1
-    _                  -> return ()
+      if timeouts > 3
+      then do
+        debug "choosing a new leader and resending commands"
+        setLeaderToNext
+        reqs <- use pendingRequests
+        pendingRequests .= Map.empty -- this will reset the timer on resend
+        traverse_ clientSendCommand reqs
+        numTimeouts += 1
+      else numTimeouts += 1
+    _ -> return ()
 
 -- THREAD: CLIENT MAIN. updates state
 -- If the client doesn't know the leader? Then set leader to first node, the client will be updated with the real leaderId when it receives a command response.
