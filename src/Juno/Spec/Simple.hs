@@ -121,7 +121,6 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
 
     -- _dequeue :: OutChan (Event nt et rt) -> m (Event nt et rt)
     , _dequeue = liftIO $ readChan eventRead
-    , _dequeueNonBlock = liftIO $ tryReadChan eventRead >>= tryRead . fst
 
     }
 

@@ -10,7 +10,6 @@ module Juno.Util.Util
   , runRWS_
   , enqueueEvent, enqueueEventLater
   , dequeueEvent
-  , dequeueEventNonBlock
   , logMetric
   , logStaticMetrics
   , messageReceiver
@@ -81,9 +80,6 @@ enqueueEventLater t event = view (rs.enqueueLater) >>= \f -> f t event
 -- no state update
 dequeueEvent :: Monad m => Raft m Event
 dequeueEvent = join $ view (rs.dequeue)
-
-dequeueEventNonBlock :: Monad m => Raft m (Maybe Event)
-dequeueEventNonBlock = join $ view (rs.dequeueNonBlock)
 
 logMetric :: Monad m => Metric -> Raft m ()
 logMetric metric = view (rs.publishMetric) >>= \f -> f metric

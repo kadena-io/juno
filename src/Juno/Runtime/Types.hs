@@ -16,7 +16,7 @@ module Juno.Runtime.Types
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
   , readVotedFor, writeVotedFor, applyLogEntry, sendMessage
   , sendMessages, getMessage, debugPrint, publishMetric, getTimestamp, random
-  , enqueue, dequeue, enqueueLater, killEnqueued, dequeueNonBlock
+  , enqueue, dequeue, enqueueLater, killEnqueued
   , NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
@@ -736,8 +736,6 @@ data RaftSpec m = RaftSpec
   , _killEnqueued     :: ThreadId -> m () -- Simple,Timer
 
   , _dequeue          :: m Event -- Simple,Util(dequeueEvent)
-
-  , _dequeueNonBlock  :: m (Maybe Event)
   }
 makeLenses (''RaftSpec)
 
