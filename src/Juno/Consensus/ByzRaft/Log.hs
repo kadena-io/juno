@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Juno.Consensus.ByzRaft.Log
   ( addLogEntryAndHash
   , updateLogHashesFromIndex)
@@ -14,10 +16,16 @@ import Juno.Util.Util
 
 -- TODO: This uses the old decode encode trick and should be changed...
 hashLogEntry :: Maybe LogEntry -> LogEntry -> LogEntry
-hashLogEntry (Just LogEntry{ _leHash = prevHash}) le =
-  le { _leHash = hash SHA256 (encode (le { _leHash = prevHash }))}
-hashLogEntry Nothing le =
-  le { _leHash = hash SHA256 (encode (le { _leHash = B.empty }))}
+hashLogEntry (Just LogEntry{ _leHash = prevHash }) le@LogEntry{..} =
+  le { _leHash = hash SHA256 (encode $ LEWire (_leTerm, getCmdSignedRPC le, prevHash))}
+hashLogEntry Nothing le@LogEntry{..} =
+  le { _leHash = hash SHA256 (encode $ LEWire (_leTerm, getCmdSignedRPC le, B.empty))}
+
+getCmdSignedRPC :: LogEntry -> SignedRPC
+getCmdSignedRPC LogEntry{ _leCommand = Command{ _cmdProvenance = ReceivedMsg{ _pDig = dig, _pOrig = bdy }}} =
+  SignedRPC dig bdy
+getCmdSignedRPC LogEntry{ _leCommand = Command{ _cmdProvenance = NewMsg }} =
+  error "Invariant Failure: for a command to be in a log entry, it needs to have been received!"
 
 updateLogHashesFromIndex :: LogIndex -> Seq LogEntry -> Seq LogEntry
 updateLogHashesFromIndex i es =
