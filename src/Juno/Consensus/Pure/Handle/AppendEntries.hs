@@ -180,7 +180,8 @@ handle ae = do
               (JT._logEntries s)
               (JT._quorumSize r)
   (AppendEntriesOut{..}, l) <- runReaderT (runWriterT (handleAppendEntries ae)) ape
-  mapM_ debug l
+  ci <- return $ JT._commitIndex s
+  unless (ci == _prevLogIndex ae && length l == 1) $ mapM_ debug l
   applyNewLeader _newLeaderAction
   case _result of
     Ignore -> return ()
