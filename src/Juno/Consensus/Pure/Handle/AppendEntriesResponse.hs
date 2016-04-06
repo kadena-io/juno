@@ -46,7 +46,7 @@ data LeaderState =
     , _deleteConvinced :: NodeID } |
   ConvincedAndUnsuccessful -- sends AE after
     { _sendAENodeID :: NodeID
-    , _decrementNextIndex :: NodeID } |
+    , _setLaggingLogIndex :: LogIndex } |
   ConvincedAndSuccessful -- does not send AE after
     { _incrementNextIndexNode :: NodeID
     , _incrementNextIndexLogIndex :: LogIndex
@@ -59,7 +59,7 @@ data RequestTermStatus = OldRequestTerm | CurrentRequestTerm | NewerRequestTerm
 
 handleAEResponse :: (MonadWriter [String] m, MonadReader AEResponseEnv m) => AppendEntriesResponse -> m AEResponseOut
 handleAEResponse aer@AppendEntriesResponse{..} = do
-    tell ["got an appendEntriesResponse RPC"]
+    --tell ["got an appendEntriesResponse RPC"]
     mcp <- updateCommitProofMap aer <$> view commitProof
     role' <- view role
     currentTerm' <- view term
@@ -68,7 +68,7 @@ handleAEResponse aer@AppendEntriesResponse{..} = do
       return $ case (isConvinced, isSuccessful, whereIsTheRequest currentTerm') of
         (NotConvinced, _, OldRequestTerm) -> AEResponseOut mcp $ Unconvinced _aerNodeId _aerNodeId
         (NotConvinced, _, CurrentRequestTerm) -> AEResponseOut mcp $ Unconvinced _aerNodeId _aerNodeId
-        (Convinced, Failure, CurrentRequestTerm) -> AEResponseOut mcp $ ConvincedAndUnsuccessful _aerNodeId _aerNodeId
+        (Convinced, Failure, CurrentRequestTerm) -> AEResponseOut mcp $ ConvincedAndUnsuccessful _aerNodeId _aerIndex
         (Convinced, Success, CurrentRequestTerm) -> AEResponseOut mcp $ ConvincedAndSuccessful _aerNodeId _aerIndex _aerNodeId
         -- The next two case are underspecified currently and they should not occur as
         -- they imply that a follow is ahead of us but the current code sends an AER anyway
@@ -129,5 +129,5 @@ handle ae = do
       JT.lConvinced %= Set.insert _insertConvinced
       resetElectionTimerLeader
     ConvincedAndUnsuccessful{..} -> do
-      updateLNextIndex $ Map.adjust (subtract 1) _decrementNextIndex
+      updateLNextIndex $ Map.insert _sendAENodeID _setLaggingLogIndex
       resetElectionTimerLeader

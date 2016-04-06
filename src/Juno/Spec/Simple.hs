@@ -18,9 +18,12 @@ import Juno.Messaging.ZMQ
 import Juno.Monitoring.Server (startMonitoring)
 
 import Control.Lens
-import Control.Concurrent (yield)
+import Control.Monad
+import Control.Concurrent (yield, threadDelay, takeMVar, putMVar, newMVar, MVar)
 import qualified Control.Concurrent.Lifted as CL
 import Control.Concurrent.Chan.Unagi
+import qualified Control.Concurrent.Chan.Unagi.NoBlocking as NoBlock
+import qualified Control.Concurrent.Chan.Unagi.Bounded as Bounded
 
 import Data.Thyme.Clock (getCurrentTime)
 
@@ -74,10 +77,10 @@ noDebug :: NodeID -> String -> IO ()
 noDebug _ _ = return ()
 
 simpleRaftSpec :: MonadIO m
-               => OutChan (ReceivedAt, ByteString)
+               => MVar (NoBlock.Stream (ReceivedAt, ByteString))
                -> InChan (OutBoundMsg String ByteString)
-               -> OutChan Event
-               -> InChan Event
+               -> Bounded.OutChan Event
+               -> Bounded.InChan Event
                -> (CommandEntry -> m CommandResult)
                -> (NodeID -> String -> m ())
                -> (Metric -> m ())
@@ -102,7 +105,8 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
     , _sendMessage     = liftIO2 (sendMsg outboxWrite)
     , _sendMessages    = liftIO . sendMsgs outboxWrite
       -- get messages using getMsg
-    , _getMessage      = liftIO $ readChan inboxRead
+    , _getMessage      = liftIO $ getMsgSync inboxRead
+    , _getMessages = liftIO . getBacklog inboxRead
       -- use the debug function given by the caller
     , _debugPrint      = debugFn
       -- publish a 'Metric' to EKG
@@ -112,17 +116,44 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
      -- _random :: forall a . Random a => (a, a) -> m a
     , _random = liftIO . randomRIO
     -- _enqueue :: InChan (Event nt et rt) -> Event nt et rt -> m ()
-    , _enqueue = \e -> liftIO $ writeChan eventWrite e >> yield
+    , _enqueue = \e -> liftIO $ Bounded.writeChan eventWrite e >> yield
+
+    , _enqueueMultiple = \e -> liftIO $ Bounded.writeList2Chan eventWrite e >> yield
 
     -- _enqueueLater :: Int -> InChan (Event nt et rt) -> Event nt et rt -> m ThreadId
-    , _enqueueLater = \t e -> liftIO $ CL.fork (CL.threadDelay t >> liftIO (writeChan eventWrite e))
+    , _enqueueLater = \t e -> liftIO $ CL.fork (CL.threadDelay t >> liftIO (Bounded.writeChan eventWrite e))
 
     , _killEnqueued = liftIO . CL.killThread
 
     -- _dequeue :: OutChan (Event nt et rt) -> m (Event nt et rt)
-    , _dequeue = liftIO $ readChan eventRead
+    , _dequeue = liftIO $ Bounded.readChan eventRead
 
     }
+
+getMsgSync :: MVar (NoBlock.Stream (ReceivedAt,ByteString)) -> IO (ReceivedAt,ByteString)
+getMsgSync m = do
+  inboxRead <- takeMVar m
+  t <- NoBlock.tryReadNext inboxRead
+  case t of
+    NoBlock.Pending -> putMVar m inboxRead >> getMsgSync m
+    NoBlock.Next v inboxRead' -> putMVar m inboxRead' >> return v
+
+getBacklog :: MVar (NoBlock.Stream (ReceivedAt,ByteString)) -> Int -> IO [(ReceivedAt,ByteString)]
+getBacklog m cnt = do
+  inboxRead <- takeMVar m
+  let go strm cnt' = if cnt' <= 0
+                then putMVar m strm >> return []
+                else do
+                  s <- NoBlock.tryReadNext strm
+                  case s of
+                    NoBlock.Next a strm' -> liftM (a:) (go strm' (cnt'-1))
+                    NoBlock.Pending -> putMVar m strm >> return []
+  blog <- go inboxRead cnt
+  lenBlog <- return $ length blog
+  if lenBlog > 0
+  then return blog
+  else threadDelay 1000 >> return []
+
 
 nodeIDtoAddr :: NodeID -> Addr String
 nodeIDtoAddr (NodeID _ p) = Addr $ "tcp://127.0.0.1:" ++ show p
@@ -146,26 +177,30 @@ runServer :: (CommandEntry -> IO CommandResult) -> IO ()
 runServer applyFn = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
-  (inboxWrite, inboxRead) <- newChan
+  (inboxWrite, inboxRead) <- NoBlock.newChan
+  inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead
   (outboxWrite, outboxRead) <- newChan
-  (eventWrite, eventRead) <- newChan
+  -- the 50 provides the back pressure on the msg stream.
+  -- When the writer blocks, the messages will build up in the inboxRead, which is unbounded
+  (eventWrite, eventRead) <- Bounded.newChan 20
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
   pubMetric <- startMonitoring rconf
   runMsgServer inboxWrite outboxRead me []
-  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
+  let raftSpec = simpleRaftSpec inboxRead' outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
   runRaftServer rconf raftSpec
 
 runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
 runClient applyFn getEntries cmdStatusMap = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
-  (inboxWrite, inboxRead) <- newChan -- client writes to inbox, raft reads
+  (inboxWrite, inboxRead) <- NoBlock.newChan
+  inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead
   (outboxWrite, outboxRead) <- newChan -- raft writes to outbox, client reads
-  (eventWrite, eventRead) <- newChan -- timer events
+  (eventWrite, eventRead) <- Bounded.newChan 20 -- timer events
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
   pubMetric <- startMonitoring rconf
   runMsgServer inboxWrite outboxRead me [] -- ZMQ
-  let raftSpec = simpleRaftSpec inboxRead outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
+  let raftSpec = simpleRaftSpec inboxRead' outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
   runRaftClient getEntries cmdStatusMap rconf raftSpec
 
 

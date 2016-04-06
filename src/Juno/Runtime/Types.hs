@@ -15,8 +15,8 @@ module Juno.Runtime.Types
   , RaftSpec(..)
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
   , readVotedFor, writeVotedFor, applyLogEntry, sendMessage
-  , sendMessages, getMessage, debugPrint, publishMetric, getTimestamp, random
-  , enqueue, dequeue, enqueueLater, killEnqueued
+  , sendMessages, getMessage, getMessages, debugPrint, publishMetric, getTimestamp, random
+  , enqueue, enqueueMultiple, dequeue, enqueueLater, killEnqueued
   , NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
@@ -720,6 +720,9 @@ data RaftSpec m = RaftSpec
     -- ^ Function to get the next message.
   , _getMessage       :: m (ReceivedAt, ByteString) -- Simple,Util(messageReceiver)
 
+    -- ^ Function to get the next message.
+  , _getMessages      :: Int -> m [(ReceivedAt, ByteString)] -- Simple,Util(messageReceiver)
+
     -- ^ Function to log a debug message (no newline).
   , _debugPrint       :: NodeID -> String -> m () -- Simple,Util(debug)
 
@@ -730,6 +733,8 @@ data RaftSpec m = RaftSpec
   , _random           :: forall a . Random a => (a, a) -> m a -- Simple,Util(randomRIO[timer])
 
   , _enqueue          :: Event -> m () -- Simple,Util(enqueueEvent)
+
+  , _enqueueMultiple  :: [Event] -> m ()
 
   , _enqueueLater     :: Int -> Event -> m ThreadId -- Simple,Util(enqueueEventLater[timer])
 
