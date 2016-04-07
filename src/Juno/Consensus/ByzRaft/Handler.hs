@@ -65,6 +65,7 @@ handleEvents = forever $ do
   e <- dequeueEvent
   case e of
     ERPC rpc           -> handleRPC rpc >> issueBatch
+    AERs alotOfAers    -> PureAppendEntriesResponse.handleAlotOfAers alotOfAers >> issueBatch
     ElectionTimeout s  -> PureElectionTimeout.handle s >> issueBatch
     HeartbeatTimeout s -> PureHeartbeatTimeout.handle s >> issueBatch
 

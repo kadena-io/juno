@@ -32,11 +32,12 @@ import Control.Parallel.Strategies
 import Data.Sequence (Seq)
 import Control.Monad.RWS
 import Data.ByteString (ByteString)
-import Data.Serialize
+
 import qualified Control.Concurrent.Lifted as CL
 import qualified Data.ByteString as B
 import qualified Data.Sequence as Seq
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified System.Random as R
 
 seqIndex :: Seq a -> Int -> Maybe a
@@ -98,52 +99,57 @@ logStaticMetrics = do
 messageReceiver :: Monad m => Raft m ()
 messageReceiver = do
   gm <- view (rs.getMessages)
+  getCmds <- view (rs.getNewCommands)
+  getAers <- view (rs.getNewEvidence)
   ks <- KeySet <$> view (cfg.publicKeys) <*> view (cfg.clientPublicKeys)
   forever $ do
-    -- Only grab the backlog after the previous one was enqueued.
-    -- This way back pressure can trigger better batching, set to 1000 for speed!
-    backlog <- firstPassDecode =<< gm 2000
-    verified <- return $ parallelVerify ks backlog
-    -- the logic for the accelerator goes in here
-    (invalids, valids) <- return $ partitionEithers verified
-    mapM_ debug invalids
-    (cmds@(CommandBatch cmds' _), others) <- return $ batchCommands valids
+    -- NB: This all happens on one thread because it runs in Raft and we're trying (too hard) to avoid running in IO
+
+    -- Take a big gulp of AERs, the more we get the more we can skip
+    (howManyAers, alotOfAers, invalidAers) <- toAlotOfAers <$> getAers 2000
+    unless (alotOfAers == mempty) $ do debug $ "Smashed together " ++ show howManyAers ++ " AERs"
+                                       enqueueEvent $ AERs alotOfAers
+    mapM_ debug invalidAers
+    -- sip from the general message stream, this should be relatively underpopulated except during an election but can contain HUGE AEs
+    gm 50 >>= sequentialVerify ks
+    -- now take a massive gulp of commands
+    verifiedCmds <- parallelVerify ks <$> getCmds 5000
+    (invalidCmds, validCmds) <- return $ partitionEithers verifiedCmds
+    mapM_ debug invalidCmds
+    cmds@(CommandBatch cmds' _) <- return $ batchCommands validCmds
     lenCmdBatch <- return $ length cmds'
-    if lenCmdBatch > 0
-    then do
+    unless (lenCmdBatch == 0) $ do
       enqueueEvent $ ERPC $ CMDB' cmds
       debug $ "AutoBatched " ++ show (length cmds') ++ " Commands"
-      mapM_ (enqueueEvent . ERPC) others
-    else do
-      mapM_ (enqueueEvent . ERPC) others
 
+toAlotOfAers :: [(ReceivedAt,SignedRPC)] -> (Int, AlotOfAERs, [String])
+toAlotOfAers s = (length decodedAers, alotOfAers, invalids)
+  where
+    (invalids, decodedAers) = partitionEithers $ uncurry aerOnlyDecode <$> s
+    mkAlot aer@AppendEntriesResponse{..} = AlotOfAERs $ Map.insert _aerNodeId (Set.singleton aer) Map.empty
+    alotOfAers = mconcat (mkAlot <$> decodedAers)
 
-firstPassDecode :: Monad m => [(ReceivedAt,ByteString)] -> Raft m [(ReceivedAt,SignedRPC)]
-firstPassDecode [] = return []
-firstPassDecode ((ts,msg):msgs) = do
-    case decode msg of
-      Left err -> do
-        -- two debugs here because... when the system is streaming you may miss the error & you want the message.
-        -- So print the msg (to get your attention) and then print the error under it... TODO: better logging
-        debug $ "Failed to deserialize to SignedRPC [Msg]: " ++ show msg
-        debug $ "Failed to deserialize to SignedRPC [Error]: " ++ err
-        firstPassDecode msgs
-      Right v -> liftM ((ts,v):) (firstPassDecode msgs)
+sequentialVerify :: Monad m => KeySet -> [(ReceivedAt, SignedRPC)] -> Raft m ()
+sequentialVerify ks msgs = do
+  (aes, noAes) <- return $ partition (\(_,SignedRPC{..}) -> if _digType _sigDigest == AE then True else False) msgs
+  (invalid, validNoAes) <- return $ partitionEithers $ parallelVerify ks noAes
+  mapM_ (enqueueEvent . ERPC) validNoAes
+  mapM_ debug invalid
+  -- AE's have the potential to be BIG so we need to take care not to do them in parallel by accident
+  mapM_ (\(ts,msg) -> case signedRPCtoRPC (Just ts) ks msg of
+            Left err -> debug err
+            Right v -> enqueueEvent $ ERPC v) aes
 
 parallelVerify :: KeySet -> [(ReceivedAt, SignedRPC)] -> [Either String RPC]
 parallelVerify ks msgs = ((\(ts, msg) -> signedRPCtoRPC (Just ts) ks msg) <$> msgs) `using` parList rseq
 
-batchCommands :: [RPC] -> (CommandBatch,[RPC])
-batchCommands rpcs = (cmdBatch, others)
+batchCommands :: [RPC] -> CommandBatch
+batchCommands cmdRPCs = cmdBatch
   where
-    (foundCmds, others) = partition isCmdType rpcs
-    cmdBatch = CommandBatch (concat (prepCmds <$> foundCmds)) NewMsg
+    cmdBatch = CommandBatch (concat (prepCmds <$> cmdRPCs)) NewMsg
     prepCmds (CMD' cmd) = [cmd]
     prepCmds (CMDB' (CommandBatch cmds _)) = cmds
     prepCmds o = error $ "Invariant failure in batchCommands: " ++ show o
-    isCmdType (CMD' _) = True
-    isCmdType (CMDB' _) = True
-    isCmdType _ = False
 
 setTerm :: Monad m => Term -> Raft m ()
 setTerm t = do

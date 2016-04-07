@@ -77,7 +77,9 @@ noDebug :: NodeID -> String -> IO ()
 noDebug _ _ = return ()
 
 simpleRaftSpec :: MonadIO m
-               => MVar (NoBlock.Stream (ReceivedAt, ByteString))
+               => MVar (NoBlock.Stream (ReceivedAt, SignedRPC))
+               -> MVar (NoBlock.Stream (ReceivedAt, SignedRPC))
+               -> MVar (NoBlock.Stream (ReceivedAt, SignedRPC))
                -> InChan (OutBoundMsg String ByteString)
                -> Bounded.OutChan Event
                -> Bounded.InChan Event
@@ -85,7 +87,7 @@ simpleRaftSpec :: MonadIO m
                -> (NodeID -> String -> m ())
                -> (Metric -> m ())
                -> RaftSpec m
-simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMetricFn = RaftSpec
+simpleRaftSpec inboxRead cmdInboxRead aerInboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMetricFn = RaftSpec
     {
       -- TODO don't read log entries
       _readLogEntry    = return . const Nothing
@@ -106,7 +108,9 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
     , _sendMessages    = liftIO . sendMsgs outboxWrite
       -- get messages using getMsg
     , _getMessage      = liftIO $ getMsgSync inboxRead
-    , _getMessages = liftIO . getBacklog inboxRead
+    , _getMessages     = liftIO . getBacklog inboxRead
+    , _getNewCommands  = liftIO . getBacklog cmdInboxRead
+    , _getNewEvidence  = liftIO . getBacklog aerInboxRead
       -- use the debug function given by the caller
     , _debugPrint      = debugFn
       -- publish a 'Metric' to EKG
@@ -130,7 +134,7 @@ simpleRaftSpec inboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMet
 
     }
 
-getMsgSync :: MVar (NoBlock.Stream (ReceivedAt,ByteString)) -> IO (ReceivedAt,ByteString)
+getMsgSync :: MVar (NoBlock.Stream (ReceivedAt,SignedRPC)) -> IO (ReceivedAt,SignedRPC)
 getMsgSync m = do
   inboxRead <- takeMVar m
   t <- NoBlock.tryReadNext inboxRead
@@ -138,7 +142,7 @@ getMsgSync m = do
     NoBlock.Pending -> putMVar m inboxRead >> getMsgSync m
     NoBlock.Next v inboxRead' -> putMVar m inboxRead' >> return v
 
-getBacklog :: MVar (NoBlock.Stream (ReceivedAt,ByteString)) -> Int -> IO [(ReceivedAt,ByteString)]
+getBacklog :: MVar (NoBlock.Stream (ReceivedAt,SignedRPC)) -> Int -> IO [(ReceivedAt,SignedRPC)]
 getBacklog m cnt = do
   inboxRead <- takeMVar m
   let go strm cnt' = if cnt' <= 0
@@ -149,11 +153,9 @@ getBacklog m cnt = do
                     NoBlock.Next a strm' -> liftM (a:) (go strm' (cnt'-1))
                     NoBlock.Pending -> putMVar m strm >> return []
   blog <- go inboxRead cnt
-  lenBlog <- return $ length blog
-  if lenBlog > 0
-  then return blog
-  else threadDelay 1000 >> return []
-
+  if blog /= []
+    then return blog
+    else threadDelay 1000 >> return []
 
 nodeIDtoAddr :: NodeID -> Addr String
 nodeIDtoAddr (NodeID _ p) = Addr $ "tcp://127.0.0.1:" ++ show p
@@ -179,14 +181,18 @@ runServer applyFn = do
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
   (inboxWrite, inboxRead) <- NoBlock.newChan
   inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead
+  (cmdInboxWrite, cmdInboxRead) <- NoBlock.newChan
+  cmdInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 cmdInboxRead
+  (aerInboxWrite, aerInboxRead) <- NoBlock.newChan
+  aerInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 aerInboxRead
   (outboxWrite, outboxRead) <- newChan
   -- the 50 provides the back pressure on the msg stream.
   -- When the writer blocks, the messages will build up in the inboxRead, which is unbounded
   (eventWrite, eventRead) <- Bounded.newChan 20
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
   pubMetric <- startMonitoring rconf
-  runMsgServer inboxWrite outboxRead me []
-  let raftSpec = simpleRaftSpec inboxRead' outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
+  runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me []
+  let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead' outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
   runRaftServer rconf raftSpec
 
 runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
@@ -195,12 +201,16 @@ runClient applyFn getEntries cmdStatusMap = do
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
   (inboxWrite, inboxRead) <- NoBlock.newChan
   inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead
+  (cmdInboxWrite, cmdInboxRead) <- NoBlock.newChan
+  cmdInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 cmdInboxRead
+  (aerInboxWrite, aerInboxRead) <- NoBlock.newChan
+  aerInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 aerInboxRead
   (outboxWrite, outboxRead) <- newChan -- raft writes to outbox, client reads
   (eventWrite, eventRead) <- Bounded.newChan 20 -- timer events
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
   pubMetric <- startMonitoring rconf
-  runMsgServer inboxWrite outboxRead me [] -- ZMQ
-  let raftSpec = simpleRaftSpec inboxRead' outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
+  runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me [] -- ZMQ
+  let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead' outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
   runRaftClient getEntries cmdStatusMap rconf raftSpec
 
 

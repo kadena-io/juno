@@ -45,7 +45,8 @@ createAppendEntries' target lNextIndex' es ct nid vts yesVotes =
     (pli,plt) = logInfoForNextIndex mni es
     vts' = if Set.member target vts then Set.empty else yesVotes
   in
-    AE' $ AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) vts' NewMsg
+    -- If we send too big of an AppendEntries we can lock their system...
+    AE' $ AppendEntries ct nid pli plt (Seq.take 8000 $ Seq.drop (fromIntegral $ pli + 1) es) vts' NewMsg
 
 -- TODO: There seems to be needless construction then destruction of the non-wire message types
 --       Not sure if that could impact performance or if it will be unrolled/magic-ified
@@ -78,7 +79,7 @@ sendAllAppendEntries = do
 
 createAppendEntriesResponse' :: Bool -> Bool -> Term -> NodeID -> LogIndex -> ByteString -> RPC
 createAppendEntriesResponse' success convinced ct nid lindex lhash =
-  AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
+  AER' $ AppendEntriesResponse ct nid success convinced lindex lhash True NewMsg
 
 createAppendEntriesResponse :: Monad m => Bool -> Bool -> Raft m AppendEntriesResponse
 createAppendEntriesResponse success convinced = do

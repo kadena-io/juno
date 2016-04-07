@@ -1,20 +1,24 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Juno.Consensus.Pure.Handle.AppendEntriesResponse
   (handle
+  ,handleAlotOfAers
   ,updateCommitProofMap)
 where
 
 import Control.Lens hiding (Index)
+import Control.Parallel.Strategies
 import Control.Monad.Reader
 import Control.Monad.State (get)
 import Control.Monad.Writer.Strict
-import Data.Map (Map)
-import qualified Data.Map as Map
-
+import Data.Maybe
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Juno.Consensus.ByzRaft.Commit (doCommit)
@@ -131,3 +135,20 @@ handle ae = do
     ConvincedAndUnsuccessful{..} -> do
       updateLNextIndex $ Map.insert _sendAENodeID _setLaggingLogIndex
       resetElectionTimerLeader
+
+handleAlotOfAers :: Monad m => AlotOfAERs -> JT.Raft m ()
+handleAlotOfAers (AlotOfAERs m) = do
+  ks <- KeySet <$> view (JT.cfg . JT.publicKeys) <*> view (JT.cfg . JT.clientPublicKeys)
+  res <- return ((processSetAer ks <$> Map.elems m) `using` parList rseq)
+  aers <- liftM catMaybes $ mapM (\(a,l) -> mapM_ debug l >> return a) res
+  mapM_ handle aers
+
+processSetAer :: KeySet -> Set AppendEntriesResponse -> (Maybe AppendEntriesResponse, [String])
+processSetAer ks s = go [] (Set.toDescList s)
+  where
+    go fails [] = (Nothing, fails)
+    go fails (aer:rest)
+      | _aerWasVerified aer = (Just aer, fails)
+      | otherwise = case aerReVerify ks aer of
+                      Left f -> go (f:fails) rest
+                      Right () -> (Just $ aer {_aerWasVerified = True}, fails)

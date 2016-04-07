@@ -13,7 +13,7 @@ module Juno.Consensus.Pure.Types (
   , LogEntry(..)
   -- * RPC
   , AppendEntries(..)
-  , AppendEntriesResponse(..)
+  , AppendEntriesResponse(..),aerOnlyDecode,aerReVerify,AlotOfAERs(..)
   , RequestVote(..)
   , RequestVoteResponse(..)
   , Command(..)
@@ -41,7 +41,7 @@ import Juno.Runtime.Types (
   , LogEntry(..)
   -- * RPC
   , AppendEntries(..)
-  , AppendEntriesResponse(..)
+  , AppendEntriesResponse(..),aerOnlyDecode,aerReVerify,AlotOfAERs(..)
   , RequestVote(..)
   , RequestVoteResponse(..)
   , Command(..)

@@ -16,9 +16,10 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.ZMQ4.Monadic
 import Data.Thyme.Clock
+import Data.Serialize
 
 import Juno.Messaging.Types
-import Juno.Runtime.Types (ReceivedAt(..))
+import Juno.Runtime.Types (ReceivedAt(..),SignedRPC(..),Digest(..),MsgType(..))
 
 sendProcess :: OutChan (OutBoundMsg String ByteString)
             -> Rolodex String (Socket z Push)
@@ -57,19 +58,32 @@ recipList (Rolodex r) RAll = return $ _unListenOn <$> Map.elems r
 recipList (Rolodex r) (RSome addrs) = return $ _unListenOn . (r Map.!) <$> Set.toList addrs
 recipList (Rolodex r) (ROne addr) = return $ _unListenOn <$> [r Map.! addr]
 
-runMsgServer :: NoBlock.InChan (ReceivedAt, ByteString)
+runMsgServer :: NoBlock.InChan (ReceivedAt, SignedRPC)
+             -> NoBlock.InChan (ReceivedAt, SignedRPC)
+             -> NoBlock.InChan (ReceivedAt, SignedRPC)
              -> OutChan (OutBoundMsg String ByteString)
              -> Addr String
              -> [Addr String]
              -> IO ()
-runMsgServer inboxWrite outboxRead me addrList = void $ do
+runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me addrList = void $ do
     void $ forkIO $ runZMQ $ do
       sock <- socket Pull
       _ <- bind sock $ _unAddr me
       forever $ do
         newMsg <- receive sock
         ts <- liftIO getCurrentTime
-        liftIO $ NoBlock.writeChan inboxWrite (ReceivedAt ts, newMsg) >> yield
+        case decode newMsg of
+          Left err -> do
+            liftIO $ putStrLn $ "Failed to deserialize to SignedRPC [Msg]: " ++ show newMsg
+            liftIO $ putStrLn $ "Failed to deserialize to SignedRPC [Error]: " ++ err
+            liftIO yield
+          Right s@(SignedRPC dig _)
+            | _digType dig == CMD || _digType dig == CMDB ->
+              liftIO $ NoBlock.writeChan cmdInboxWrite (ReceivedAt ts, s) >> yield
+            | _digType dig == AER ->
+              liftIO $ NoBlock.writeChan aerInboxWrite (ReceivedAt ts, s) >> yield
+            | otherwise           ->
+              liftIO $ NoBlock.writeChan inboxWrite (ReceivedAt ts, s) >> yield
     threadDelay 100000 -- to be sure that the recieve side is up first
     forkIO $ runZMQ $ do
       rolodex <- addNewAddrs (Rolodex Map.empty) addrList
