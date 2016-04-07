@@ -70,7 +70,7 @@ class App extends React.Component {
   }
 
   _fetch(port: number) {
-    fetch(`//localhost:${port+80}`, {
+    fetch(`//localhost:${port+1080}`, {
       method: 'get',
       headers: new Headers({
         'Accept': 'application/json',

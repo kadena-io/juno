@@ -24,7 +24,7 @@ import qualified System.Metrics.Distribution as Dist
 startApi :: Config -> IO Server
 startApi config = forkServer "localhost" port
   where
-    port = 80 + fromIntegral (config ^. nodeId . to _port)
+    port = 1080 + fromIntegral (config ^. nodeId . to _port)
 
 startMonitoring :: Config -> IO (Metric -> IO ())
 startMonitoring config = do
