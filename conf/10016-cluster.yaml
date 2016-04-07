@@ -166,6 +166,8 @@ otherNodes:
 - host: '127.0.0.1'
   port: 10002
 - host: '127.0.0.1'
+  port: 10003
+- host: '127.0.0.1'
   port: 10004
 - host: '127.0.0.1'
   port: 10005
@@ -189,8 +191,6 @@ otherNodes:
   port: 10014
 - host: '127.0.0.1'
   port: 10015
-- host: '127.0.0.1'
-  port: 10016
 - host: '127.0.0.1'
   port: 10017
 - host: '127.0.0.1'
@@ -257,10 +257,10 @@ otherNodes:
   port: 10048
 - host: '127.0.0.1'
   port: 10049
-myPublicKey: a3079ef87331c05f443fd6aa4f9e443355efdf6546eefb75a4b18923c08284a1
+myPublicKey: f4d13fc176226251f4a4716db4cb01048ed7c0af07bfd06dc17c30082546d7d5
 nodeId:
   host: '127.0.0.1'
-  port: 10003
+  port: 10016
 enableDebug: true
-myPrivateKey: 67ad4e1b136efdc990c0ccdee93bc65f1e659bfe9bc4c016ea83c3e3e3c4bce2
+myPrivateKey: cd2e2d04cb5fbedd4ccead9889b3f526f9e28c61e2c5199953a7c280d30b505b
 batchTimeDelta: 1 % 100

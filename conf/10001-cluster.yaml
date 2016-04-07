@@ -2,21 +2,159 @@ clientTimeoutLimit: 50000
 publicKeys:
 - - host: '127.0.0.1'
     port: 10000
-  - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
+  - 3f5e2c5889b69d93123281fb7c59d0f2966225f0f2dd24207327d99c3c8f8a38
 - - host: '127.0.0.1'
     port: 10001
-  - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
+  - 3e73a72dd38a22259343e18ff290d9d47823202a6d32c4338aefd7eb3383feb3
 - - host: '127.0.0.1'
     port: 10002
-  - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
+  - 91d6ea0e7cd973695f23ef349120ff67d70fda4538cdd2172f644260b1edd9e7
 - - host: '127.0.0.1'
     port: 10003
-  - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
+  - a3079ef87331c05f443fd6aa4f9e443355efdf6546eefb75a4b18923c08284a1
+- - host: '127.0.0.1'
+    port: 10004
+  - ff9dd1024210c64044acf9147316382f23f12dc0e815a2717b1ed7b0c5208d92
+- - host: '127.0.0.1'
+    port: 10005
+  - a634fc44cdedeea0e0fa6dec57606d0a990e25bd70e63fa9e0e76e93695e4f30
+- - host: '127.0.0.1'
+    port: 10006
+  - 8af88d2bce170e79cb2c8f6087258556e27a56fc9f329777558275d184077353
+- - host: '127.0.0.1'
+    port: 10007
+  - 7f41bdee76f337f4c4e6c63fee2b3b1ec356ce5aed42d00711c47c91e7a9903e
+- - host: '127.0.0.1'
+    port: 10008
+  - e30dfd742ab408985f076576bfb2c8e196f669ff0183562053794b936f4b8802
+- - host: '127.0.0.1'
+    port: 10009
+  - 6da859b6cb5f47f3df4a0d985e6cde1c9bf4c3f5e2285540c07f51fc112f1583
+- - host: '127.0.0.1'
+    port: 10010
+  - 0ee301cdd39f81346ad42caddd527a65230f79d36c3c4a247e7753455d0ab452
+- - host: '127.0.0.1'
+    port: 10011
+  - 2f592742db031e0f0ae7ea4812b1e3eff4b17231fcc6d4818dda6fe346371c34
+- - host: '127.0.0.1'
+    port: 10012
+  - 6b128c410800d8c090c3b938a7eba72627aecc703cff000f1df12faa572101fd
+- - host: '127.0.0.1'
+    port: 10013
+  - 3be0a19d73d157f9934c91d1929176665ceed8d797b4bb5c6444da1ba58f0a58
+- - host: '127.0.0.1'
+    port: 10014
+  - 7e63fde4ec4510d4c4c43518c333460069f360add5553f4e814dc7627480f401
+- - host: '127.0.0.1'
+    port: 10015
+  - 442be6606539e84a350189f2cf2448be7b92816bc6d586162d4ad83395db3ce2
+- - host: '127.0.0.1'
+    port: 10016
+  - f4d13fc176226251f4a4716db4cb01048ed7c0af07bfd06dc17c30082546d7d5
+- - host: '127.0.0.1'
+    port: 10017
+  - b0e204e55893958803ba43e251a915fd10cf717f0d5c883b5467a7a1555c904c
+- - host: '127.0.0.1'
+    port: 10018
+  - 68da949d3774fe03065c8c841fa51cf1e53836c7804029111fc2b201a33c0f61
+- - host: '127.0.0.1'
+    port: 10019
+  - 947eb3be8e1a5178ad52f4233fb74ed0f8c41fa2b2ae613dec2aad44e93b65fc
+- - host: '127.0.0.1'
+    port: 10020
+  - f9c5abc153154de7e22638fe20b342bca2d08ac6ba14160c1707ba63f5775187
+- - host: '127.0.0.1'
+    port: 10021
+  - f23b9cebc681232358329a94f5e2bf12980413af32103667655fa7cb388572b9
+- - host: '127.0.0.1'
+    port: 10022
+  - 6e278a8b3eb583180dd6b526651601f9b07251e6469c61e637b14330913aee1c
+- - host: '127.0.0.1'
+    port: 10023
+  - 6df82caec68960f2c8d3991fcd1f8057ac8efa91c03ca0569df005f14bd1008b
+- - host: '127.0.0.1'
+    port: 10024
+  - 645af07f80ecfe70b73fc7896ea84e026260338fd2d3dd9c845949d23a6076ab
+- - host: '127.0.0.1'
+    port: 10025
+  - c3d3fd6e42808caa2ca61059561968619595d7e83c5ffab69fa21ba9d19cd1f2
+- - host: '127.0.0.1'
+    port: 10026
+  - dac122357631abc083f94e38f57cdfeef9b332dc03fc2ff405436c3d35007979
+- - host: '127.0.0.1'
+    port: 10027
+  - 255abdfb87b7ea1fc830247be6eea97156d8afc0b7707bf2c04d5715e65ed1af
+- - host: '127.0.0.1'
+    port: 10028
+  - 1b0d030045daff856c9d028fbefbd9026e8305500550576d10323dd1da09c832
+- - host: '127.0.0.1'
+    port: 10029
+  - d2eafd3a8dc23bcad92f689bf174fad32b5c5bbf9190adf37ea2378a62ead04b
+- - host: '127.0.0.1'
+    port: 10030
+  - f3c8aeb8fbc8c802ca50f8d2e091ba182b2c4671e07122777bc89fd58ffbe5fe
+- - host: '127.0.0.1'
+    port: 10031
+  - d08f54f36baeebd2782882e31457326e1a8ed410881c8c7e93d7acaaf013c3f2
+- - host: '127.0.0.1'
+    port: 10032
+  - 6cc509ef8ee2d675f666c625173df6a37d9b5c1c6056cbc17d2babc53388cb8f
+- - host: '127.0.0.1'
+    port: 10033
+  - 4a43ca5d5ae9fb40e8c8c68f928341a7ca8e7550d3a10761d5072abb351568f8
+- - host: '127.0.0.1'
+    port: 10034
+  - 14524fe3b837ee75bb8b0cfbcb3d41b68d1ca742f99ba2cb52780eb1cb5ace05
+- - host: '127.0.0.1'
+    port: 10035
+  - 6b38d521e897ae521a97fa4cb88ec88370249b6e76fce27561bbe6029671834b
+- - host: '127.0.0.1'
+    port: 10036
+  - da6d39152078be6ce8ad791110d5b1cc4a9b1779cdcd27b00f1ac3541e2da91d
+- - host: '127.0.0.1'
+    port: 10037
+  - 509d6fd118875e6b2f935c49b696510d6a2fcd34027070d6e17d05d6a4375d33
+- - host: '127.0.0.1'
+    port: 10038
+  - 4a7a997633f605c46eb7440a7fce5ff3cbc5e185d5cf29bf35cb7419c6de2a92
+- - host: '127.0.0.1'
+    port: 10039
+  - 556648b4bd89a2efcf8ca612e01b21006479b0683bf65ba9d9e684317ac89985
+- - host: '127.0.0.1'
+    port: 10040
+  - 7e827ceb4cef7835eb07b27454892c2c5e8c9f426142898cf0b8e54e997863d4
+- - host: '127.0.0.1'
+    port: 10041
+  - 22f29d4df92d1ed55eb44699d6c2ecf214d2834c4a1233701229e779a609bfc0
+- - host: '127.0.0.1'
+    port: 10042
+  - 3c364e642c58066979d336fbcf8ebcedfde7862a28cf1f8ccf74bf789b8bf885
+- - host: '127.0.0.1'
+    port: 10043
+  - a3f0438fe1ef7aa2d5a94bca119761965c1d5e0bbdf6093a1876e64a76928dc7
+- - host: '127.0.0.1'
+    port: 10044
+  - c58776cb5b30491959cac466f3cf5a967373ceec21b9b3b9501503489e640596
+- - host: '127.0.0.1'
+    port: 10045
+  - 1d1911c0399b41224221e7ea361ac76792bf678a977cd2832f225c1fe69d315b
+- - host: '127.0.0.1'
+    port: 10046
+  - d9d6505488caec6da6e2c02a7745e02b50fe90889b54f1cf2f3411523180b96f
+- - host: '127.0.0.1'
+    port: 10047
+  - 3feb0c3ea1982d5471a1b10018d1da9a489d21c2dc801536cc891fc7d5a2b056
+- - host: '127.0.0.1'
+    port: 10048
+  - 61b691f29ed5e64f2bf58677c2383b60b351c763d6c65174d8a3fcfb39976c70
+- - host: '127.0.0.1'
+    port: 10049
+  - 9d2e224a93c162f2e3b117e576a3563441ff9dd1e00d277d8f0eb427792f0589
 heartbeatTimeout: 1500000
 clientPublicKeys:
 - - host: '127.0.0.1'
-    port: 10004
-  - 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
+    port: 10050
+  - 1883fd28a21e02919b13051df1f3da490e05aa3245f2d34aa7dad0d46c1aaddc
 electionTimeoutRange:
 - 3000000
 - 6000000
@@ -27,10 +165,102 @@ otherNodes:
   port: 10002
 - host: '127.0.0.1'
   port: 10003
-myPublicKey: 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
+- host: '127.0.0.1'
+  port: 10004
+- host: '127.0.0.1'
+  port: 10005
+- host: '127.0.0.1'
+  port: 10006
+- host: '127.0.0.1'
+  port: 10007
+- host: '127.0.0.1'
+  port: 10008
+- host: '127.0.0.1'
+  port: 10009
+- host: '127.0.0.1'
+  port: 10010
+- host: '127.0.0.1'
+  port: 10011
+- host: '127.0.0.1'
+  port: 10012
+- host: '127.0.0.1'
+  port: 10013
+- host: '127.0.0.1'
+  port: 10014
+- host: '127.0.0.1'
+  port: 10015
+- host: '127.0.0.1'
+  port: 10016
+- host: '127.0.0.1'
+  port: 10017
+- host: '127.0.0.1'
+  port: 10018
+- host: '127.0.0.1'
+  port: 10019
+- host: '127.0.0.1'
+  port: 10020
+- host: '127.0.0.1'
+  port: 10021
+- host: '127.0.0.1'
+  port: 10022
+- host: '127.0.0.1'
+  port: 10023
+- host: '127.0.0.1'
+  port: 10024
+- host: '127.0.0.1'
+  port: 10025
+- host: '127.0.0.1'
+  port: 10026
+- host: '127.0.0.1'
+  port: 10027
+- host: '127.0.0.1'
+  port: 10028
+- host: '127.0.0.1'
+  port: 10029
+- host: '127.0.0.1'
+  port: 10030
+- host: '127.0.0.1'
+  port: 10031
+- host: '127.0.0.1'
+  port: 10032
+- host: '127.0.0.1'
+  port: 10033
+- host: '127.0.0.1'
+  port: 10034
+- host: '127.0.0.1'
+  port: 10035
+- host: '127.0.0.1'
+  port: 10036
+- host: '127.0.0.1'
+  port: 10037
+- host: '127.0.0.1'
+  port: 10038
+- host: '127.0.0.1'
+  port: 10039
+- host: '127.0.0.1'
+  port: 10040
+- host: '127.0.0.1'
+  port: 10041
+- host: '127.0.0.1'
+  port: 10042
+- host: '127.0.0.1'
+  port: 10043
+- host: '127.0.0.1'
+  port: 10044
+- host: '127.0.0.1'
+  port: 10045
+- host: '127.0.0.1'
+  port: 10046
+- host: '127.0.0.1'
+  port: 10047
+- host: '127.0.0.1'
+  port: 10048
+- host: '127.0.0.1'
+  port: 10049
+myPublicKey: 3e73a72dd38a22259343e18ff290d9d47823202a6d32c4338aefd7eb3383feb3
 nodeId:
   host: '127.0.0.1'
   port: 10001
 enableDebug: true
-myPrivateKey: 57be3f47a17b101fda1daf7ab90bedc96b959a8a58e4a43f4a843213ed073e70
-batchTimeDelta: 1 % 10
+myPrivateKey: d1811295abb8efd2fc9122eac264e9441807d1efc548c4300ed38a6e2c66b827
+batchTimeDelta: 1 % 100
