@@ -1,4 +1,3 @@
-import 'metrics-graphics/dist/metricsgraphics.css';
 import React from 'react';
 import {
   XYPlot,
