@@ -65,12 +65,10 @@ waitForCommand cmdMap rId =
       (CommandMap _ m) <- readMVar cmdMap
       case Map.lookup rId m of
         Nothing -> return $ BSC.pack "Sorry, something went wrong."
-        --Just (CmdApplied (CommandResult x)) ->
-        --  return $ (BSC.pack . show) $ CommandResult x
-        Just cmd -> -- not applied yet, loop and wait
-          return $ (BSC.pack . show) $ cmd
-        --Just _ -> -- not applied yet, loop and wait
-        --  waitForCommand cmdMap rId
+        Just (CmdApplied (CommandResult bs)) ->
+          return $ bs
+        Just _ -> -- not applied yet, loop and wait
+          waitForCommand cmdMap rId
 
 -- should we poll here till we get a result?
 showResult :: CommandMVarMap -> RequestId -> IO ()
