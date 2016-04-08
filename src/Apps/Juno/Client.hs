@@ -64,7 +64,7 @@ waitForCommand cmdMap rId =
     threadDelay 1000 >> do
       (CommandMap _ m) <- readMVar cmdMap
       case Map.lookup rId m of
-        Nothing -> return $ BSC.pack "Sorry, something went wrong."
+        Nothing -> return $ BSC.pack $ "RequestId [" ++ show rId ++ "] not found."
         Just (CmdApplied (CommandResult bs)) ->
           return $ bs
         Just _ -> -- not applied yet, loop and wait
@@ -76,7 +76,7 @@ showResult cmdStatusMap rId =
   threadDelay 1000 >> do
     (CommandMap _ m) <- readMVar cmdStatusMap
     case Map.lookup rId m of
-      Nothing -> putStrLn "Sorry, something went wrong"
+      Nothing -> print $ "RequestId [" ++ show rId ++ "] not found."
       Just (CmdApplied (CommandResult x)) -> putStrLn $ promptGreen ++ BSC.unpack x
       Just _ -> -- not applied yet, loop and wait
         showResult cmdStatusMap rId
