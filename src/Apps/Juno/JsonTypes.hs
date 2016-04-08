@@ -210,3 +210,37 @@ instance FromJSON LedgerQueryRequest where
   parseJSON (Object v) = LedgerQueryRequest <$> v .: "payload"
                                             <*> v .: "digest"
   parseJSON _ = mzero
+
+-- Transact
+--
+-- "payload": {
+--   "code": "string",
+--   "data": {}
+-- },
+-- "digest": {
+--   "hash": "string",
+--   "key": "string"
+-- }
+--
+--
+data TransactBody = TransactBody { _txCode :: Text, _txData :: Text } deriving (Show, Eq)
+instance ToJSON TransactBody where
+    toJSON (TransactBody code txData) = object ["code" .= code, "data" .= txData]
+instance FromJSON TransactBody where
+    parseJSON (Object v) = TransactBody <$> v .: "code"
+                                        <*> v .: "data"
+    parseJSON _ = mzero
+
+data TransactRequest = TransactRequest { _txPayload :: TransactBody
+                                       , _txDigest :: Digest
+                                       } deriving (Show, Eq)
+instance ToJSON TransactRequest where
+    toJSON (TransactRequest payload' digest') = object ["payload" .= payload'
+                                                       , "digest" .= digest']
+instance FromJSON TransactRequest where
+    parseJSON (Object v) = TransactRequest <$> v .: "payload"
+                                           <*> v .: "digest"
+    parseJSON _ = mzero
+
+-- test
+--txBS = "{\"payload\":{\"data\":\"mybody\",\"code\":\"mycode\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"key\"}}"
