@@ -67,6 +67,12 @@ debug s = do
         Candidate -> "\ESC[1;33m[CANDIDATE]\ESC[0m"
   dbg nid $ prettyRole ++ ": " ++ s
 
+debugNoRole :: Monad m => String -> Raft m ()
+debugNoRole s = do
+  dbg <- view (rs.debugPrint)
+  nid <- view (cfg.nodeId)
+  dbg nid s
+
 randomRIO :: (Monad m, R.Random a) => (a,a) -> Raft m a
 randomRIO rng = view (rs.random) >>= \f -> f rng -- R.randomRIO
 
@@ -107,20 +113,20 @@ messageReceiver = do
 
     -- Take a big gulp of AERs, the more we get the more we can skip
     (howManyAers, alotOfAers, invalidAers) <- toAlotOfAers <$> getAers 2000
-    unless (alotOfAers == mempty) $ do debug $ "Smashed together " ++ show howManyAers ++ " AERs"
+    unless (alotOfAers == mempty) $ do debugNoRole $ "Combined together " ++ show howManyAers ++ " AERs"
                                        enqueueEvent $ AERs alotOfAers
-    mapM_ debug invalidAers
+    mapM_ debugNoRole invalidAers
     -- sip from the general message stream, this should be relatively underpopulated except during an election but can contain HUGE AEs
     gm 50 >>= sequentialVerify ks
     -- now take a massive gulp of commands
     verifiedCmds <- parallelVerify ks <$> getCmds 5000
     (invalidCmds, validCmds) <- return $ partitionEithers verifiedCmds
-    mapM_ debug invalidCmds
+    mapM_ debugNoRole invalidCmds
     cmds@(CommandBatch cmds' _) <- return $ batchCommands validCmds
     lenCmdBatch <- return $ length cmds'
     unless (lenCmdBatch == 0) $ do
       enqueueEvent $ ERPC $ CMDB' cmds
-      debug $ "AutoBatched " ++ show (length cmds') ++ " Commands"
+      debugNoRole $ "AutoBatched " ++ show (length cmds') ++ " Commands"
 
 toAlotOfAers :: [(ReceivedAt,SignedRPC)] -> (Int, AlotOfAERs, [String])
 toAlotOfAers s = (length decodedAers, alotOfAers, invalids)
@@ -134,10 +140,10 @@ sequentialVerify ks msgs = do
   (aes, noAes) <- return $ partition (\(_,SignedRPC{..}) -> if _digType _sigDigest == AE then True else False) msgs
   (invalid, validNoAes) <- return $ partitionEithers $ parallelVerify ks noAes
   mapM_ (enqueueEvent . ERPC) validNoAes
-  mapM_ debug invalid
+  mapM_ debugNoRole invalid
   -- AE's have the potential to be BIG so we need to take care not to do them in parallel by accident
   mapM_ (\(ts,msg) -> case signedRPCtoRPC (Just ts) ks msg of
-            Left err -> debug err
+            Left err -> debugNoRole err
             Right v -> enqueueEvent $ ERPC v) aes
 
 parallelVerify :: KeySet -> [(ReceivedAt, SignedRPC)] -> [Either String RPC]
