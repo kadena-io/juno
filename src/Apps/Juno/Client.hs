@@ -124,6 +124,7 @@ snapServer toCommands cmdStatusMap = httpServe serverConf $
      route [ ("/api/juno/v1/accounts/create", createAccounts toCommands cmdStatusMap)
            , ("/api/juno/v1/accounts/adjust", adjustAccounts toCommands cmdStatusMap)
            , ("/api/juno/v1/accounts/adjust/batch", adjustAccountsBatchTest toCommands cmdStatusMap)
+           , ("/api/juno/v1/cmd/batch", cmdBatch toCommands cmdStatusMap)
            , ("/api/juno/v1/transact", transactAPI toCommands cmdStatusMap)
            , ("/api/juno/v1/poll", pollForResults cmdStatusMap)
            , ("/api/juno/v1/query", ledgerQueryAPI toCommands cmdStatusMap)
@@ -190,6 +191,27 @@ adjustAccountsBatchTest toCommands cmdStatusMap = do
      Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
   where
        adjustAccountCommand acct amt = CommandEntry $ BSC.pack $ "AdjustAccount " ++ T.unpack acct ++ " " ++ show (toRational amt)
+
+-- receives a list of commands
+-- {"payload":{"cmds": ["{\"account\":\"WATER\"}", "{\"account\":\"TSLA\"}"},"digest":{"hash":"hashy","key":"mykey"}}
+cmdBatch :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
+cmdBatch toCommands cmdStatusMap = do
+   modifyResponse $ setHeader "Content-Type" "application/json"
+   maybeCmdBatchReq <- liftM JSON.decode (readRequestBody 1000000)
+   case maybeCmdBatchReq of
+     Just (CommandBatchRequest (CommandBatch cmds) _) -> do
+         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
+         -- or catMaybes depending if one fails, all fail?
+         case (sequence $ fmap (mJsonBsToCommand . BLC.pack . T.unpack) cmds) of
+           Just cmds' -> do
+             liftIO $ writeChan toCommands (reqestId, fmap CommandEntry cmds')
+             (writeBS . BL.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
+           Nothing -> errorBadCommand
+
+     Nothing -> errorBadCommandBatch
+  where
+    errorBadCommand = (writeBS . BL.toStrict . JSON.encode) $ commandResponseFailure "" "Malformed cmd or cmds in the submitted batch, could not decode input JSON."
+    errorBadCommandBatch = writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
 
 ledgerQueryAPI :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
 ledgerQueryAPI toCommands cmdStatusMap = do

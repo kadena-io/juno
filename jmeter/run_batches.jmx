@@ -43,7 +43,49 @@
           <stringProp name="HTTPSampler.response_timeout"></stringProp>
           <stringProp name="HTTPSampler.protocol"></stringProp>
           <stringProp name="HTTPSampler.contentEncoding"></stringProp>
-          <stringProp name="HTTPSampler.path">/api/juno/v1/accounts/adjust/batch</stringProp>
+          <stringProp name="HTTPSampler.path">/api/juno/v1/</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <boolProp name="HTTPSampler.monitor">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <RegexExtractor guiclass="RegexExtractorGui" testclass="RegexExtractor" testname="CMDID -50 TSLA " enabled="true">
+            <stringProp name="RegexExtractor.useHeaders">unescaped</stringProp>
+            <stringProp name="RegexExtractor.refname">cmdid_4</stringProp>
+            <stringProp name="RegexExtractor.regex">.*&quot;cmdid&quot;:&quot;(\d*)&quot;.*</stringProp>
+            <stringProp name="RegexExtractor.template">$1$</stringProp>
+            <stringProp name="RegexExtractor.default">NOT FOUND CMD1</stringProp>
+            <stringProp name="RegexExtractor.match_number"></stringProp>
+          </RegexExtractor>
+          <hashTree/>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="TSLA batches" enabled="true">
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">{&quot;payload&quot;:{&quot;cmds&quot;:&#xd;
+[&quot;{\&quot;account\&quot;:\&quot;WATER\&quot;}&quot;,&#xd;
+&quot;{\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&quot;{\&quot;amount\&quot;:100,\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&#xd;
+&quot;{\&quot;amount\&quot;:1000,\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&#xd;
+&quot;{\&quot;amount\&quot;:100,\&quot;account\&quot;:\&quot;KALE\&quot;}&quot;,&#xd;
+&quot;{\&quot;amount\&quot;:200,\&quot;account\&quot;:\&quot;KALE\&quot;}&quot;]},&quot;digest&quot;:{&quot;hash&quot;:&quot;hashy&quot;,&quot;key&quot;:&quot;mykey&quot;}}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">localhost</stringProp>
+          <stringProp name="HTTPSampler.port">8000</stringProp>
+          <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+          <stringProp name="HTTPSampler.response_timeout"></stringProp>
+          <stringProp name="HTTPSampler.protocol"></stringProp>
+          <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+          <stringProp name="HTTPSampler.path">/api/juno/v1/cmd/batch</stringProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
