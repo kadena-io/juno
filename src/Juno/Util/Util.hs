@@ -25,15 +25,19 @@ module Juno.Util.Util
 import Juno.Runtime.Types
 import Juno.Util.Combinator
 
+import Data.Either (partitionEithers)
+import Data.List (partition)
 import Control.Lens
+import Control.Parallel.Strategies
 import Data.Sequence (Seq)
 import Control.Monad.RWS
 import Data.ByteString (ByteString)
-import Data.Serialize
+
 import qualified Control.Concurrent.Lifted as CL
 import qualified Data.ByteString as B
 import qualified Data.Sequence as Seq
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified System.Random as R
 
 seqIndex :: Seq a -> Int -> Maybe a
@@ -62,6 +66,12 @@ debug s = do
         Follower -> "\ESC[0;32m[FOLLOWER]\ESC[0m"
         Candidate -> "\ESC[1;33m[CANDIDATE]\ESC[0m"
   dbg nid $ prettyRole ++ ": " ++ s
+
+debugNoRole :: Monad m => String -> Raft m ()
+debugNoRole s = do
+  dbg <- view (rs.debugPrint)
+  nid <- view (cfg.nodeId)
+  dbg nid s
 
 randomRIO :: (Monad m, R.Random a) => (a,a) -> Raft m a
 randomRIO rng = view (rs.random) >>= \f -> f rng -- R.randomRIO
@@ -94,21 +104,58 @@ logStaticMetrics = do
 -- THREAD: MESSAGE RECEIVER (client and server), no state updates
 messageReceiver :: Monad m => Raft m ()
 messageReceiver = do
-  gm <- view (rs.getMessage)
+  gm <- view (rs.getMessages)
+  getCmds <- view (rs.getNewCommands)
+  getAers <- view (rs.getNewEvidence)
   ks <- KeySet <$> view (cfg.publicKeys) <*> view (cfg.clientPublicKeys)
   forever $ do
-    (ts, msg) <- gm
-    case decode msg of
-      Left err -> do
-        -- two debugs here because... when the system is streaming you may miss the error & you want the message.
-        -- So print the msg (to get your attention) and then print the error under it... TODO: better logging
-        debug $ "Failed to deserialize to SignedRPC [Msg]: " ++ show msg
-        debug $ "Failed to deserialize to SignedRPC [Error]: " ++ err
-      Right v -> do
---        debug $ "Got a SignedRPC of type: " ++ show (_digType $ _sigDigest v)
-        case signedRPCtoRPC (Just ts) ks v of
-          Left err -> debug err
-          Right rpc -> enqueueEvent $ ERPC rpc
+    -- NB: This all happens on one thread because it runs in Raft and we're trying (too hard) to avoid running in IO
+
+    -- Take a big gulp of AERs, the more we get the more we can skip
+    (howManyAers, alotOfAers, invalidAers) <- toAlotOfAers <$> getAers 2000
+    unless (alotOfAers == mempty) $ do debugNoRole $ "Combined together " ++ show howManyAers ++ " AERs"
+                                       enqueueEvent $ AERs alotOfAers
+    mapM_ debugNoRole invalidAers
+    -- sip from the general message stream, this should be relatively underpopulated except during an election but can contain HUGE AEs
+    gm 50 >>= sequentialVerify ks
+    -- now take a massive gulp of commands
+    verifiedCmds <- parallelVerify ks <$> getCmds 5000
+    (invalidCmds, validCmds) <- return $ partitionEithers verifiedCmds
+    mapM_ debugNoRole invalidCmds
+    cmds@(CommandBatch cmds' _) <- return $ batchCommands validCmds
+    lenCmdBatch <- return $ length cmds'
+    unless (lenCmdBatch == 0) $ do
+      enqueueEvent $ ERPC $ CMDB' cmds
+      debugNoRole $ "AutoBatched " ++ show (length cmds') ++ " Commands"
+
+toAlotOfAers :: [(ReceivedAt,SignedRPC)] -> (Int, AlotOfAERs, [String])
+toAlotOfAers s = (length decodedAers, alotOfAers, invalids)
+  where
+    (invalids, decodedAers) = partitionEithers $ uncurry aerOnlyDecode <$> s
+    mkAlot aer@AppendEntriesResponse{..} = AlotOfAERs $ Map.insert _aerNodeId (Set.singleton aer) Map.empty
+    alotOfAers = mconcat (mkAlot <$> decodedAers)
+
+sequentialVerify :: Monad m => KeySet -> [(ReceivedAt, SignedRPC)] -> Raft m ()
+sequentialVerify ks msgs = do
+  (aes, noAes) <- return $ partition (\(_,SignedRPC{..}) -> if _digType _sigDigest == AE then True else False) msgs
+  (invalid, validNoAes) <- return $ partitionEithers $ parallelVerify ks noAes
+  mapM_ (enqueueEvent . ERPC) validNoAes
+  mapM_ debugNoRole invalid
+  -- AE's have the potential to be BIG so we need to take care not to do them in parallel by accident
+  mapM_ (\(ts,msg) -> case signedRPCtoRPC (Just ts) ks msg of
+            Left err -> debugNoRole err
+            Right v -> enqueueEvent $ ERPC v) aes
+
+parallelVerify :: KeySet -> [(ReceivedAt, SignedRPC)] -> [Either String RPC]
+parallelVerify ks msgs = ((\(ts, msg) -> signedRPCtoRPC (Just ts) ks msg) <$> msgs) `using` parList rseq
+
+batchCommands :: [RPC] -> CommandBatch
+batchCommands cmdRPCs = cmdBatch
+  where
+    cmdBatch = CommandBatch (concat (prepCmds <$> cmdRPCs)) NewMsg
+    prepCmds (CMD' cmd) = [cmd]
+    prepCmds (CMDB' (CommandBatch cmds _)) = cmds
+    prepCmds o = error $ "Invariant failure in batchCommands: " ++ show o
 
 setTerm :: Monad m => Term -> Raft m ()
 setTerm t = do

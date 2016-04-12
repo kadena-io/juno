@@ -200,7 +200,7 @@ clientSendCommandBatch cmdb@CommandBatch{..} = do
 -- THREAD: CLIENT MAIN. updates state
 -- Command has been applied
 clientHandleCommandResponse :: MonadIO m => CommandMVarMap -> CommandResponse -> Raft m ()
-clientHandleCommandResponse cmdStatusMap cmdr@CommandResponse{..} = do
+clientHandleCommandResponse cmdStatusMap CommandResponse{..} = do
   prs <- use pendingRequests
   when (Map.member _cmdrRequestId prs) $ do
     setCurrentLeader $ Just _cmdrLeaderId

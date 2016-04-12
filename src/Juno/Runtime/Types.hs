@@ -15,8 +15,9 @@ module Juno.Runtime.Types
   , RaftSpec(..)
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
   , readVotedFor, writeVotedFor, applyLogEntry, sendMessage
-  , sendMessages, getMessage, debugPrint, publishMetric, getTimestamp, random
-  , enqueue, dequeue, enqueueLater, killEnqueued
+  , sendMessages, getMessage, getMessages, getNewCommands, getNewEvidence
+  , debugPrint, publishMetric, getTimestamp, random
+  , enqueue, enqueueMultiple, dequeue, enqueueLater, killEnqueued
   , NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
@@ -39,7 +40,7 @@ module Juno.Runtime.Types
   , initialRaftState
   -- * RPC
   , AppendEntries(..)
-  , AppendEntriesResponse(..)
+  , AppendEntriesResponse(..), aerOnlyDecode, aerReVerify, AlotOfAERs(..)
   , RequestVote(..)
   , RequestVoteResponse(..)
   , Command(..)
@@ -474,9 +475,27 @@ data AppendEntriesResponse = AppendEntriesResponse
   , _aerConvinced  :: !Bool
   , _aerIndex      :: !LogIndex
   , _aerHash       :: !ByteString
+  , _aerWasVerified:: !Bool
   , _aerProvenance :: !Provenance
   }
-  deriving (Show, Generic, Eq, Ord)
+  deriving (Show, Generic, Eq)
+
+instance Ord AppendEntriesResponse where
+  -- This is here to get a set of AERs to order correctly
+  -- Node matters most (apples to apples)
+  -- Term supersedes index always
+  -- Index is really what we're after for how Set AER is used
+  -- Hash matters more than verified due to conflict resolution
+  -- Then verified, which is metadata really, because if everything up to that point is the same then the one that already ran through crypto is more valuable
+  -- After that it doesn't matter.
+  (AppendEntriesResponse t n s c i h v p) < (AppendEntriesResponse t' n' s' c' i' h' v' p') =
+    (n,t,i,h,v,s,c,p) <  (n',t',i',h',v',s',c',p')
+  (AppendEntriesResponse t n s c i h v p) <= (AppendEntriesResponse t' n' s' c' i' h' v' p') =
+    (n,t,i,h,v,s,c,p) <= (n',t',i',h',v',s',c',p')
+  (AppendEntriesResponse t n s c i h v p) >= (AppendEntriesResponse t' n' s' c' i' h' v' p') =
+    (n,t,i,h,v,s,c,p) >= (n',t',i',h',v',s',c',p')
+  (AppendEntriesResponse t n s c i h v p) > (AppendEntriesResponse t' n' s' c' i' h' v' p') =
+    (n,t,i,h,v,s,c,p) >  (n',t',i',h',v',s',c',p')
 
 data AERWire = AERWire (Term,NodeID,Bool,Bool,LogIndex,ByteString)
   deriving (Show, Generic)
@@ -500,9 +519,28 @@ instance WireFormat AppendEntriesResponse where
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with AERWire instance"
       else case S.decode bdy of
         Left !err -> Left $! "Failure to decode AERWire: " ++ err
-        Right (AERWire !(t,nid,s',c,i,h)) -> Right $! AppendEntriesResponse t nid s' c i h $ ReceivedMsg dig bdy ts
+        Right (AERWire !(t,nid,s',c,i,h)) -> Right $! AppendEntriesResponse t nid s' c i h True $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
+
+aerOnlyDecode :: ReceivedAt -> SignedRPC -> Either String AppendEntriesResponse
+aerOnlyDecode ts s@SignedRPC{..}
+  | _digType _sigDigest /= AER = error $ "Invariant Error: aerOnlyDecode called on " ++ show s
+  | otherwise = case S.decode _sigBody of
+      Left !err -> Left $! "Failure to decode AERWire: " ++ err
+      Right (AERWire !(t,nid,s',c,i,h)) -> Right $! AppendEntriesResponse t nid s' c i h False $ ReceivedMsg _sigDigest _sigBody $ Just ts
+
+aerReVerify :: KeySet -> AppendEntriesResponse -> Either String ()
+aerReVerify  _ (AppendEntriesResponse _ _ _ _ _ _ True _) = Right ()
+aerReVerify  _ (AppendEntriesResponse _ _ _ _ _ _ _ NewMsg) = Right ()
+aerReVerify ks (AppendEntriesResponse _ _ _ _ _ _ False ReceivedMsg{..}) = verifySignedRPC ks $ SignedRPC _pDig _pOrig
+
+newtype AlotOfAERs = AlotOfAERs { _unAlot :: Map NodeID (Set AppendEntriesResponse)}
+  deriving (Show, Eq)
+
+instance Monoid AlotOfAERs where
+  mempty = AlotOfAERs Map.empty
+  mappend (AlotOfAERs m) (AlotOfAERs m') = AlotOfAERs $ Map.unionWith Set.union m m'
 
 data RequestVote = RequestVote
   { _rvTerm        :: !Term
@@ -622,7 +660,7 @@ data RPC = AE'   AppendEntries
          | RV'   RequestVote
          | RVR'  RequestVoteResponse
          | CMD'  Command
-         | CMDB'  CommandBatch
+         | CMDB' CommandBatch
          | CMDR' CommandResponse
          | REV'  Revolution
   deriving (Show, Generic)
@@ -650,6 +688,7 @@ rpcToSignedRPC nid pubKey privKey (REV' v) = toWire nid pubKey privKey v
 {-# INLINE rpcToSignedRPC #-}
 
 data Event = ERPC RPC
+           | AERs AlotOfAERs
            | ElectionTimeout String
            | HeartbeatTimeout String
   deriving (Show)
@@ -718,7 +757,16 @@ data RaftSpec m = RaftSpec
   , _sendMessages     :: [(NodeID,ByteString)] -> m () -- Simple,Sender
 
     -- ^ Function to get the next message.
-  , _getMessage       :: m (ReceivedAt, ByteString) -- Simple,Util(messageReceiver)
+  , _getMessage       :: m (ReceivedAt, SignedRPC) -- Simple,Util(messageReceiver)
+
+    -- ^ Function to get the next N SignedRPCs not of type CMD, CMDB, or AER
+  , _getMessages   :: Int -> m [(ReceivedAt, SignedRPC)] -- Simple,Util(messageReceiver)
+
+    -- ^ Function to get the next N SignedRPCs of type CMD or CMDB
+  , _getNewCommands   :: Int -> m [(ReceivedAt, SignedRPC)] -- Simple,Util(messageReceiver)
+
+    -- ^ Function to get the next N SignedRPCs of type AER
+  , _getNewEvidence   :: Int -> m [(ReceivedAt, SignedRPC)] -- Simple,Util(messageReceiver)
 
     -- ^ Function to log a debug message (no newline).
   , _debugPrint       :: NodeID -> String -> m () -- Simple,Util(debug)
@@ -730,6 +778,8 @@ data RaftSpec m = RaftSpec
   , _random           :: forall a . Random a => (a, a) -> m a -- Simple,Util(randomRIO[timer])
 
   , _enqueue          :: Event -> m () -- Simple,Util(enqueueEvent)
+
+  , _enqueueMultiple  :: [Event] -> m ()
 
   , _enqueueLater     :: Int -> Event -> m ThreadId -- Simple,Util(enqueueEventLater[timer])
 

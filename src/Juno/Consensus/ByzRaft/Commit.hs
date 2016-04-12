@@ -120,10 +120,13 @@ updateCommitIndex = do
   let evidence = reverse $ sortOn _aerIndex $ Map.elems proof
 
   case checkCommitProof qsize es maxLogIndex evidence of
-    Nothing -> do
-      debug "Not enough evidence to commit yet"
-      return False
-    Just qci -> if qci > ci
+    Left 0 -> return False
+    Left n -> if maxLogIndex > fromIntegral ci
+              then do
+                    debug $ "Not enough evidence to commit yet, need " ++ show (qsize - n) ++ " more"
+                    return False
+              else return False
+    Right qci -> if qci > ci
                 then do
                   commitIndex .= qci
                   logCommitChange ci qci
@@ -131,21 +134,19 @@ updateCommitIndex = do
                   debug $ "Commit index is now: " ++ show qci
                   return True
                 else do
-                  if maxLogIndex > fromIntegral ci
-                  then debug "Not enough evidence to commit yet" >> return False
-                  else return False
+                  return False
 
-checkCommitProof :: Int -> Seq LogEntry -> Int -> [AppendEntriesResponse] -> Maybe LogIndex
+checkCommitProof :: Int -> Seq LogEntry -> Int -> [AppendEntriesResponse] -> Either Int LogIndex
 checkCommitProof qsize les maxLogIdx evidence = go 0 evidence
   where
-    go _ [] = Nothing -- no update
+    go n [] = Left n -- no update
     go n (ev:evs) = if fromIntegral (_aerIndex ev) > maxLogIdx || fromIntegral (_aerIndex ev) < (0::Int)
                     -- we can't do the lookup as we haven't replicated the entry yet, so pass till next time
                     then go n evs
                     else if (_aerHash ev) == (_leHash $ Seq.index les (fromIntegral $ _aerIndex ev))
                          -- hashes check out, if we have enough evidence then we can commit
                          then if (n+1) >= qsize
-                              then Just $ _aerIndex ev
+                              then Right $ _aerIndex ev
                               -- keep checking the evidence
                               else go (n+1) evs
                          -- hash check failed, can't count this one...

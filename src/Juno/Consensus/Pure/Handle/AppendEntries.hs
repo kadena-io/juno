@@ -20,7 +20,8 @@ import qualified Data.Set as Set
 
 import Juno.Consensus.ByzRaft.Log
 import Juno.Consensus.Pure.Types
-import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse)
+import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
+import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse, createAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
 import Juno.Util.Util (seqIndex, debug, setTerm, setRole, setCurrentLeader,
                        getCmdSigOrInvariantError, logMetric)
@@ -68,7 +69,7 @@ data ValidResponse =
 -- THREAD: SERVER MAIN. updates state
 handleAppendEntries :: (MonadWriter [String] m, MonadReader AppendEntriesEnv m) => AppendEntries -> m AppendEntriesOut
 handleAppendEntries ae@AppendEntries{..} = do
-  tell ["got an appendEntries RPC: prev log entry: Index " ++ show _prevLogIndex ++ " " ++ show _prevLogTerm]
+  tell ["received appendEntries: " ++ show _prevLogIndex ]
   nlo <- checkForNewLeader ae
   (currentLeader',ignoreLeader',currentTerm' ) :: (Maybe NodeID,Bool,Term) <-
                 case nlo of
@@ -146,8 +147,12 @@ appendLogEntries pli newEs = do
             Map.insert (_cmdClientId, getCmdSigOrInvariantError "appendLogEntries" c) Nothing m)
     Map.empty newEs
   logEntries'' <- return $ updateLogHashesFromIndex (pli + 1) logEntries'
-  tell ["replaying LogEntry(s): " ++ show (Seq.length les) ++ " through " ++ show (Seq.length logEntries'') ]
-  return $ Commit replay logEntries''
+  if Seq.length les /= Seq.length logEntries''
+    then do
+      tell ["replaying LogEntry(s): " ++ show (Seq.length les) ++ " through " ++ show (Seq.length logEntries'') ]
+      return $ Commit replay logEntries''
+    else
+      return $ Commit replay logEntries''
 
 applyNewLeader :: Monad m => CheckForNewLeaderOut -> JT.Raft m ()
 applyNewLeader LeaderUnchanged = return ()
@@ -175,7 +180,8 @@ handle ae = do
               (JT._logEntries s)
               (JT._quorumSize r)
   (AppendEntriesOut{..}, l) <- runReaderT (runWriterT (handleAppendEntries ae)) ape
-  mapM_ debug l
+  ci <- return $ JT._commitIndex s
+  unless (ci == _prevLogIndex ae && length l == 1) $ mapM_ debug l
   applyNewLeader _newLeaderAction
   case _result of
     Ignore -> return ()
@@ -189,4 +195,6 @@ handle ae = do
           JT.logEntries .= updatedLog'
           logHashChange
           JT.replayMap %= Map.union rMap
+          myEvidence <- createAppendEntriesResponse True True
+          JT.commitProof %= updateCommitProofMap myEvidence
           sendAllAppendEntriesResponse
