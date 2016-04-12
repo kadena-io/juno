@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="UTF-8">
+    <title>Juno by buckie</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+  </head>
+  <body>
+    <section class="page-header">
+      <h1 class="project-name">Juno</h1>
+      <h2 class="project-tagline">Smart Contracts Running on a BFT Hardened Raft</h2>
+      <a href="https://github.com/buckie/juno" class="btn">View on GitHub</a>
+      <a href="https://github.com/buckie/juno/zipball/master" class="btn">Download .zip</a>
+      <a href="https://github.com/buckie/juno/tarball/master" class="btn">Download .tar.gz</a>
+    </section>
+
+    <section class="main-content">
+      <h4>
+<a id="tldr" class="anchor" href="#tldr" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>TL;DR</h4>
+
+<p>Ok, here's a quick demo.</p>
+
+<p align="center"><img src="raw.githubusercontent.com/buckie/juno/master/demo.gif" alt="Demo Gif"></p>
+
+<p><a href="#what-is-going-on-in-the-demo">What is going on in the demo</a></p>
+
+<hr>
+
+<h1 align="center">
+<a id="juno" class="anchor" href="#juno" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Juno</h1>
+
+<h6 align="center">
+<a id="byzantine-fault-tolerant-raft-with-smart-contracts" class="anchor" href="#byzantine-fault-tolerant-raft-with-smart-contracts" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Byzantine Fault Tolerant Raft With Smart Contracts</h6>
+
+<h3>
+<a id="introduction" class="anchor" href="#introduction" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Introduction</h3>
+
+<p>Juno is a working prototype that represents an alternative design to current Blockchain-based Smart Contract systems.</p>
+
+<p>Overall Blockchain-based approached to Smart Contract systems have a lot of potential for both public and private applications.
+For many private (i.e. enterprise) applications, however, a core capability of Blockchain needs to be explicitly disabled -- that of anonymous participation.
+This has large implications for the possible solution space but specifically removes the need mining (Proof of Work), Proof of Stake, etc... to provide consensus and Byzantine Fault Tolerance (BFT).</p>
+
+<p>Instead Juno uses a <a href="https://raft.github.io/">Raft</a> protocol variant called <a href="http://www.scs.stanford.edu/14au-cs244b/labs/projects/copeland_zhong.pdf">Tangaroa</a> which is "BFT-hardened" enough to cover the majority of possible Byzantine Faults that we believe an enterprise system should be robust against.
+Juno began as a fork of <a href="https://github.com/chrisnc/tangaroa">Tangaroa's Haskell implementation</a>.
+Through the use of a "BFT-hardened" Raft, Juno can achieve vastly lower latency than traditional Blockchain-based approaches -- one based mostly on network latency.
+Running the demo locally, one can expect latencies of ~20ms and throughput in excess of 1000 transactions a second.</p>
+
+<p>For the subset of applications that Juno targets (private networks, intra/inter-organization workflows, known participants) similar Blockchain-based approaches generally attempt to decrease latency (caused by mining) by decreasing the difficulty of mining itself.
+We believe turning down the difficulty is somewhere between an unfortunate to a dangerous compromise as those systems generally also allow forked chains.
+As such, decreasing the difficulty can lead to manipulation of chain.
+Some approaches decrease mining difficulty and use some method of Leader Election, Round Robin, etc. to mitigate the danger posed by such a compromise.
+We believe this defeats the point of mining.</p>
+
+<p>NB: This is v0.1 release of Juno, our last stable version. Our internal version extends the Tangaroa protocol to fix various edge cases and attack vectors that we've identified.
+Hopefully we will be able to publish the protocol's extension and open source this version in coming months, once it becomes stable and release is approved.</p>
+
+<h2>
+<a id="first-principles" class="anchor" href="#first-principles" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>First Principles</h2>
+
+<p>For many internal enterprise applications the notion of anonymous participation is anathema.
+This is a fundamental feature of Bitcoin and its derivative technologies. It demands the need for Proof of Work, etc. in Blockchain technologies.
+As such, removal of this feature implies that mining may be possible to remove entirely.
+Mining, however, also provides Blockchain technologies with a means of coming to a distributed consensus about the state of the world.
+Specifically, how to get a collective of servers to agree about what entries come before other entries in the global ledger of transactions.
+Therein lies our first principle:</p>
+
+<ul>
+<li>#1 A means for a distributed cluster to agree on order of some sort of message.</li>
+</ul>
+
+<p>Blockchain-based Smart Contract systems use the distributed ledger as substrate for storing &amp; ordering commands to run.
+One can think of the Smart Contract system as a REPL and the Blockchain substrate as a means for ordering input commands to the REPL.
+Put another way, the Smart Contract layer is a replicated state machine and the Blockchain layer orders what happens when.
+This identifies our second principle:</p>
+
+<ul>
+<li>#2 A means to step a state machine in a distributed and deterministic way.</li>
+</ul>
+
+<p>As our state machine will be running on multiple nodes at once, we want a very specific type of state machine (language) to interpret and execute our messages.
+Ethereum, the current leader in the Smart Contract language space, has several valuable features.
+It is deterministic, serializable, has a cost model for execution and is unable to call to the outside world.
+All are key features.
+We want our replicated state machine to build up the same state given the same inputs and we want to be able to message the machine's state over the wire (or hash it for equivalence checking).
+Further, we don't want our state machine to accidentally transfer $10 from Alice to Bob a dozen times because it ran on a dozen servers.
+The built up state of our smart contract language is the ledger of truth that other systems can query to get orders from.
+Ethereum is a good first step and informs our third principle:</p>
+
+<ul>
+<li>#3 A language that is deterministic, serializable, unable to perform IO, and has a measure of execution cost.</li>
+</ul>
+
+<p>Blockchains, via Merkle trees or similar data structures, provide a method of quickly validating an immutable copy of historical entries via cryptographic hashes.
+Due to anonymous participation, this data structure needs to also be able to handle forks in the chain.
+Given that we don't need anonymous participation and thus don't need to be able to handle forks (a correctly functioning node can never encounter them), we can state our fourth principle:</p>
+
+<ul>
+<li>#4 All entries to our system are stored in an immutable list (log) that can be cryptographically validated.</li>
+</ul>
+
+<p>Though anonymous participation is not a requirement, enterprise applications do need to have strict access and auditability controls.
+Blockchain provides this ability via asymmetric keys, used to sign and validate all entries in a given block.
+This is a great feature, we want this.
+Moreover, as our network is not open to non-authorized actors or servers we need more signing, specifically:</p>
+
+<ul>
+<li>#5 All network traffic between nodes, as well as all client interactions with the cluster, must be signed and validated. All messages that change the state of the world (either consensus or state machine level) must be persisted in the immutable log.</li>
+</ul>
+
+<h3>
+<a id="1-consensus" class="anchor" href="#1-consensus" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>#1 Consensus</h3>
+
+<p>One can think of ledger entries as simple messages meant for some other system to interpret.
+What consensus provides is a means for ordering these messages, which are then fed into some other system.
+There are multiple families of algorithms capable of this.</p>
+
+<p>For Juno, we have chosen the Raft protocol as our starting point.
+Raft is a Paxos variant designed for understandability.
+Simply put, it provides a method for a cluster of servers to elect a Leader as well as a method for replacing the Leader if it goes down.
+Once a Leader is selected, it orders messages that it receives &amp; distributes the messages to Followers for replication and application to a state machine.</p>
+
+<p>When we speak of consensus, this is what we mean -- a way for parts of a system to agree on the state of the world.
+By using Raft, as opposed to an <a href="https://www.cs.cmu.edu/%7Edga/papers/epaxos-sosp2013.pdf">EPaxos</a> like system, the messages' meaning may be opaque to the consensus layer.</p>
+
+<h3>
+<a id="2-replicated-state-machine" class="anchor" href="#2-replicated-state-machine" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>#2 Replicated State Machine</h3>
+
+<p>Once the messages are globally ordered and replicated, they can be interpreted by some other system -- the replicated state machine.
+The guarantees that we can do this stem directly from the guarantees of the consensus layer.
+In Raft, the Leader only applies an entry to the state machine when it has been replicated by a majority of nodes.</p>
+
+<p>The way this works is as simple as feeding the input into the state machine, along with the state machine's previous state.
+In this way any node, Leader or Follower, can build up the same state in their respective state machines.
+It is worth noting that the Leader and Followers are constrained from not applying an entry too early (before replication by a majority) but do not necessarily have to apply the messages at the same time.
+So long as the order is the same, the system's replicated state machines are eventually consistent.</p>
+
+<h3>
+<a id="3-smart-contracts" class="anchor" href="#3-smart-contracts" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>#3 Smart Contracts</h3>
+
+<p>A Smart Contract is little more than idea of storing code with a value and yet this is a powerful idea.
+In enterprise, many systems can be made much simpler by having a way to declare the rules of interaction (workflow) with some value.</p>
+
+<p>Currently, Ethereum is the headline language for Smart Contracts.
+It is a very simple, stack based bytecode language that does many things right.
+For instance, it is completely serializable and deterministic -- both core features of any smart contract approach done right.
+Moreover, it has a model of the price of execution stems; while a great idea, we believe this was poorly executed.
+There are several ways that Ethereum can be made better, e.g. a module system.</p>
+
+<p>The language that Juno runs for its replicated state machine is <a href="https://github.com/hopper-lang/hopper">Hopper</a>.
+Though still in early development, it will have the following features when completed:</p>
+
+<ul>
+<li>Declarative/Functional</li>
+<li>Sequentially consistent, fully deterministic, completely serializable</li>
+<li>"Diff-able" per command output representing all state changes</li>
+<li>Measure of execution cost</li>
+<li>Only allows finite-step programs (Turing complete but for a limited step count)</li>
+<li>Linearly Dependent Type system</li>
+<li>Module system</li>
+<li>Built in primitives for common use cases</li>
+<li>Other ownership models are expressible</li>
+</ul>
+
+<h3>
+<a id="4-immutable-ledger" class="anchor" href="#4-immutable-ledger" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>#4 Immutable Ledger</h3>
+
+<p>Blockchain solves this problem via Merkle Trees.
+In Juno, we don't have the ability to have a forked chain (due to the guarantees that Raft provides) and have opted instead for an incrementally hashed log of entries, a la Tangaroa.</p>
+
+<p>It provides a fast way of validating the log of entries and a persistent record of anything of issue that has gone in the past, whether intentional, mistaken or malicious.
+This last bit is key, as in enterprise there are usually regulations or legal contracts surrounding transactions and the ledger provides irrefutable proof of everything that has taken place.
+As a developer, it is great because it both makes issues easy to replicate but also because it solves a business problem (auditability) very cleanly.</p>
+
+<p>Further, because Raft's Leader Election guarantees that only Candidates with the most up to date logs can get elected, that Leaders can only be elected if they have the votes of a majority of nodes, and that a Leader must replicate an entry to a majority of nodes before applying it, we can be sure that in the event of a partition no committed entry can be lost.</p>
+
+<h3>
+<a id="5-cryptographic-verification-and-byzantine-fault-tolerance" class="anchor" href="#5-cryptographic-verification-and-byzantine-fault-tolerance" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>#5 Cryptographic Verification and Byzantine Fault Tolerance</h3>
+
+<p>Blockchain solves this problem by Public-Private key pairs for signatures on and verification of transactions.
+Tangaroa's protocol specifies using a similar system, but at the consensus level as well.
+This provides a means for one node to validate that a message came from another node (so long as keys haven't been compromised).</p>
+
+<p>Please see the author's paper on the subject, as it goes into further detail on the matter.
+Their specification provides good coverage of BFT class issues, but does have some notable gaps (e.g. the Runaway Candidate).</p>
+
+<p>There are a few Byzantine Faults that we explicitly do not care to cover since we believe that any production system will require a "big red button" that sends to cluster into read-only mode.
+Among these uncovered faults, that humans actually need to take care of, are Leaders failing to make progress and a Follower finding that its incremental hash disagrees with the majority of nodes.
+In the former case, we believe that a Revolution command's existence is more dangerous than a human-intervention procedure wherein the node is manually disconnected or shut down.
+For the latter, the Node should transmit it is leaving the consensus group, enter a standby state, dump its logs and wait for human intervention.</p>
+
+<h3>
+<a id="what-is-going-on-in-the-demo" class="anchor" href="#what-is-going-on-in-the-demo" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>What is going on in the demo</h3>
+
+<p>The demo starts with <code>./demo/start.sh</code> which causes a four server-node cluster (right side) and a Client node (left side) to be started.
+The four server nodes hold an election shortly after starting, decide on a Leader and become ready to accept commands from the Client.
+The Client then:</p>
+
+<ol>
+<li>creates three accounts (<code>wjm</code>, <code>stu</code> and <code>bank</code>)</li>
+<li>credits <code>wjm</code> with $100</li>
+<li>transfers $10 from <code>wjm</code> to <code>stu</code> directly</li>
+</ol>
+
+<p>Each of these commands are sent to the Leader which replicates them to the Followers.
+Once the command has been replicated to a majority of nodes, the command is applied by the Leader and a response to the Client is issued.
+Followers also apply the final transfer command around this time.</p>
+
+<p>After all this is completed, it's time to test resiliency of the network. As such, the Leader is terminated.
+Eventually a Follower calls for an election and is chosen as the new Leader.
+The Client now transfers $10 from <code>stu</code> to <code>wjm</code> via the intermediary <code>bank</code>.</p>
+
+<h2>
+<a id="whats-coming-up-next" class="anchor" href="#whats-coming-up-next" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>What's Coming up Next</h2>
+
+<p>This version of Juno represents an early iteration that the authors were given permission to Open Source.
+Our internal development branch is much further along but is not yet ready for prime time -- due to time constraints, we needed to open source in February.</p>
+
+<p>Currently it addresses:</p>
+
+<ul>
+<li>legibility of the consensus level state machine via a pure refactor</li>
+<li>the issues in the Tangaroa protocol spec</li>
+<li>additional test rigging</li>
+</ul>
+
+<p>We hope to also have:</p>
+
+<ul>
+<li>persistence via SQLite</li>
+<li>integrated Client command HTTP servers</li>
+<li>system monitoring integration</li>
+<li>signed snapshots</li>
+<li>additional Node states: standby/read replicas/non-voting nodes, read-only due to unrecoverable issue</li>
+<li>key rotation commands</li>
+</ul>
+
+<p>Please be patient, much more is coming.</p>
+
+<h3>
+<a id="thanks--references" class="anchor" href="#thanks--references" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Thanks &amp; References</h3>
+
+<p>A huge thanks to Tangaroa's authors for creating and open sourcing their work.
+Though this release has been refactored a bit, it is largely an untouched fork of Tangaroa -- <a href="https://github.com/chrisnc" class="user-mention">@chrisnc</a> and <a href="https://github.com/hongxia" class="user-mention">@hongxia</a> got so very much right.
+I feel justified in changing the name to Juno only because I know what the general shape of the next version will look like, a near total refactor.</p>
+
+<p>A (less huge but still large) thanks to <a href="https://github.com/uwplse/verdi">Verdi Raft</a> as well. Their demo was the inspiration for one posted above -- very clever.</p>
+
+<h3>
+<a id="build-guide" class="anchor" href="#build-guide" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Build guide</h3>
+
+<p>Build requirements:</p>
+
+<ul>
+<li>
+<code>haskell-stack</code>: <code>cabal build</code> will work as well, but <code>demo/start.sh</code> uses <code>stack exec</code> explicitly</li>
+<li>
+<code>zeromq-4</code>: messaging backend (I use zeromq-4.1.3 but any zeromq &gt;= 4.1.3 &amp;&amp; &lt; 5 should work)</li>
+<li>
+<code>tmux</code>: <code>demo/start.sh</code> creates a new tmux window and partitions it into multiple panes</li>
+<li>
+<code>rlwrap</code>: used in <code>junoclient.sh</code> to make things more pleasant</li>
+</ul>
+
+<p>For those not using stack, please see stack.yaml for non-hackage deps. Otherwise:</p>
+
+<pre><code>stack build
+./demo/start.sh
+</code></pre>
+
+      <footer class="site-footer">
+        <span class="site-footer-owner"><a href="https://github.com/buckie/juno">Juno</a> is maintained by <a href="https://github.com/buckie">buckie</a>.</span>
+
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the <a href="https://github.com/jasonlong/cayman-theme">Cayman theme</a> by <a href="https://twitter.com/jasonlong">Jason Long</a>.</span>
+      </footer>
+
+    </section>
+
+  
+  </body>
+</html>
