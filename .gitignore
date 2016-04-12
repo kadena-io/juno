@@ -2,7 +2,7 @@
 .dir-locals.el
 .stack-work/
 *~
-log/*.log
+log/*
 dist/*
 sample-data/*
 datadump
@@ -10,7 +10,14 @@ datadump
 cabal.sandbox.config
 datadump.json
 simplerdump.json
+*.html
+*.zip
+*.eventLog
 simple.conf
+fakepayments.json
+paymentsquery-07-28.json
+pretty.payments-query-07-28.json
+truncatedprettypayments.json
 depsample.json
 depsample1000.json
 depsample10000.json

@@ -1,91 +1,121 @@
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Juno.Runtime.Sender
   ( sendAppendEntries
   , sendAppendEntriesResponse
-  , sendRequestVote
-  , sendRequestVoteResponse
+  , createRequestVoteResponse
   , sendAllAppendEntries
-  , sendAllRequestVotes
   , sendAllAppendEntriesResponse
+  , createAppendEntriesResponse
   , sendResults
   , sendRPC
-  , sendSignedRPC
   ) where
 
 import Control.Lens
-import Data.Foldable (traverse_)
-import Data.Sequence (Seq)
+import Control.Arrow (second)
+import Control.Parallel.Strategies
+import Control.Monad.Writer
+
+import Data.ByteString (ByteString)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Set (Set)
-import qualified Data.ByteString.Lazy as B
-import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
+import Data.Serialize
 
 import Juno.Util.Util
 import Juno.Runtime.Types
+import Juno.Runtime.Timer (resetLastBatchUpdate)
 
+createAppendEntries' :: NodeID
+                   -> Map NodeID LogIndex
+                   -> Seq LogEntry
+                   -> Term
+                   -> NodeID
+                   -> Set NodeID
+                   -> Set RequestVoteResponse
+                   -> RPC
+createAppendEntries' target lNextIndex' es ct nid vts yesVotes =
+  let
+    mni = Map.lookup target lNextIndex'
+    (pli,plt) = logInfoForNextIndex mni es
+    vts' = if Set.member target vts then Set.empty else yesVotes
+  in
+    AE' $ AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) vts' NewMsg
 
+-- TODO: There seems to be needless construction then destruction of the non-wire message types
+--       Not sure if that could impact performance or if it will be unrolled/magic-ified
 -- no state update, uses state
 sendAppendEntries :: Monad m => NodeID -> Raft m ()
 sendAppendEntries target = do
-  mni <- use $ lNextIndex.at target
+  lNextIndex' <- use lNextIndex
   es <- use logEntries
-  let (pli,plt) = logInfoForNextIndex mni es
   ct <- use term
   nid <- view (cfg.nodeId)
+  vts <- use lConvinced
+  yesVotes <- use cYesVotes
+  sendRPC target $ createAppendEntries' target lNextIndex' es ct nid vts yesVotes
+  resetLastBatchUpdate
   debug $ "sendAppendEntries: " ++ show ct
-  qVoteList <- getVotesForNode target
-  sendSignedRPC target $ AE $
-    AppendEntries ct nid pli plt (Seq.drop (fromIntegral $ pli + 1) es) qVoteList B.empty
 
-getVotesForNode :: Monad m => NodeID -> Raft m (Set RequestVoteResponse)
-getVotesForNode target = do
-  convinced <- Set.member target <$> use lConvinced
-  if convinced
-    then return Set.empty
-    else use cYesVotes
+-- no state update
+sendAllAppendEntries :: Monad m => Raft m ()
+sendAllAppendEntries = do
+  lNextIndex' <- use lNextIndex
+  es <- use logEntries
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  vts <- use lConvinced
+  yesVotes <- use cYesVotes
+  oNodes <- view (cfg.otherNodes)
+  sendRPCs $ (\target -> (target, createAppendEntries' target lNextIndex' es ct nid vts yesVotes)) <$> Set.toList oNodes
+  resetLastBatchUpdate
+  debug "Sent All AppendEntries"
+
+createAppendEntriesResponse' :: Bool -> Bool -> Term -> NodeID -> LogIndex -> ByteString -> RPC
+createAppendEntriesResponse' success convinced ct nid lindex lhash =
+  AER' $ AppendEntriesResponse ct nid success convinced lindex lhash NewMsg
+
+createAppendEntriesResponse :: Monad m => Bool -> Bool -> Raft m AppendEntriesResponse
+createAppendEntriesResponse success convinced = do
+  ct <- use term
+  nid <- view (cfg.nodeId)
+  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
+  case createAppendEntriesResponse' success convinced ct nid lindex lhash of
+    AER' aer -> return aer
+    _ -> error "deep invariant error"
 
 -- no state update but uses state
 sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
 sendAppendEntriesResponse target success convinced = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  debug $ "sendAppendEntriesResponse: " ++ show ct
   (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  sendSignedRPC target $ AER $ AppendEntriesResponse ct nid success convinced lindex lhash B.empty
+  sendRPC target $ createAppendEntriesResponse' success convinced ct nid lindex lhash
+  debug $ "Sent AppendEntriesResponse: " ++ show ct
 
 -- no state update but uses state
 sendAllAppendEntriesResponse :: Monad m => Raft m ()
-sendAllAppendEntriesResponse =
-  traverse_ (\n -> sendAppendEntriesResponse n True True) =<< view (cfg.otherNodes)
-
--- uses state, but does not update
-sendRequestVote :: Monad m => NodeID -> Raft m ()
-sendRequestVote target = do
+sendAllAppendEntriesResponse = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  (llt, lli, _) <- lastLogInfo <$> use logEntries
-  debug $ "sendRequestVote: " ++ show ct
-  sendSignedRPC target $ RV $ RequestVote ct nid lli llt B.empty
+  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
+  aer <- return $ createAppendEntriesResponse' True True ct nid lindex lhash
+  oNodes <- view (cfg.otherNodes)
+  sendRPCs $ (,aer) <$> Set.toList oNodes
 
-sendRequestVoteResponse :: Monad m => NodeID -> Bool -> Raft m ()
-sendRequestVoteResponse target vote = do
-  ct <- use term
-  nid <- view (cfg.nodeId)
-  debug $ "sendRequestVoteResponse: " ++ show ct
-  sendSignedRPC target $ RVR $ RequestVoteResponse ct nid vote target B.empty
-
--- no state update
-sendAllAppendEntries :: Monad m => Raft m ()
-sendAllAppendEntries = traverse_ sendAppendEntries =<< view (cfg.otherNodes)
-
--- uses state, but does not update
-sendAllRequestVotes :: Monad m => Raft m ()
-sendAllRequestVotes = traverse_ sendRequestVote =<< use cPotentialVotes
+createRequestVoteResponse :: MonadWriter [String] m => Term -> LogIndex -> NodeID -> NodeID -> Bool -> m RequestVoteResponse
+createRequestVoteResponse term' logIndex' myNodeId' target vote = do
+  tell ["Created RequestVoteResponse: " ++ show term']
+  return $ RequestVoteResponse term' logIndex' myNodeId' vote target NewMsg
 
 -- no state update
-sendResults :: Monad m => Seq (NodeID, CommandResponse) -> Raft m ()
-sendResults results = traverse_ (\(target,cmdr) -> sendSignedRPC target $ CMDR cmdr) results
+sendResults :: Monad m => [(NodeID, CommandResponse)] -> Raft m ()
+sendResults results = sendRPCs $ second CMDR' <$> results
 
 -- called by leaders sending appendEntries.
 -- given a replica's nextIndex, get the index and term to send as
@@ -101,23 +131,25 @@ logInfoForNextIndex mni es =
         Nothing -> (startIndex, startTerm)
     Nothing -> (startIndex, startTerm)
 
+
+-- TODO: figure out if there is a needless performance hit here (looking up these constants every time?)
 sendRPC :: Monad m => NodeID -> RPC -> Raft m ()
 sendRPC target rpc = do
   send <- view (rs.sendMessage)
-  ser <- view (rs.serializeRPC)
-  send target $ ser rpc
+  myNodeId <- view (cfg.nodeId)
+  privKey <- view (cfg.myPrivateKey)
+  pubKey <- view (cfg.myPublicKey)
+  send target $ encode $ rpcToSignedRPC myNodeId pubKey privKey rpc
 
--- no state update
-sendSignedRPC :: Monad m => NodeID -> RPC -> Raft m ()
-sendSignedRPC target rpc = do
-  pk <- view (cfg.privateKey)
-  msg <- return $ case rpc of
-    AE ae          -> AE   $ signRPC pk ae
-    AER aer        -> AER  $ signRPC pk aer
-    RV rv          -> RV   $ signRPC pk rv
-    RVR rvr        -> RVR  $ signRPC pk rvr
-    CMD cmd        -> CMD  $ signRPC pk cmd
-    CMDR cmdr      -> CMDR $ signRPC pk cmdr
-    REVOLUTION rev -> REVOLUTION $ signRPC pk rev
-    _         -> rpc
-  sendRPC target msg
+encodedRPC :: NodeID -> PrivateKey -> PublicKey -> RPC -> ByteString
+encodedRPC myNodeId privKey pubKey rpc = encode $! rpcToSignedRPC myNodeId pubKey privKey rpc
+{-# INLINE encodedRPC #-}
+
+sendRPCs :: Monad m => [(NodeID, RPC)] -> Raft m ()
+sendRPCs rpcs = do
+  send <- view (rs.sendMessages)
+  myNodeId <- view (cfg.nodeId)
+  privKey <- view (cfg.myPrivateKey)
+  pubKey <- view (cfg.myPublicKey)
+  msgs <- return ((second (encodedRPC myNodeId privKey pubKey) <$> rpcs ) `using` parList rseq)
+  send msgs

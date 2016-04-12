@@ -10,26 +10,31 @@ module Juno.Util.Util
   , runRWS_
   , enqueueEvent, enqueueEventLater
   , dequeueEvent
+  , logMetric
+  , logStaticMetrics
   , messageReceiver
-  , verifyRPCWithKey
-  , verifyRPCWithClientKey
-  , signRPCWithKey
-  , updateTerm
+  , setTerm
+  , setRole
+  , setCurrentLeader
+  , updateLNextIndex
+  , setLNextIndex
+  , getCmdSigOrInvariantError
+  , getRevSigOrInvariantError
   ) where
 
 import Juno.Runtime.Types
 import Juno.Util.Combinator
 
 import Control.Lens
-import Codec.Crypto.RSA
 import Data.Sequence (Seq)
 import Control.Monad.RWS
+import Data.ByteString (ByteString)
+import Data.Serialize
 import qualified Control.Concurrent.Lifted as CL
 import qualified Data.ByteString as B
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
 import qualified System.Random as R
-import Data.Serialize
 
 seqIndex :: Seq a -> Int -> Maybe a
 seqIndex s i =
@@ -41,7 +46,7 @@ getQuorumSize :: Int -> Int
 getQuorumSize n = minimum [n - f | f <- [0..n], n >= 3*f + 1]
 
 -- get the last term and index of a log
-lastLogInfo :: Seq LogEntry -> (Term, LogIndex, B.ByteString)
+lastLogInfo :: Seq LogEntry -> (Term, LogIndex, ByteString)
 lastLogInfo es =
   case Seq.viewr es of                 -- \/ TODO: This smells weird, should we really use length for this?
     _ Seq.:> LogEntry{..} -> (_leTerm, LogIndex $ Seq.length es - 1, _leHash)
@@ -76,79 +81,78 @@ enqueueEventLater t event = view (rs.enqueueLater) >>= \f -> f t event
 dequeueEvent :: Monad m => Raft m Event
 dequeueEvent = join $ view (rs.dequeue)
 
+logMetric :: Monad m => Metric -> Raft m ()
+logMetric metric = view (rs.publishMetric) >>= \f -> f metric
+
+logStaticMetrics :: Monad m => Raft m ()
+logStaticMetrics = do
+  logMetric . MetricNodeId =<< view (cfg.nodeId)
+  logMetric . MetricClusterSize =<< view clusterSize
+  logMetric . MetricQuorumSize =<< view quorumSize
+
 -- | Thread to take incoming messages and write them to the event queue.
 -- THREAD: MESSAGE RECEIVER (client and server), no state updates
 messageReceiver :: Monad m => Raft m ()
 messageReceiver = do
   gm <- view (rs.getMessage)
-  deser <- view (rs.deserializeRPC)
-  forever $
-    gm >>= either
-      (debug . ("failed to deserialize RPC: " ++))
-      (enqueueEvent . ERPC)
-      . deser
+  ks <- KeySet <$> view (cfg.publicKeys) <*> view (cfg.clientPublicKeys)
+  forever $ do
+    (ts, msg) <- gm
+    case decode msg of
+      Left err -> do
+        -- two debugs here because... when the system is streaming you may miss the error & you want the message.
+        -- So print the msg (to get your attention) and then print the error under it... TODO: better logging
+        debug $ "Failed to deserialize to SignedRPC [Msg]: " ++ show msg
+        debug $ "Failed to deserialize to SignedRPC [Error]: " ++ err
+      Right v -> do
+--        debug $ "Got a SignedRPC of type: " ++ show (_digType $ _sigDigest v)
+        case signedRPCtoRPC (Just ts) ks v of
+          Left err -> debug err
+          Right rpc -> enqueueEvent $ ERPC rpc
 
-verifyWrappedRPC :: PublicKey -> RPC -> Bool
-verifyWrappedRPC k rpc = case rpc of
-  AE ae          -> verifyRPC k ae
-  AER aer        -> verifyRPC k aer
-  RV rv          -> verifyRPC k rv
-  RVR rvr        -> verifyRPC k rvr
-  CMD cmd        -> verifyRPC k cmd
-  CMDR cmdr      -> verifyRPC k cmdr
-  REVOLUTION rev -> verifyRPC k rev
-  DBG _          -> True
-
-senderId :: RPC -> Maybe NodeID
-senderId rpc = case rpc of
-    AE ae          -> Just (_leaderId ae)
-    AER aer        -> Just (_aerNodeId aer)
-    RV rv          -> Just (_rvCandidateId rv)
-    RVR rvr        -> Just (_rvrNodeId rvr)
-    CMD cmd        -> Just (_cmdClientId cmd)
-    CMDR cmdr      -> Just (_cmdrNodeId cmdr)
-    REVOLUTION rev -> Just (_revClientId rev)
-    DBG _          -> Nothing
-
-verifyRPCWithKey :: (Monad m) => RPC -> Raft m Bool
-verifyRPCWithKey rpc =
-  case rpc of
-    AE _   -> doVerify rpc
-    AER _  -> doVerify rpc
-    RV _   -> doVerify rpc
-    RVR _  -> doVerify rpc
-    CMDR _ -> doVerify rpc
-    _      -> return False
-  where
-    doVerify rpc' = do
-      pks <- view (cfg.publicKeys)
-      let mk = (\k -> Map.lookup k pks) =<< senderId rpc'
-      maybe
-        (debug "RPC has invalid signature" >> return False)
-        (\k -> return (verifyWrappedRPC k rpc'))
-        mk
-
-verifyRPCWithClientKey :: Monad m => RPC -> Raft m Bool
-verifyRPCWithClientKey rpc =
-  case rpc of
-    CMD _        -> doVerify rpc
-    REVOLUTION _ -> doVerify rpc
-    _            -> return False
-  where
-    doVerify rpc' = do
-      pks <- view (cfg.clientPublicKeys)
-      let mk = (\k -> Map.lookup k pks) =<< senderId rpc'
-      maybe
-        (debug "RPC has invalid signature" >> return False)
-        (\k -> return (verifyWrappedRPC k rpc'))
-        mk
-
-signRPCWithKey :: (Monad m, Serialize rpc, HasSig rpc) => rpc -> Raft m rpc
-signRPCWithKey rpc = do
-  pk <- view (cfg.privateKey)
-  return (signRPC pk rpc)
-
-updateTerm :: Monad m => Term -> Raft m ()
-updateTerm t = do
+setTerm :: Monad m => Term -> Raft m ()
+setTerm t = do
   void $ rs.writeTermNumber ^$ t
   term .= t
+  logMetric $ MetricTerm t
+
+setRole :: Monad m => Role -> Raft m ()
+setRole newRole = do
+  role .= newRole
+  logMetric $ MetricRole newRole
+
+setCurrentLeader :: Monad m => Maybe NodeID -> Raft m ()
+setCurrentLeader mNode = do
+  currentLeader .= mNode
+  logMetric $ MetricCurrentLeader mNode
+
+updateLNextIndex :: Monad m
+                 => (Map.Map NodeID LogIndex -> Map.Map NodeID LogIndex)
+                 -> Raft m ()
+updateLNextIndex f = do
+  lNextIndex %= f
+  lni <- use lNextIndex
+  ci <- use commitIndex
+  logMetric $ MetricAvailableSize $ availSize lni ci
+
+  where
+    -- | The number of nodes at most one behind the commit index
+    availSize lni ci = let oneBehind = pred ci
+                       in succ $ Map.size $ Map.filter (>= oneBehind) lni
+
+setLNextIndex :: Monad m
+              => Map.Map NodeID LogIndex
+              -> Raft m ()
+setLNextIndex = updateLNextIndex . const
+
+getCmdSigOrInvariantError :: String -> Command -> Signature
+getCmdSigOrInvariantError where' s@Command{..} = case _cmdProvenance of
+  NewMsg -> error $ where'
+    ++ ": This should be unreachable, somehow an AE got through with a LogEntry that contained an unsigned Command" ++ show s
+  ReceivedMsg{..} -> _digSig _pDig
+
+getRevSigOrInvariantError :: String -> Revolution -> Signature
+getRevSigOrInvariantError where' s@Revolution{..} = case _revProvenance of
+  NewMsg -> error $ where'
+    ++ ": This should be unreachable, got an unsigned Revolution" ++ show s
+  ReceivedMsg{..} -> _digSig _pDig

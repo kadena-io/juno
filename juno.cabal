@@ -2,7 +2,7 @@ name:                juno
 version:             0.0.0.1
 synopsis:            Bynzantine Fault Tolerant Raft
 description:         An implementation of a Byzantine Fault Tolerant Raft protocol.
-homepage:            https://github.com/chrisnc/tangaroa
+homepage:            https://github.com/buckie/juno
 author:              Chris Copeland, Will Martino
 maintainer:          chrisnc@cs.stanford.edu, wjmartino@gmail.com
 copyright:           Copyright (C) 2014-2015 Chris Copeland, Copyright 2015-2016 (C) Will Martino
@@ -22,14 +22,27 @@ library
   exposed-modules:     Apps.Juno.Server
                      , Apps.Juno.Command
                      , Apps.Juno.Client
+                     , Apps.Juno.JsonTypes
                      , Apps.Juno.Ledger
                      , Apps.Juno.Parser
                      , Juno.Consensus.ByzRaft.Handler
                      , Juno.Consensus.ByzRaft.Server
                      , Juno.Consensus.ByzRaft.Client
+                     , Juno.Consensus.ByzRaft.Commit
+                     , Juno.Consensus.ByzRaft.Log
+                     , Juno.Consensus.Pure.Types
+                     , Juno.Consensus.Pure.Handle.AppendEntries
+                     , Juno.Consensus.Pure.Handle.AppendEntriesResponse
+                     , Juno.Consensus.Pure.Handle.RequestVote
+                     , Juno.Consensus.Pure.Handle.RequestVoteResponse
+                     , Juno.Consensus.Pure.Handle.Command
+                     , Juno.Consensus.Pure.Handle.ElectionTimeout
+                     , Juno.Consensus.Pure.Handle.HeartbeatTimeout
+                     , Juno.Consensus.Pure.Handle.Revolution
                      , Juno.Messaging.NanoMsg
                      , Juno.Messaging.Types
                      , Juno.Messaging.ZMQ
+                     , Juno.Monitoring.Server
                      , Juno.Persistence.SQLite
                      , Juno.Runtime.Role
                      , Juno.Runtime.Sender
@@ -40,31 +53,42 @@ library
                      , Juno.Util.Util
                      , Schwifty.Swift.M105.Types
                      , Schwifty.Swift.M105.Parser
-
-  build-depends:       RSA
-                     , SHA2
-                     , attoparsec
+                     , Juno.Monitoring.EkgJson
+                     , Juno.Monitoring.EkgMonitor
+                     , Juno.Monitoring.EkgSnap
+  build-depends:       SHA2
                      , aeson
                      , aeson-pretty
                      , array
+                     , async
+                     , attoparsec
                      , base < 5
-                     , binary
+                     , base16-bytestring
+                     , base64-bytestring >= 1.0.0.1 && < 1.1
+                     , binary-serialise-cbor
                      , bytestring
                      , cereal >= 0.4.1.1
                      , containers
+                     , criterion
                      , crypto-api
+                     , deepseq >= 1.4.1.1
+                     , ed25519-donna
+                     , ekg >= 0.4 && < 0.5
+                     , ekg-core >= 0.1.1.0 && < 0.2
                      , enclosed-exceptions
                      , hopper <= 0.1.0.0
+                     , hspec
                      , lens
                      , lifted-base
+                     , megaparsec >= 4.2.0 && < 4.3
                      , monad-control
                      , monad-loops
                      , mtl
                      , mtl-compat
                      , network
                      , network-simple
+                     , parallel
                      , parsec
-                     , megaparsec >= 4.2.0 && < 4.3
                      , parsers
                      , random
                      , snap-core
@@ -76,22 +100,31 @@ library
                      , thyme
                      , transformers
                      , unagi-chan
+                     , vector-space >= 0.10.2 && < 0.11
+                     , yaml
                      , zeromq4-haskell >= 0.6.3
                      , zlib
+                     , time
+                     , unordered-containers
+                     , filepath
+                     , ekg-json
   hs-source-dirs:      src
-  ghc-options:         -Wall -fno-warn-unused-do-bind
+  ghc-options:         -Wall -fno-warn-unused-do-bind -O2 -with-rtsopts="-N4"
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
-executable genkeys
-  main-is:             GenerateKeys.hs
+executable genconfs
+  main-is:             GenerateConfigFiles.hs
   build-depends:       base < 5
-                     , RSA
+                     , juno
+                     , ed25519-donna
                      , containers
                      , crypto-api
                      , network
                      , directory
+                     , thyme
                      , filepath
+                     , yaml
   hs-source-dirs:      executables
   ghc-options:         -Wall -threaded -rtsopts
   default-language:    Haskell2010
@@ -114,13 +147,53 @@ executable junoclient
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
+executable simplepartest
+  main-is:             SimpleSeqVsParVsAsync.hs
+  build-depends:       base < 5
+                     , bytestring
+                     , criterion
+                     , deepseq >= 1.4.1.1
+                     , ed25519-donna
+                     , parallel
+                     , async
+  hs-source-dirs:      criterion
+  ghc-options:         -Wall -threaded -eventlog -rtsopts -O2 +RTS -N4 -RTS
+  ghc-prof-options:    -fprof-auto -fprof-auto-calls
+  default-language:    Haskell2010
+
+executable serialization
+  main-is:             Serialization.hs
+  build-depends:       base < 5
+                     , binary-serialise-cbor
+                     , bytestring
+                     , cereal
+                     , containers
+                     , criterion
+                     , deepseq >= 1.4.1.1
+                     , ed25519-donna
+                     , juno
+                     , parallel
+                     , async
+  hs-source-dirs:      criterion
+  ghc-options:         -Wall -threaded -rtsopts -O2
+  ghc-prof-options:    -fprof-auto -fprof-auto-calls
+  default-language:    Haskell2010
+
 test-suite hspec
+  other-modules:       ParserSpec
+                     , WireFormatSpec
+                     , JsonTypesSpec
   type: exitcode-stdio-1.0
   main-is: hspec.hs
   hs-source-dirs: tests
   default-language: Haskell2010
   build-depends:
                 base
+              , aeson
+              , bytestring
+              , SHA
+              , containers
               , hspec
               , juno
               , hopper
+              , text >= 1.2.0.0 && < 1.3

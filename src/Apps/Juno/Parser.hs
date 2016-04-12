@@ -80,7 +80,7 @@ convertBlob (SwiftBlob t c) =
     Right o -> Left $ "Invariant Failure: expected Program but got " ++ show o
 
 transmatic :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
-transmatic = either Left (Right . Program) . compile <$> expr
+transmatic = fmap Program . compile <$> expr
 
 readHopper :: BSC.ByteString -> Either String HopperLiteAdminCommand
 readHopper m = case Atto.parseOnly hopperliteParser m of
@@ -110,13 +110,21 @@ observeAccounts = do
   _ <- ssString "ObserveAccounts"
   return $ Right ObserveAccounts
 
+-- negative representation: -10%1, (-10)%1, ((-10)%1) (-10%1)
+-- positive representation:  10%1, (10)%1, ((10)%1), (10%1)
 myRational :: (Monad m, TokenParsing m) => m Rational
 myRational = do
+  _ <- optional $ char '('
+  _ <- optional $ char '('
+  sig <- optional $ char '-'
   n <- decimal
+  _ <- optional $ char ')'
   _ <- ssChar '%'
   d <- decimal
-  return (n % d)
-
+  _ <- optional $ char ')'
+  case sig of
+    Nothing -> return (n % d)
+    Just _ -> return ((-n) % d)
 
 skipSpace :: TokenParsing m => m ()
 skipSpace = skipMany space

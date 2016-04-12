@@ -19,6 +19,14 @@ import qualified Data.Text as T
 
 import Juno.Runtime.Types
 
+-- These live here as orphans, and not in Types, because trying to Serialize these things should be a type level error
+-- with rare exception (i.e. for hashing the log entry). Moreover, accidentally sending Provenance over the wire could
+-- be hard to catch. Best to make it impossible.
+instance Serialize Command
+instance Serialize Provenance
+instance Serialize LogEntry
+instance Serialize RequestVoteResponse
+
 instance ToField NodeID where
   toField n = toField $ encode n
 instance FromField NodeID where
@@ -59,6 +67,15 @@ instance (Ord a, Typeable a, Serialize a) => FromField (Set a) where
       Left err -> returnError ConversionFailed f ("Couldn't deserialize sequence: " ++ err)
       Right v -> Ok v
 
+instance ToField Provenance where
+  toField = toField . encode
+instance FromField Provenance where
+  fromField f = do
+    s :: ByteString <- fromField f
+    case decode s of
+      Left err -> returnError ConversionFailed f ("Couldn't deserialize sequence: " ++ err)
+      Right v -> Ok v
+
 instance ToRow AppendEntries where
   toRow AppendEntries{..} = [toField _aeTerm
                             ,toField _leaderId
@@ -66,7 +83,7 @@ instance ToRow AppendEntries where
                             ,toField _prevLogTerm
                             ,toField _aeEntries
                             ,toField _aeQuorumVotes
-                            ,toField _aeSig ]
+                            ,toField _aeProvenance ]
 
 
 

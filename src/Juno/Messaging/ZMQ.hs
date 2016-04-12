@@ -7,26 +7,26 @@ module Juno.Messaging.ZMQ (
   runMsgServer
   ) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, threadDelay, yield)
 import Control.Concurrent.Chan.Unagi
 import Control.Monad.State.Strict
+import Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Data.Serialize
 import System.ZMQ4.Monadic
+import Data.Thyme.Clock
 
 import Juno.Messaging.Types
+import Juno.Runtime.Types (ReceivedAt(..))
 
-sendProcess :: Serialize a
-            => OutChan (OutBoundMsg String a)
+sendProcess :: OutChan (OutBoundMsg String ByteString)
             -> Rolodex String (Socket z Push)
             -> ZMQ z (Rolodex String (Socket z Push))
 sendProcess outboxRead r = do
   (OutBoundMsg addrs msg) <- liftIO $ readChan outboxRead
-  let bs = encode msg
   newRol <- updateRolodex r addrs
   toPoll <- recipList newRol addrs
-  mapM_ (\s -> send s [] bs) toPoll
+  mapM_ (\s -> send s [] msg) toPoll
   sendProcess outboxRead newRol
 
 updateRolodex :: Rolodex String (Socket z Push) -> Recipients String -> ZMQ z (Rolodex String (Socket z Push))
@@ -53,12 +53,11 @@ addNewAddrs (Rolodex r) (x:xs) = do
 
 recipList :: Rolodex String (Socket z Push) -> Recipients String -> ZMQ z [Socket z Push]
 recipList (Rolodex r) RAll = return $ _unListenOn <$> Map.elems r
-recipList (Rolodex r) (RSome addrs) = return $ _unListenOn <$> (r Map.!) <$> Set.toList addrs
+recipList (Rolodex r) (RSome addrs) = return $ _unListenOn . (r Map.!) <$> Set.toList addrs
 recipList (Rolodex r) (ROne addr) = return $ _unListenOn <$> [r Map.! addr]
 
-runMsgServer :: Serialize m
-             => InChan m
-             -> OutChan (OutBoundMsg String m)
+runMsgServer :: InChan (ReceivedAt, ByteString)
+             -> OutChan (OutBoundMsg String ByteString)
              -> Addr String
              -> [Addr String]
              -> IO ()
@@ -68,10 +67,8 @@ runMsgServer inboxWrite outboxRead me addrList = void $ do
       _ <- bind sock $ _unAddr me
       forever $ do
         newMsg <- receive sock
-        case decode newMsg of
-          Left err -> liftIO $ putStrLn $ "Failure to decode: " ++ err
-          Right v -> liftIO $ writeChan inboxWrite v
-        liftIO $ threadDelay 1000
+        ts <- liftIO getCurrentTime
+        liftIO $ writeChan inboxWrite (ReceivedAt ts, newMsg) >> yield
     threadDelay 100000 -- to be sure that the recieve side is up first
     forkIO $ runZMQ $ do
       rolodex <- addNewAddrs (Rolodex Map.empty) addrList
