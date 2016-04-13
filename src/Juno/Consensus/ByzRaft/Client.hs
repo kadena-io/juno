@@ -24,6 +24,7 @@ import Juno.Runtime.Timer
 import Juno.Runtime.Types
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendRPC)
+import Juno.Runtime.MessageReceiver
 
 import           Control.Concurrent (MVar, modifyMVar_, takeMVar, putMVar, newMVar, readMVar)
 import qualified Control.Concurrent.Lifted as CL

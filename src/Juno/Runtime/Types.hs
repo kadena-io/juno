@@ -40,7 +40,7 @@ module Juno.Runtime.Types
   , initialRaftState
   -- * RPC
   , AppendEntries(..)
-  , AppendEntriesResponse(..), aerOnlyDecode, aerReVerify, AlotOfAERs(..)
+  , AppendEntriesResponse(..), AERWire(..), AlotOfAERs(..)
   , RequestVote(..)
   , RequestVoteResponse(..)
   , Command(..)
@@ -107,9 +107,9 @@ data NodeID = NodeID { _host :: !String, _port :: !Word64 }
   deriving (Eq,Ord,Read,Show,Generic)
 instance Serialize NodeID
 instance ToJSON NodeID where
-  toJSON = (genericToJSON defaultOptions { fieldLabelModifier = drop 1 })
+  toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
 instance FromJSON NodeID where
-  parseJSON = (genericParseJSON defaultOptions { fieldLabelModifier = drop 1 })
+  parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
 
 newtype Term = Term Int
   deriving (Show, Read, Eq, Enum, Num, Ord, Generic, Serialize, CBC.Serialise)
@@ -155,9 +155,9 @@ instance FromJSON NominalDiffTime where
     Nothing -> mzero
   parseJSON _ = mzero
 instance ToJSON Config where
-  toJSON = (genericToJSON defaultOptions { fieldLabelModifier = drop 1 })
+  toJSON = genericToJSON defaultOptions { fieldLabelModifier = drop 1 }
 instance FromJSON Config where
-  parseJSON = (genericParseJSON defaultOptions { fieldLabelModifier = drop 1 })
+  parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
 
 data KeySet = KeySet
   { _ksCluster :: !(Map NodeID PublicKey)
@@ -268,10 +268,10 @@ data Provenance =
 
 -- | Based on the MsgType in the SignedRPC's Digest, we know which set of keys are needed to validate the message
 verifySignedRPC :: KeySet -> SignedRPC -> Either String ()
-verifySignedRPC !KeySet{..} !s@(SignedRPC !Digest{..} !bdy)
+verifySignedRPC !KeySet{..} s@(SignedRPC !Digest{..} !bdy)
   | _digType == CMD || _digType == REV || _digType == CMDB =
       case Map.lookup _digNodeId _ksClient of
-        !Nothing -> Left $! "PubKey not found for NodeID: " ++ show _digNodeId
+        Nothing -> Left $! "PubKey not found for NodeID: " ++ show _digNodeId
         Just !key
           | key /= _digPubkey -> Left $! "Public key in storage doesn't match digest's key for msg: " ++ show s
           | otherwise -> if not $ valid bdy key _digSig
@@ -310,7 +310,7 @@ instance WireFormat Command where
                   dig = Digest nid sig pubKey CMD
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire !ts !ks !s@(SignedRPC !dig !bdy) =
+  fromWire !ts !ks s@(SignedRPC !dig !bdy) =
     case verifySignedRPC ks s of
       Left !err -> Left err
       Right () -> if _digType dig /= CMD
@@ -332,12 +332,12 @@ instance Serialize CMDBWire
 
 instance WireFormat CommandBatch where
   toWire nid pubKey privKey CommandBatch{..} = case _cmdbProvenance of
-    NewMsg -> let bdy = S.encode $ ((toWire nid pubKey privKey <$> _cmdbBatch) `using` parList rseq)
+    NewMsg -> let bdy = S.encode ((toWire nid pubKey privKey <$> _cmdbBatch) `using` parList rseq)
                   sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey CMDB
               in SignedRPC dig bdy
     ReceivedMsg{..} -> SignedRPC _pDig _pOrig
-  fromWire !ts !ks !s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
+  fromWire !ts !ks s@(SignedRPC dig bdy) = case verifySignedRPC ks s of
     Left !err -> Left err
     Right () -> if _digType dig /= CMDB
       then error $! "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDBWire instance"
@@ -404,8 +404,8 @@ toSeqLogEntry :: [Either String LogEntry] -> Either String (Seq LogEntry)
 toSeqLogEntry !ele = go ele Seq.empty
   where
     go [] s = Right $! s
-    go ((Right le):les) s = go les (s |> le)
-    go ((Left err):_) _ = Left $! err
+    go (Right le:les) s = go les (s |> le)
+    go (Left err:_) _ = Left $! err
 {-# INLINE toSeqLogEntry #-}
 
 decodeLEWire :: Maybe ReceivedAt -> KeySet -> [LEWire] -> Either String (Seq LogEntry)
@@ -488,14 +488,8 @@ instance Ord AppendEntriesResponse where
   -- Hash matters more than verified due to conflict resolution
   -- Then verified, which is metadata really, because if everything up to that point is the same then the one that already ran through crypto is more valuable
   -- After that it doesn't matter.
-  (AppendEntriesResponse t n s c i h v p) < (AppendEntriesResponse t' n' s' c' i' h' v' p') =
-    (n,t,i,h,v,s,c,p) <  (n',t',i',h',v',s',c',p')
   (AppendEntriesResponse t n s c i h v p) <= (AppendEntriesResponse t' n' s' c' i' h' v' p') =
     (n,t,i,h,v,s,c,p) <= (n',t',i',h',v',s',c',p')
-  (AppendEntriesResponse t n s c i h v p) >= (AppendEntriesResponse t' n' s' c' i' h' v' p') =
-    (n,t,i,h,v,s,c,p) >= (n',t',i',h',v',s',c',p')
-  (AppendEntriesResponse t n s c i h v p) > (AppendEntriesResponse t' n' s' c' i' h' v' p') =
-    (n,t,i,h,v,s,c,p) >  (n',t',i',h',v',s',c',p')
 
 data AERWire = AERWire (Term,NodeID,Bool,Bool,LogIndex,ByteString)
   deriving (Show, Generic)
@@ -523,17 +517,6 @@ instance WireFormat AppendEntriesResponse where
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}
 
-aerOnlyDecode :: ReceivedAt -> SignedRPC -> Either String AppendEntriesResponse
-aerOnlyDecode ts s@SignedRPC{..}
-  | _digType _sigDigest /= AER = error $ "Invariant Error: aerOnlyDecode called on " ++ show s
-  | otherwise = case S.decode _sigBody of
-      Left !err -> Left $! "Failure to decode AERWire: " ++ err
-      Right (AERWire !(t,nid,s',c,i,h)) -> Right $! AppendEntriesResponse t nid s' c i h False $ ReceivedMsg _sigDigest _sigBody $ Just ts
-
-aerReVerify :: KeySet -> AppendEntriesResponse -> Either String ()
-aerReVerify  _ (AppendEntriesResponse _ _ _ _ _ _ True _) = Right ()
-aerReVerify  _ (AppendEntriesResponse _ _ _ _ _ _ _ NewMsg) = Right ()
-aerReVerify ks (AppendEntriesResponse _ _ _ _ _ _ False ReceivedMsg{..}) = verifySignedRPC ks $ SignedRPC _pDig _pOrig
 
 newtype AlotOfAERs = AlotOfAERs { _unAlot :: Map NodeID (Set AppendEntriesResponse)}
   deriving (Show, Eq)
@@ -611,8 +594,8 @@ toSetRvr :: [Either String RequestVoteResponse] -> Either String (Set RequestVot
 toSetRvr eRvrs = go eRvrs Set.empty
   where
     go [] s = Right $! s
-    go ((Right rvr):rvrs) s = go rvrs (Set.insert rvr s)
-    go ((Left err):_) _ = Left $! err
+    go (Right rvr:rvrs) s = go rvrs (Set.insert rvr s)
+    go (Left err:_) _ = Left $! err
 {-# INLINE toSetRvr #-}
 
 -- the expected behavior here is tricky. For a set of votes, we are actually okay if some are invalid so long as there's a quorum
