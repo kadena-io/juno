@@ -140,7 +140,7 @@ handleAlotOfAers :: Monad m => AlotOfAERs -> JT.Raft m ()
 handleAlotOfAers (AlotOfAERs m) = do
   ks <- KeySet <$> view (JT.cfg . JT.publicKeys) <*> view (JT.cfg . JT.clientPublicKeys)
   res <- return ((processSetAer ks <$> Map.elems m) `using` parList rseq)
-  aers <- liftM catMaybes $ mapM (\(a,l) -> mapM_ debug l >> return a) res
+  aers <- catMaybes <$> mapM (\(a,l) -> mapM_ debug l >> return a) res
   mapM_ handle aers
 
 processSetAer :: KeySet -> Set AppendEntriesResponse -> (Maybe AppendEntriesResponse, [String])
@@ -154,8 +154,11 @@ processSetAer ks s = go [] (Set.toDescList s)
                       Right () -> (Just $ aer {_aerWasVerified = True}, fails)
 
 
-
+-- | Verify if needed on `ReceivedMsg` provenance
 aerReVerify :: KeySet -> AppendEntriesResponse -> Either String ()
-aerReVerify  _ (AppendEntriesResponse _ _ _ _ _ _ True _) = Right ()
-aerReVerify  _ (AppendEntriesResponse _ _ _ _ _ _ _ NewMsg) = Right ()
-aerReVerify ks (AppendEntriesResponse _ _ _ _ _ _ False ReceivedMsg{..}) = verifySignedRPC ks $ SignedRPC _pDig _pOrig
+aerReVerify  _ (AppendEntriesResponse { _aerWasVerified = True }) = Right ()
+aerReVerify  _ (AppendEntriesResponse { _aerProvenance = NewMsg }) = Right ()
+aerReVerify ks (AppendEntriesResponse {
+                  _aerWasVerified = False,
+                  _aerProvenance = ReceivedMsg{..}
+                }) = verifySignedRPC ks $ SignedRPC _pDig _pOrig
