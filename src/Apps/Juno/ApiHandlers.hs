@@ -6,10 +6,11 @@ module Apps.Juno.ApiHandlers (
                            ,transactAPI
                            ,ledgerQueryAPI
                            ,cmdBatch
+                           ,apiRoutes
+                           ,ApiEnv(..)
                            ) where
 
 import           Control.Concurrent.Chan.Unagi
-import           Control.Monad.IO.Class (liftIO)
 
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.ByteString.Char8 as BSC
@@ -29,43 +30,54 @@ import           Juno.Consensus.ByzRaft.Client (
 
 
 import           Apps.Juno.Ledger
+import           Control.Monad.Reader
 
-apiWrapper :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap ->  (BLC.ByteString -> Either BLC.ByteString [CommandEntry]) -> Snap ()
-apiWrapper toCommands cmdStatusMap requestHandler = do
+data ApiEnv = ApiEnv {
+      _toCommands :: InChan (RequestId, [CommandEntry]),
+      _cmdStatusMap ::  CommandMVarMap
+}
+
+apiRoutes :: ReaderT ApiEnv Snap ()
+apiRoutes = route [
+              ("/accounts/create", createAccount)
+             ,("/accounts/adjust", adjustAccount)
+             ,("/transact", transactAPI)
+             ,("/query", ledgerQueryAPI)
+             ,("/cmd/batch", cmdBatch)
+             ]
+
+apiWrapper :: (BLC.ByteString -> Either BLC.ByteString [CommandEntry]) -> ReaderT ApiEnv Snap ()
+apiWrapper requestHandler = do
+   env <- ask
    modifyResponse $ setHeader "Content-Type" "application/json"
    reqBytes <- (readRequestBody 1000000)
    case (requestHandler reqBytes) of
      Right cmdEntries -> do
-         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId cmdStatusMap
-         liftIO $ writeChan toCommands (reqestId, cmdEntries)
+         reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId (_cmdStatusMap env)
+         liftIO $ writeChan (_toCommands env) (reqestId, cmdEntries)
          (writeBS . BLC.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
      Left err -> (writeBS . BLC.toStrict) $ err
 
 -- create an account returns cmdId see: juno/jmeter/juno_API_jmeter_test.jmx
-createAccount :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
-createAccount toCommands cmdStatusMap =
-    apiWrapper toCommands cmdStatusMap createAccountReqHandler
+createAccount :: ReaderT ApiEnv Snap ()
+createAccount = apiWrapper createAccountReqHandler
 
 -- Adjusts Account (negative, positive) returns cmdIds: juno/jmeter/juno_API_jmeter_test.jmx
-adjustAccount :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
-adjustAccount toCommands cmdStatusMap =
-    apiWrapper toCommands cmdStatusMap adjustAccoutReqHandler
+adjustAccount :: ReaderT ApiEnv Snap ()
+adjustAccount = apiWrapper adjustAccoutReqHandler
 
 -- juno/jmeter/juno_API_jmeter_test.jmx
 -- accept hopercommands transfer(000->100->101->102->103->003, 100%1)
-transactAPI :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
-transactAPI toCommands cmdStatusMap =
-   apiWrapper toCommands cmdStatusMap transactReqHandler
+transactAPI :: ReaderT ApiEnv Snap ()
+transactAPI = apiWrapper transactReqHandler
 
-ledgerQueryAPI :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
-ledgerQueryAPI toCommands cmdStatusMap =
-    apiWrapper toCommands cmdStatusMap ledgerQueryReqHandler
+ledgerQueryAPI :: ReaderT ApiEnv Snap ()
+ledgerQueryAPI = apiWrapper ledgerQueryReqHandler
 
 -- receives a list of commands
 -- {"payload":{"cmds": ["{\"account\":\"WATER\"}", "{\"account\":\"TSLA\"}"},"digest":{"hash":"hashy","key":"mykey"}}
-cmdBatch :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
-cmdBatch toCommands cmdStatusMap =
-    apiWrapper toCommands cmdStatusMap cmdBatchHandler
+cmdBatch :: ReaderT ApiEnv Snap ()
+cmdBatch = apiWrapper cmdBatchHandler
 
 
 -- | Handlers to deal with the incomming request bytes and either create the correct

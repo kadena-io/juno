@@ -7,7 +7,7 @@ module Apps.Juno.JsonTypes where
 import           Control.Monad (mzero)
 import           Data.Aeson as JSON
 import           Data.Text.Encoding (decodeUtf8)
-import           Data.Aeson.Types (Options(..),defaultOptions)
+import           Data.Aeson.Types (Options(..),defaultOptions,parseMaybe)
 import qualified Data.Text as T
 import           Data.Text (Text)
 import           GHC.Generics
@@ -275,23 +275,19 @@ instance FromJSON CommandBatchRequest where
   parseJSON _ = mzero
 
 mJsonBsToCommand :: BLC.ByteString -> Maybe BSC.ByteString
-mJsonBsToCommand bs = mAdjustAccount <|>
-                      mAdjustCreateAcct <|>
-                      mtransact
+mJsonBsToCommand bs = JSON.decode bs >>= \v ->
+                      (mAdjustAccount <$> tryParse v) <|>
+                      (mAdjustCreateAcct <$> tryParse v) <|>
+                      (mtransact <$> tryParse v)
   where
-    mAdjustAccount = case JSON.decode bs of
-                       Just (AccountAdjustPayload acct amt) ->
-                         Just $ BSC.pack $
-                          "AdjustAccount " ++  T.unpack acct ++ " " ++ show (toRational amt)
-                       _ -> Nothing
 
-    mAdjustCreateAcct = case JSON.decode bs of
-                         Just (AccountPayload acct) ->
-                             Just $ BSC.pack $
-                               "CreateAccount " ++  T.unpack acct
-                         _ -> Nothing
+    tryParse v = parseMaybe parseJSON v
 
-    mtransact = case JSON.decode bs of
-                  Just (TransactBody code _) ->
-                      Just $ BSC.pack $ T.unpack code
-                  _ -> Nothing
+    mAdjustAccount (AccountAdjustPayload acct amt) =
+        BSC.pack $ "AdjustAccount " ++  T.unpack acct ++ " " ++ show (toRational amt)
+
+    mAdjustCreateAcct (AccountPayload acct) =
+        BSC.pack $ "CreateAccount " ++  T.unpack acct
+
+    mtransact (TransactBody code _) =
+        BSC.pack $ T.unpack code

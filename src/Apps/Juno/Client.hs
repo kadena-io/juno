@@ -6,8 +6,8 @@ module Apps.Juno.Client
 
 import Control.Concurrent.Chan.Unagi
 import Control.Applicative
-import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent.Lifted (threadDelay)
+import Control.Monad.Reader
 
 import Data.Either ()
 import Data.Maybe (catMaybes)
@@ -33,7 +33,6 @@ import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Control.Concurrent.MVar
 import qualified Control.Concurrent.Lifted as CL
-import Control.Monad
 
 import Schwifty.Swift.M105.Types
 import Schwifty.Swift.M105.Parser
@@ -122,11 +121,7 @@ snapServer :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
 snapServer toCommands cmdStatusMap = httpServe serverConf $
     applyCORS defaultOptions $ methods [GET, POST]
     (ifTop (writeBS "use /hopper for commands") <|>
-     route [ ("/api/juno/v1/accounts/create", createAccount toCommands cmdStatusMap)
-           , ("/api/juno/v1/accounts/adjust", adjustAccount toCommands cmdStatusMap)
-           , ("/api/juno/v1/transact", transactAPI toCommands cmdStatusMap)
-           , ("/api/juno/v1/query", ledgerQueryAPI toCommands cmdStatusMap)
-           , ("/api/juno/v1/cmd/batch", cmdBatch toCommands cmdStatusMap)
+     route [ ("/api/juno/v1", runReaderT apiRoutes (ApiEnv toCommands cmdStatusMap))
            , ("/api/juno/v1/poll", pollForResults cmdStatusMap)
            , ("hopper", hopperHandler toCommands cmdStatusMap)
            , ("swift", swiftHandler toCommands cmdStatusMap)
