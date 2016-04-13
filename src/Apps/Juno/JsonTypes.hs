@@ -5,13 +5,16 @@
 module Apps.Juno.JsonTypes where
 
 import           Control.Monad (mzero)
-import           Data.Aeson (genericParseJSON,genericToJSON,parseJSON,toJSON,ToJSON,FromJSON,Value(..))
+import           Data.Aeson as JSON
 import           Data.Text.Encoding (decodeUtf8)
-import           Data.Aeson.Types (defaultOptions,object,Options(..),(.:),(.=))
+import           Data.Aeson.Types (Options(..),defaultOptions,parseMaybe)
 import qualified Data.Text as T
 import           Data.Text (Text)
 import           GHC.Generics
 import           Juno.Runtime.Types (CommandStatus(..),CommandResult(..),RequestId(..))
+import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy.Char8 as BLC
+import           Control.Applicative
 
 removeUnderscore :: String -> String
 removeUnderscore = drop 1
@@ -221,8 +224,7 @@ instance FromJSON LedgerQueryRequest where
 --   "hash": "string",
 --   "key": "string"
 -- }
---
---
+
 data TransactBody = TransactBody { _txCode :: Text, _txData :: Text } deriving (Show, Eq)
 instance ToJSON TransactBody where
     toJSON (TransactBody code txData) = object ["code" .= code, "data" .= txData]
@@ -242,5 +244,50 @@ instance FromJSON TransactRequest where
                                            <*> v .: "digest"
     parseJSON _ = mzero
 
--- test
---txBS = "{\"payload\":{\"data\":\"mybody\",\"code\":\"mycode\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"key\"}}"
+-- {
+-- "payload": {
+--   "cmds": ["string"]
+-- },
+-- "digest": {
+--   "hash": "string",
+--   "key": "string"
+-- }
+data CommandBatch = CommandBatch {
+      _batchCmds :: [Text]
+    } deriving (Eq,Show,Ord)
+
+instance ToJSON CommandBatch where
+    toJSON (CommandBatch cmds) = object ["cmds" .= cmds]
+instance FromJSON CommandBatch where
+     parseJSON (Object v) = CommandBatch <$> v .: "cmds"
+     parseJSON _ = mzero
+
+data CommandBatchRequest = CommandBatchRequest {
+      cmdBatchpayload :: CommandBatch,
+      cmdBatchdigest :: Digest
+    } deriving (Show, Generic, Eq)
+
+instance ToJSON CommandBatchRequest where
+  toJSON (CommandBatchRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
+instance FromJSON CommandBatchRequest where
+  parseJSON (Object v) = CommandBatchRequest <$> v .: "payload"
+                                             <*> v .: "digest"
+  parseJSON _ = mzero
+
+mJsonBsToCommand :: BLC.ByteString -> Maybe BSC.ByteString
+mJsonBsToCommand bs = JSON.decode bs >>= \v ->
+                      (mAdjustAccount <$> tryParse v) <|>
+                      (mAdjustCreateAcct <$> tryParse v) <|>
+                      (mtransact <$> tryParse v)
+  where
+
+    tryParse v = parseMaybe parseJSON v
+
+    mAdjustAccount (AccountAdjustPayload acct amt) =
+        BSC.pack $ "AdjustAccount " ++  T.unpack acct ++ " " ++ show (toRational amt)
+
+    mAdjustCreateAcct (AccountPayload acct) =
+        BSC.pack $ "CreateAccount " ++  T.unpack acct
+
+    mtransact (TransactBody code _) =
+        BSC.pack $ T.unpack code
