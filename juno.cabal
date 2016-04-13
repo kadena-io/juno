@@ -44,6 +44,7 @@ library
                      , Juno.Messaging.ZMQ
                      , Juno.Monitoring.Server
                      , Juno.Persistence.SQLite
+                     , Juno.Runtime.MessageReceiver
                      , Juno.Runtime.Role
                      , Juno.Runtime.Sender
                      , Juno.Runtime.Timer

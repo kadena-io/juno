@@ -13,7 +13,7 @@ module Juno.Consensus.Pure.Types (
   , LogEntry(..)
   -- * RPC
   , AppendEntries(..)
-  , AppendEntriesResponse(..),aerOnlyDecode,aerReVerify,AlotOfAERs(..)
+  , AppendEntriesResponse(..),AlotOfAERs(..)
   , RequestVote(..)
   , RequestVoteResponse(..)
   , Command(..)
@@ -23,7 +23,7 @@ module Juno.Consensus.Pure.Types (
   , RPC(..)
   , Event(..)
   , MsgType(..), KeySet(..), Digest(..), Provenance(..), WireFormat(..)
-  , signedRPCtoRPC, rpcToSignedRPC
+  , signedRPCtoRPC, rpcToSignedRPC, verifySignedRPC
   , SignedRPC(..)
   , PrivateKey, PublicKey, Signature(..)
   , ReceivedAt(..)
@@ -41,7 +41,7 @@ import Juno.Runtime.Types (
   , LogEntry(..)
   -- * RPC
   , AppendEntries(..)
-  , AppendEntriesResponse(..),aerOnlyDecode,aerReVerify,AlotOfAERs(..)
+  , AppendEntriesResponse(..),AlotOfAERs(..)
   , RequestVote(..)
   , RequestVoteResponse(..)
   , Command(..)
@@ -51,7 +51,7 @@ import Juno.Runtime.Types (
   , RPC(..)
   , Event(..)
   , MsgType(..), KeySet(..), Digest(..), Provenance(..), WireFormat(..)
-  , signedRPCtoRPC, rpcToSignedRPC
+  , signedRPCtoRPC, rpcToSignedRPC, verifySignedRPC
   , SignedRPC(..)
   , PrivateKey, PublicKey, Signature(..)
   , ReceivedAt(..)

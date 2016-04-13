@@ -82,14 +82,14 @@ handleAEResponse aer@AppendEntriesResponse{..} = do
         -- do nothing as the follower is convinced and successful but out of date? Shouldn't this trigger a replay AE?
         (Convinced, Success, OldRequestTerm) -> AEResponseOut mcp DoNothing
         -- We are a leader, in a term that hasn't happened yet?
-        (_, _, NewerRequestTerm) -> AEResponseOut mcp $ DoNothing
+        (_, _, NewerRequestTerm) -> AEResponseOut mcp DoNothing
     else return $ AEResponseOut mcp NotLeader
   where
     isConvinced = if _aerConvinced then Convinced else NotConvinced
     isSuccessful = if _aerSuccess then Success else Failure
-    whereIsTheRequest ct = if _aerTerm == ct
-                        then CurrentRequestTerm
-                        else if _aerTerm < ct then OldRequestTerm else NewerRequestTerm
+    whereIsTheRequest ct | _aerTerm == ct = CurrentRequestTerm
+                         | _aerTerm < ct = OldRequestTerm
+                         | otherwise = NewerRequestTerm
 
 updateCommitProofMap :: AppendEntriesResponse -> Map NodeID AppendEntriesResponse -> Map NodeID AppendEntriesResponse
 updateCommitProofMap aerNew m = Map.alter go nid m
@@ -123,7 +123,7 @@ handle ae = do
   case _leaderState of
     NotLeader -> return ()
     DoNothing -> resetElectionTimerLeader
-    StatelessSendAE{..} -> do
+    StatelessSendAE{..} ->
       resetElectionTimerLeader
     Unconvinced{..} -> do
       JT.lConvinced %= Set.delete _deleteConvinced
@@ -152,3 +152,10 @@ processSetAer ks s = go [] (Set.toDescList s)
       | otherwise = case aerReVerify ks aer of
                       Left f -> go (f:fails) rest
                       Right () -> (Just $ aer {_aerWasVerified = True}, fails)
+
+
+
+aerReVerify :: KeySet -> AppendEntriesResponse -> Either String ()
+aerReVerify  _ (AppendEntriesResponse _ _ _ _ _ _ True _) = Right ()
+aerReVerify  _ (AppendEntriesResponse _ _ _ _ _ _ _ NewMsg) = Right ()
+aerReVerify ks (AppendEntriesResponse _ _ _ _ _ _ False ReceivedMsg{..}) = verifySignedRPC ks $ SignedRPC _pDig _pOrig

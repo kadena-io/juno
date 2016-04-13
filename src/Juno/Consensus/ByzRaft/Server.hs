@@ -9,13 +9,14 @@ import Juno.Consensus.ByzRaft.Handler
 import Juno.Runtime.Types
 import Juno.Util.Util
 import Juno.Runtime.Timer
+import Juno.Runtime.MessageReceiver
 
 import qualified Control.Concurrent.Lifted as CL
 import Control.Monad
 
 runRaftServer :: Config -> RaftSpec (Raft IO) -> IO ()
 runRaftServer rconf spec = do
-  let csize = 1 + (Set.size $ rconf ^. otherNodes)
+  let csize = 1 + Set.size (rconf ^. otherNodes)
       qsize = getQuorumSize csize
   runRWS_
     raft
