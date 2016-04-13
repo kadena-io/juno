@@ -260,6 +260,7 @@ aerRPC = AppendEntriesResponse
   , _aerConvinced  = True
   , _aerIndex      = LogIndex 1
   , _aerHash       = "\244\136\187c\222\164\131\178;D)M\DEL\142|\251Kv\213\186\247q;3`\194\227O\US\223Q\157"
+  , _aerWasVerified = True
   , _aerProvenance = NewMsg
   }
 

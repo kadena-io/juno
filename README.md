@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/buckie/juno.png)](https://travis-ci.org/buckie/juno)
+
 #### TL;DR
 
 Ok, here's a quick demo.
