@@ -6,7 +6,7 @@ where
 import qualified Data.ByteString as B
 import Data.Sequence
 import Control.Monad (forever, join)
-import Control.Lens
+import Control.Lens hiding ((:>))
 import Data.AffineSpace
 
 import Juno.Runtime.Types

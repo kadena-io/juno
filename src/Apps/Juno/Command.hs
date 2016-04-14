@@ -9,8 +9,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BLC
-import qualified Language.Hopper.Internal.Core.TermDemoWare as DTerm
-import qualified Language.Hopper.Internal.Core.DemoEvalTerm as DEval
+import qualified Juno.Hoplite.Term as DTerm
+import qualified Juno.Hoplite.Eval as DEval
 import qualified Control.Concurrent.MVar as MV
 import Control.Exception (SomeException, handle)
 import Control.Lens hiding ((.=))
@@ -80,7 +80,7 @@ runCommand env cmd' = do
                 return $ BSC.pack $ prettyLedger bals
 
             Program term ->
-                case DTerm.evaluableDemoTerm term of
+                case DTerm.evaluableHopliteTerm term of
                     Nothing -> do
                       MV.putMVar mvar (ps, ss)
                       return "Invalid Command or Program"
@@ -98,7 +98,7 @@ runCommand env cmd' = do
                                         ++ "\n## New Ledger ##" ++ prettyLedger (balances nextPs)
 
             SwiftPayment s term ->
-                case DTerm.evaluableDemoTerm term of
+                case DTerm.evaluableHopliteTerm term of
                     Nothing -> do
                       MV.putMVar mvar (ps, ss)
                       return "Invalid SwiftPayment Command"

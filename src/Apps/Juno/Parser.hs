@@ -25,9 +25,9 @@ import Schwifty.Swift.M105.Types
 import Schwifty.Swift.M105.Parser
 import Apps.Juno.Ledger
 
-import Language.Hopper.Internal.Core.TermDemoWare (DemoTerm(..))
-import Language.Hopper.Internal.Core.Literal (Literal(..))
-import Language.Hopper.Transmatic
+import Juno.Hoplite.Term (HopliteTerm(..))
+import Juno.Hoplite.Types (Literal(..))
+import Juno.Hoplite.Transmatic
 
 -- sample for reference: "{\"_swiftCommand\":\"bar\",\"_swiftText\":\"foo\"}"
 data SwiftBlob = SwiftBlob {
@@ -36,12 +36,12 @@ data SwiftBlob = SwiftBlob {
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 data HopperLiteAdminCommand
-  = Program DemoTerm
+  = Program HopliteTerm
   | CreateAccount Text
   | AdjustAccount Text Rational
   | ObserveAccount Text
   | ObserveAccounts
-  | SwiftPayment SWIFT DemoTerm
+  | SwiftPayment SWIFT HopliteTerm
   | LedgerQueryCmd LedgerQuery
   deriving (Eq, Show)
 
@@ -139,7 +139,7 @@ data Transfer = Transfer {_tRoute :: [Text], _tAmt :: Rational}
               deriving (Eq, Show)
 
 class Hopperify a where
-  hopperify :: a -> Either String DemoTerm
+  hopperify :: a -> Either String HopliteTerm
 
 instance Hopperify Transfer where
   hopperify (Transfer [] _) = Left "Error: No Route Specified!"
@@ -149,7 +149,7 @@ instance Hopperify Transfer where
   hopperify (Transfer (f:t:rest) a) = Right $ Let "t" (PrimApp "transfer" [ELit (LText f),ELit (LText t),ELit (LRational a),ELit (LText "cryptoSig")]) (go $ Transfer (t:rest) a)
     where
       -- we only want to start recurring down when we have a > 2 step transfer as a 2 step transfer is the base case (1 step has a different form)
-      go :: Transfer -> DemoTerm
+      go :: Transfer -> HopliteTerm
       go (Transfer [] _) = error "Invariant error, you shouldn't be able to hit this part of hopperify"
       go (Transfer [_] _) = error "Invariant error, you shouldn't be able to hit this part of hopperify"
       go (Transfer [_,_] _) = error "Invariant error, you shouldn't be able to hit this part of hopperify"

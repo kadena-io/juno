@@ -28,7 +28,7 @@ import Data.Ratio
 import qualified Data.Map.Strict as Map
 
 
-import Language.Hopper.Internal.Core.DemoEvalTerm (TransactionId(..), OpId(..), OrderedOp, Cmd(..))
+import Juno.Hoplite.Eval (TransactionId(..), OpId(..), OrderedOp, Cmd(..))
 import Schwifty.Swift.M105.Types
 
 
