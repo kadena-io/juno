@@ -40,6 +40,12 @@ library
                      , Juno.Consensus.Pure.Handle.ElectionTimeout
                      , Juno.Consensus.Pure.Handle.HeartbeatTimeout
                      , Juno.Consensus.Pure.Handle.Revolution
+                     , Juno.Hoplite.Eval
+                     , Juno.Hoplite.Heap
+                     , Juno.Hoplite.STExcept
+                     , Juno.Hoplite.Term
+                     , Juno.Hoplite.Transmatic
+                     , Juno.Hoplite.Types
                      , Juno.Messaging.NanoMsg
                      , Juno.Messaging.Types
                      , Juno.Messaging.ZMQ
@@ -61,6 +67,7 @@ library
   build-depends:       SHA2
                      , aeson
                      , aeson-pretty
+                     , ansi-wl-pprint
                      , array
                      , async
                      , attoparsec
@@ -68,6 +75,7 @@ library
                      , base16-bytestring
                      , base64-bytestring >= 1.0.0.1 && < 1.1
                      , binary-serialise-cbor
+                     , bound
                      , bytestring
                      , cereal >= 0.4.1.1
                      , containers
@@ -77,8 +85,10 @@ library
                      , ed25519-donna
                      , ekg >= 0.4 && < 0.5
                      , ekg-core >= 0.1.1.0 && < 0.2
+                     , ekg-json
                      , enclosed-exceptions
-                     , hopper <= 0.1.0.0
+                     , filepath
+                     , ghc-prim
                      , hspec
                      , lens
                      , lifted-base
@@ -92,6 +102,8 @@ library
                      , parallel
                      , parsec
                      , parsers
+                     , prelude-extras
+                     , primitive
                      , random
                      , snap-core
                      , snap-core-cors
@@ -100,16 +112,16 @@ library
                      , stm
                      , text >= 1.2.0.0 && < 1.3
                      , thyme
+                     , time
                      , transformers
+                     , trifecta
                      , unagi-chan
+                     , unordered-containers
+                     , vector >= 0.11.0.0
                      , vector-space >= 0.10.2 && < 0.11
                      , yaml
                      , zeromq4-haskell >= 0.6.3
                      , zlib
-                     , time
-                     , unordered-containers
-                     , filepath
-                     , ekg-json
   hs-source-dirs:      src
   ghc-options:         -Wall -fno-warn-unused-do-bind -O2 -with-rtsopts="-N4"
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
@@ -197,5 +209,4 @@ test-suite hspec
               , containers
               , hspec
               , juno
-              , hopper
               , text >= 1.2.0.0 && < 1.3

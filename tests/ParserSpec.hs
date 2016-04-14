@@ -4,8 +4,8 @@ module ParserSpec where
 import Test.Hspec
 import Apps.Juno.Parser
 import Data.Ratio
-import Language.Hopper.Internal.Core.TermDemoWare (DemoTerm(..))
-import Language.Hopper.Internal.Core.Literal (Literal(..))
+import Juno.Hoplite.Term
+import Juno.Hoplite.Types (Literal(..))
 
 spec :: Spec
 spec = do

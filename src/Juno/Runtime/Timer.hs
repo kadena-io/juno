@@ -10,7 +10,7 @@ module Juno.Runtime.Timer
 import qualified Data.ByteString as B
 import Data.Sequence
 import Control.Monad
-import Control.Lens hiding (Index)
+import Control.Lens hiding (Index,(:>))
 import Juno.Runtime.Types
 import Juno.Util.Util
 
