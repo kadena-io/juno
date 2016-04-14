@@ -31,9 +31,9 @@ cache:
 #     addons: {apt: {packages: [libfcgi-dev,libgmp-dev]}}
 matrix:
   include:
-  - env: BUILD=stack ARGS="--resolver lts-3"
+  - env: BUILD=stack ARGS="--resolver lts-5.12"
     compiler: ": #stack 7.10.2"
-    addons: {apt: {packages: [ghc-7.10.2], sources: [hvr-ghc]}}
+    addons: {apt: {packages: [ghc-7.10.3], sources: [hvr-ghc]}}
 
 before_install:
 # Using compiler above sets CC to an invalid value, so unset it
