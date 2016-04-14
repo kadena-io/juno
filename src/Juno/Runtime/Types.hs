@@ -90,15 +90,13 @@ import Data.Thyme.Internal.Micro (Micro)
 import Data.Aeson (genericParseJSON,genericToJSON,parseJSON,toJSON,ToJSON,FromJSON,Value(..))
 import Data.Aeson.Types (defaultOptions,Options(..))
 
-import qualified Data.Binary.Serialise.CBOR.Class as CBC
-
 import GHC.Int (Int64)
 import GHC.Generics hiding (from)
 
 import System.Random (Random)
 
 newtype CommandEntry = CommandEntry { unCommandEntry :: ByteString }
-  deriving (Show, Eq, Ord, Generic, Serialize, CBC.Serialise)
+  deriving (Show, Eq, Ord, Generic, Serialize)
 
 newtype CommandResult = CommandResult { unCommandResult :: ByteString }
   deriving (Show, Eq, Ord, Generic, Serialize)
@@ -112,19 +110,19 @@ instance FromJSON NodeID where
   parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
 
 newtype Term = Term Int
-  deriving (Show, Read, Eq, Enum, Num, Ord, Generic, Serialize, CBC.Serialise)
+  deriving (Show, Read, Eq, Enum, Num, Ord, Generic, Serialize)
 
 startTerm :: Term
 startTerm = Term (-1)
 
 newtype LogIndex = LogIndex Int
-  deriving (Show, Read, Eq, Ord, Enum, Num, Real, Integral, Generic, Serialize, CBC.Serialise)
+  deriving (Show, Read, Eq, Ord, Enum, Num, Real, Integral, Generic, Serialize)
 
 startIndex :: LogIndex
 startIndex = LogIndex (-1)
 
 newtype RequestId = RequestId Int64
-  deriving (Show, Read, Eq, Ord, Enum, Num, Generic, Serialize, CBC.Serialise)
+  deriving (Show, Read, Eq, Ord, Enum, Num, Generic, Serialize)
 
 startRequestId :: RequestId
 startRequestId = RequestId 0

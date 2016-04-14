@@ -46,7 +46,6 @@ library
                      , Juno.Hoplite.Term
                      , Juno.Hoplite.Transmatic
                      , Juno.Hoplite.Types
-                     , Juno.Messaging.NanoMsg
                      , Juno.Messaging.Types
                      , Juno.Messaging.ZMQ
                      , Juno.Monitoring.Server
@@ -74,7 +73,6 @@ library
                      , base < 5
                      , base16-bytestring
                      , base64-bytestring >= 1.0.0.1 && < 1.1
-                     , binary-serialise-cbor
                      , bound
                      , bytestring
                      , cereal >= 0.4.1.1
@@ -98,9 +96,7 @@ library
                      , mtl
                      , mtl-compat
                      , network
-                     , network-simple
                      , parallel
-                     , parsec
                      , parsers
                      , prelude-extras
                      , primitive
@@ -130,14 +126,14 @@ library
 executable genconfs
   main-is:             GenerateConfigFiles.hs
   build-depends:       base < 5
-                     , juno
-                     , ed25519-donna
                      , containers
                      , crypto-api
-                     , network
                      , directory
-                     , thyme
+                     , ed25519-donna
                      , filepath
+                     , juno
+                     , network
+                     , thyme
                      , yaml
   hs-source-dirs:      executables
   ghc-options:         -Wall -threaded -rtsopts
@@ -163,13 +159,13 @@ executable junoclient
 
 executable simplepartest
   main-is:             SimpleSeqVsParVsAsync.hs
-  build-depends:       base < 5
+  build-depends:       async
+                     , base < 5
                      , bytestring
                      , criterion
                      , deepseq >= 1.4.1.1
                      , ed25519-donna
                      , parallel
-                     , async
   hs-source-dirs:      criterion
   ghc-options:         -Wall -threaded -eventlog -rtsopts -O2 +RTS -N4 -RTS
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
@@ -177,8 +173,8 @@ executable simplepartest
 
 executable serialization
   main-is:             Serialization.hs
-  build-depends:       base < 5
-                     , binary-serialise-cbor
+  build-depends:       async
+                     , base < 5
                      , bytestring
                      , cereal
                      , containers
@@ -187,7 +183,6 @@ executable serialization
                      , ed25519-donna
                      , juno
                      , parallel
-                     , async
   hs-source-dirs:      criterion
   ghc-options:         -Wall -threaded -rtsopts -O2
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
@@ -202,11 +197,11 @@ test-suite hspec
   hs-source-dirs: tests
   default-language: Haskell2010
   build-depends:
-                base
-              , aeson
-              , bytestring
-              , SHA
-              , containers
-              , hspec
-              , juno
-              , text >= 1.2.0.0 && < 1.3
+                    base
+                , SHA2
+                , aeson
+                , bytestring
+                , containers
+                , hspec
+                , juno
+                , text >= 1.2.0.0 && < 1.3
