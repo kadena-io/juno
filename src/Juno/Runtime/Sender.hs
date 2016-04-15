@@ -23,17 +23,16 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
 import Data.Serialize
 
 import Juno.Util.Util
 import Juno.Runtime.Types
 import Juno.Runtime.Timer (resetLastBatchUpdate)
+import Juno.Runtime.Ledger
 
 createAppendEntries' :: NodeID
                    -> Map NodeID LogIndex
-                   -> Seq LogEntry
+                   -> Ledger LogEntry
                    -> Term
                    -> NodeID
                    -> Set NodeID
@@ -46,7 +45,7 @@ createAppendEntries' target lNextIndex' es ct nid vts yesVotes =
     vts' = if Set.member target vts then Set.empty else yesVotes
   in
     -- If we send too big of an AppendEntries we can lock their system...
-    AE' $ AppendEntries ct nid pli plt (Seq.take 8000 $ Seq.drop (fromIntegral $ pli + 1) es) vts' NewMsg
+    AE' $ AppendEntries ct nid pli plt (getEntriesAfter pli es) vts' NewMsg
 
 -- TODO: There seems to be needless construction then destruction of the non-wire message types
 --       Not sure if that could impact performance or if it will be unrolled/magic-ified
@@ -117,20 +116,6 @@ createRequestVoteResponse term' logIndex' myNodeId' target vote = do
 -- no state update
 sendResults :: Monad m => [(NodeID, CommandResponse)] -> Raft m ()
 sendResults results = sendRPCs $ second CMDR' <$> results
-
--- called by leaders sending appendEntries.
--- given a replica's nextIndex, get the index and term to send as
--- prevLog(Index/Term)
-logInfoForNextIndex :: Maybe LogIndex -> Seq LogEntry -> (LogIndex,Term)
-logInfoForNextIndex mni es =
-  case mni of
-    Just ni -> let pli = ni - 1 in
-      case seqIndex es $ fromIntegral pli of
-        Just LogEntry{..} -> (pli, _leTerm)
-         -- this shouldn't happen, because nextIndex - 1 should always be at
-         -- most our last entry
-        Nothing -> (startIndex, startTerm)
-    Nothing -> (startIndex, startTerm)
 
 
 -- TODO: figure out if there is a needless performance hit here (looking up these constants every time?)

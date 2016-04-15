@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -32,6 +34,7 @@ module Juno.Runtime.Types
   , Metric(..)
   , RaftEnv(..), cfg, clusterSize, quorumSize, rs
   , LogEntry(..), leTerm, leCommand, leHash
+  , Ledger(..), lEntries
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
@@ -63,11 +66,12 @@ module Juno.Runtime.Types
 import Control.Monad (mzero)
 import Control.Parallel.Strategies
 import Control.Concurrent (ThreadId)
-import Control.Lens hiding (Index, (|>))
+import Control.Lens hiding (Index)
+import qualified Control.Lens as Lens
 import Control.Monad.RWS (RWST)
 import Crypto.Ed25519.Pure ( PublicKey, PrivateKey, Signature(..), sign, valid
                            , importPublic, importPrivate, exportPublic, exportPrivate)
-import Data.Sequence (Seq, (|>))
+import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -387,6 +391,22 @@ data LogEntry = LogEntry
   deriving (Show, Eq, Generic)
 makeLenses ''LogEntry
 
+newtype Ledger a = Ledger { _lEntries :: Seq a }
+    deriving (Eq,Show,Ord,Generic,Monoid,Functor,Foldable,Traversable,Applicative,Monad,NFData)
+makeLenses ''Ledger
+instance (t ~ Ledger a) => Rewrapped (Ledger a) t
+instance Wrapped (Ledger a) where
+    type Unwrapped (Ledger a) = Seq a
+    _Wrapped' = iso _lEntries Ledger
+instance Cons (Ledger a) (Ledger a) a a where
+    _Cons = _Wrapped . _Cons . mapping _Unwrapped
+instance Snoc (Ledger a) (Ledger a) a a where
+    _Snoc = _Wrapped . _Snoc . firsting _Unwrapped
+type instance IxValue (Ledger a) = a
+type instance Lens.Index (Ledger a) = LogIndex
+instance Ixed (Ledger a) where ix i = lEntries.ix (fromIntegral i)
+
+
 data LEWire = LEWire (Term, SignedRPC, ByteString)
   deriving (Show, Generic)
 instance Serialize LEWire
@@ -399,7 +419,7 @@ decodeLEWire' !ts !ks (LEWire !(t,cmd,hsh)) = case fromWire ts ks cmd of
 
 -- TODO: check if `toSeqLogEntry ele = Seq.fromList <$> sequence ele` is fusable?
 toSeqLogEntry :: [Either String LogEntry] -> Either String (Seq LogEntry)
-toSeqLogEntry !ele = go ele Seq.empty
+toSeqLogEntry !ele = go ele mempty
   where
     go [] s = Right $! s
     go (Right le:les) s = go les (s |> le)
@@ -777,7 +797,7 @@ data RaftState = RaftState
   , _lazyVote         :: Maybe (Term, NodeID, LogIndex) -- Handler
   , _currentLeader    :: Maybe NodeID -- Client,Handler,Role
   , _ignoreLeader     :: Bool -- Handler
-  , _logEntries       :: Seq LogEntry -- Handler,Role,Sender
+  , _logEntries       :: Ledger LogEntry -- Handler,Role,Sender
   , _commitIndex      :: LogIndex -- Handler
   , _lastApplied      :: LogIndex -- Handler
   , _commitProof      :: Map NodeID AppendEntriesResponse -- Handler
@@ -789,7 +809,7 @@ data RaftState = RaftState
   , _lNextIndex       :: Map NodeID LogIndex -- Handler,Role,Sender
   , _lMatchIndex      :: Map NodeID LogIndex -- Role (never read?)
   , _lConvinced       :: Set NodeID -- Handler,Role,Sender
-  , _lLastBatchUpdate :: (UTCTime, ByteString)
+  , _lLastBatchUpdate :: (UTCTime, Maybe ByteString)
   -- used for metrics
   , _lastCommitTime   :: Maybe UTCTime
 
@@ -808,7 +828,7 @@ initialRaftState = RaftState
   Nothing    -- lazyVote
   Nothing    -- currentLeader
   False      -- ignoreLeader
-  Seq.empty  -- log
+  mempty     -- log
   startIndex -- commitIndex
   startIndex -- lastApplied
   Map.empty  -- commitProof
@@ -820,7 +840,7 @@ initialRaftState = RaftState
   Map.empty  -- lNextIndex
   Map.empty  -- lMatchIndex
   Set.empty  -- lConvinced
-  (minBound, B.empty)   -- lLastBatchUpdate (when we start up, we want batching to fire immediately)
+  (minBound, Nothing)   -- lLastBatchUpdate (when we start up, we want batching to fire immediately)
   Nothing    -- lastCommitTime
   Map.empty  -- pendingRequests
   0          -- nextRequestId

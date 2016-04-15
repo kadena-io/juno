@@ -13,13 +13,13 @@ import Control.Monad.State
 import Control.Monad.Writer
 import Data.Foldable (traverse_)
 import qualified Data.Set as Set
-import Data.Sequence (Seq)
 
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (createRequestVoteResponse,sendRPC)
 import Juno.Runtime.Timer (resetElectionTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Combinator ((^$))
-import Juno.Util.Util (lastLogInfo,debug,setTerm,setRole,setCurrentLeader)
+import Juno.Util.Util
+import Juno.Runtime.Ledger
 import qualified Juno.Runtime.Types as JT
 
 data ElectionTimeoutEnv = ElectionTimeoutEnv {
@@ -28,7 +28,7 @@ data ElectionTimeoutEnv = ElectionTimeoutEnv {
     , _lazyVote :: Maybe (Term,NodeID,LogIndex)
     , _nodeId :: NodeID
     , _otherNodes :: Set.Set NodeID
-    , _logEntries :: Seq LogEntry
+    , _logEntries :: Ledger LogEntry
     , _leaderWithoutFollowers :: Bool
     , _myPrivateKey :: PrivateKey
     , _myPublicKey :: PublicKey
@@ -60,7 +60,7 @@ handleElectionTimeout s = do
   tell ["election timeout: " ++ s]
   r <- view role
   leaderWithoutFollowers' <- view leaderWithoutFollowers
-  if (r /= Leader)
+  if r /= Leader
   then do
     lv <- view lazyVote
     case lv of
@@ -69,7 +69,7 @@ handleElectionTimeout s = do
         lazyResp <- createRequestVoteResponse lazyTerm lastLogIndex' me lazyCandidate True
         return $ VoteForLazyCandidate lazyTerm lazyCandidate lazyResp
       Nothing -> becomeCandidate
-  else if (r == Leader && leaderWithoutFollowers')
+  else if r == Leader && leaderWithoutFollowers'
        then do
             lv <- view lazyVote
             case lv of

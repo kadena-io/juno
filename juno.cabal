@@ -30,7 +30,6 @@ library
                      , Juno.Consensus.ByzRaft.Server
                      , Juno.Consensus.ByzRaft.Client
                      , Juno.Consensus.ByzRaft.Commit
-                     , Juno.Consensus.ByzRaft.Log
                      , Juno.Consensus.Pure.Types
                      , Juno.Consensus.Pure.Handle.AppendEntries
                      , Juno.Consensus.Pure.Handle.AppendEntriesResponse
@@ -50,6 +49,7 @@ library
                      , Juno.Messaging.ZMQ
                      , Juno.Monitoring.Server
                      , Juno.Persistence.SQLite
+                     , Juno.Runtime.Ledger
                      , Juno.Runtime.MessageReceiver
                      , Juno.Runtime.Role
                      , Juno.Runtime.Sender

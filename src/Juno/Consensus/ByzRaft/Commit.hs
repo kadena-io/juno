@@ -13,7 +13,6 @@ import Data.AffineSpace ((.-.))
 import Data.Int (Int64)
 import Data.Thyme.Clock (UTCTime, microseconds)
 
-import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import qualified Data.Map as Map
 
@@ -22,6 +21,7 @@ import Data.Foldable (toList)
 import Juno.Runtime.Types hiding (valid)
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendResults)
+import Juno.Runtime.Ledger
 
 -- THREAD: SERVER MAIN.
 doCommit :: Monad m => Raft m ()
@@ -38,19 +38,18 @@ applyLogEntries = do
   la <- use lastApplied
   ci <- use commitIndex
   le <- use logEntries
-  let leToApply = Seq.drop (fromIntegral $ la + 1) . Seq.take (fromIntegral $ ci + 1) $ le
+  let leToApply = Seq.drop (fromIntegral $ la + 1) . takeEntries (ci + 1) $ le
   results <- mapM (applyCommand . _leCommand) leToApply
   r <- use role
   lastApplied .= ci
   logMetric $ MetricAppliedIndex ci
-  if length results > 0
-    then do
-      if r == Leader
-        then do
-          debug $ "Applied and Responded to " ++ show (length results) ++ " CMD(s)"
-          sendResults $! toList results
-        else debug $ "Applied " ++ show (length results) ++ " CMD(s)"
-    else debug $ "Applied log entries but did not send results?"
+  if not (null results)
+    then if r == Leader
+         then do
+           debug $ "Applied and Responded to " ++ show (length results) ++ " CMD(s)"
+           sendResults $! toList results
+         else debug $ "Applied " ++ show (length results) ++ " CMD(s)"
+    else debug "Applied log entries but did not send results?"
 
 interval :: UTCTime -> UTCTime -> Int64
 interval start end = view microseconds $ end .-. start
@@ -114,7 +113,7 @@ updateCommitIndex = do
 
   -- get the bound for things we can deal with
   -- TODO: look into the overloading of LogIndex w.r.t. Seq Length/entry location
-  let maxLogIndex = Seq.length es - 1
+  let maxLogIndex = maxIndex es
 
   -- this gets us all of the evidence we have, in order of largest LogIndex to smallest
   let evidence = reverse $ sortOn _aerIndex $ Map.elems proof
@@ -133,17 +132,16 @@ updateCommitIndex = do
                   commitProof %= Map.filter (\a -> qci < _aerIndex a)
                   debug $ "Commit index is now: " ++ show qci
                   return True
-                else do
-                  return False
+                else return False
 
-checkCommitProof :: Int -> Seq LogEntry -> Int -> [AppendEntriesResponse] -> Either Int LogIndex
+checkCommitProof :: Int -> Ledger LogEntry -> LogIndex -> [AppendEntriesResponse] -> Either Int LogIndex
 checkCommitProof qsize les maxLogIdx evidence = go 0 evidence
   where
     go n [] = Left n -- no update
-    go n (ev:evs) = if fromIntegral (_aerIndex ev) > maxLogIdx || fromIntegral (_aerIndex ev) < (0::Int)
+    go n (ev:evs) = if _aerIndex ev > maxLogIdx || _aerIndex ev < 0
                     -- we can't do the lookup as we haven't replicated the entry yet, so pass till next time
                     then go n evs
-                    else if (_aerHash ev) == (_leHash $ Seq.index les (fromIntegral $ _aerIndex ev))
+                    else if Just (_aerHash ev) == (_leHash <$> lookupEntry (_aerIndex ev) les)
                          -- hashes check out, if we have enough evidence then we can commit
                          then if (n+1) >= qsize
                               then Right $ _aerIndex ev

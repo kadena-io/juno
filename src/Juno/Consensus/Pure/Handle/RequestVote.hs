@@ -11,10 +11,10 @@ import Control.Lens hiding (Index)
 import Control.Monad.Reader
 import Control.Monad.Writer.Strict
 import Control.Monad.State (get)
-import Data.Sequence (Seq)
 
-import Juno.Util.Util (lastLogInfo, debug)
+import Juno.Util.Util (debug)
 import Juno.Runtime.Sender (sendRPC,createRequestVoteResponse)
+import Juno.Runtime.Ledger
 
 import Juno.Consensus.Pure.Types
 
@@ -27,7 +27,7 @@ data RequestVoteEnv = RequestVoteEnv {
   , _lazyVote         :: Maybe (Term, NodeID, LogIndex)
   , _currentLeader    :: Maybe NodeID
   , _ignoreLeader     :: Bool
-  , _logEntries       :: Seq LogEntry
+  , _logEntries       :: Ledger LogEntry
 -- New Constructors
   , _myNodeId :: NodeID
   }

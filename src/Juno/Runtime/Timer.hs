@@ -7,11 +7,10 @@ module Juno.Runtime.Timer
   , cancelTimer
   ) where
 
-import qualified Data.ByteString as B
-import Data.Sequence
 import Control.Monad
-import Control.Lens hiding (Index,(:>))
+import Control.Lens hiding (Index)
 import Juno.Runtime.Types
+import Juno.Runtime.Ledger
 import Juno.Util.Util
 
 getNewElectionTimeout :: Monad m => Raft m Int
@@ -84,11 +83,9 @@ setTimedEvent e t = do
   tmr <- enqueueEventLater t e -- forks, no state
   timerThread .= Just tmr
 
+-- | Timestamp latest log entry. Note this is not a "batch" entry necessarily?
 resetLastBatchUpdate :: Monad m => Raft m ()
 resetLastBatchUpdate = do
-  les <- use logEntries
-  latestLogHash <- return $ case viewr les of
-    EmptyR -> B.empty
-    _ :> LogEntry _ _ h -> h
   curTime <- join $ view (rs.getTimestamp)
-  lLastBatchUpdate .= (curTime, latestLogHash)
+  l <- lastEntry <$> use logEntries
+  lLastBatchUpdate .= (curTime, _leHash <$> l)
