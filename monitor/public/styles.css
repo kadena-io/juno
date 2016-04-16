@@ -80,11 +80,6 @@ div.node-lost-centerer {
   font-style: italic;
 }
 
-h3.cps-header {
-  opacity: 0.7;
-  margin: -5px 0 20px 0;
-}
-
 h3.node-header {
   display: flex;
   flex-direction: column;
