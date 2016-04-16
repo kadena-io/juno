@@ -70,7 +70,12 @@ class Node extends React.Component {
       // first should be null, pop it
       .filter(datum => datum != null);
 
-    computedData[0] = {x: 1, y: 0}; // HACK
+    // HACK: replaced the popped first datum
+    computedData[0] = {x: 1, y: 0};
+
+    // Also a hack: subtract 60, since react-vis doesn't allow you to set the
+    // labels by hand :(
+    const computedData2 = computedData.map(({x, y}) => ({x: x - 60, y}));
 
     return (
       <div className="node">
@@ -85,18 +90,15 @@ class Node extends React.Component {
           <XYPlot
             width={600}
             height={200}
-            margin={{left: 75, right: 40, top: 10, bottom: 10}}
-            animation={{duration: 50}}
+            margin={{left: 75, right: 40, top: 10, bottom: 40}}
             opacity={0.2}
             color="steelblue"
           >
             <HorizontalGridLines color="steelblue" />
             <VerticalGridLines color="steelblue" />
-            <XAxis tickValues={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]} />
-            <YAxis />
-            <VerticalBarSeries
-              data={computedData}
-            />
+            <XAxis title="seconds ago" />
+            <YAxis title="commits" />
+            <VerticalBarSeries data={computedData2} />
           </XYPlot>
         </div>
       </div>
@@ -151,6 +153,7 @@ export default class Nodes extends React.Component {
           NODES
           <div className="border-underline" />
         </h2>
+        <h3 className="cps-header">Commits per second</h3>
 
         {/*
         <div className="nodes-selector">
