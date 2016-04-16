@@ -16,7 +16,7 @@ import qualified Data.Map as Map
 import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
 
 import Juno.Consensus.ByzRaft.Commit (makeCommandResponse')
-import Juno.Runtime.Ledger
+import Juno.Runtime.Log
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendRPC, createAppendEntriesResponse)
 import Juno.Util.Util (getCmdSigOrInvariantError)

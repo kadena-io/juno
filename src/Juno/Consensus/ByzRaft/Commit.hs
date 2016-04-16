@@ -21,7 +21,7 @@ import Data.Foldable (toList)
 import Juno.Runtime.Types hiding (valid)
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendResults)
-import Juno.Runtime.Ledger
+import Juno.Runtime.Log
 
 -- THREAD: SERVER MAIN.
 doCommit :: Monad m => Raft m ()
@@ -134,11 +134,11 @@ updateCommitIndex = do
                   return True
                 else return False
 
-checkCommitProof :: Int -> Ledger LogEntry -> LogIndex -> [AppendEntriesResponse] -> Either Int LogIndex
+checkCommitProof :: Int -> Log LogEntry -> LogIndex -> [AppendEntriesResponse] -> Either Int LogIndex
 checkCommitProof qsize les maxLogIdx evidence = go 0 evidence
   where
     go n [] = Left n -- no update
-    go n (ev:evs) = if _aerIndex ev > maxLogIdx || _aerIndex ev < 0
+    go n (ev:evs) = if _aerIndex ev > maxLogIdx
                     -- we can't do the lookup as we haven't replicated the entry yet, so pass till next time
                     then go n evs
                     else if Just (_aerHash ev) == (_leHash <$> lookupEntry (_aerIndex ev) les)

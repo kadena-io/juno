@@ -27,7 +27,7 @@ module Juno.Consensus.Pure.Types (
   , SignedRPC(..)
   , PrivateKey, PublicKey, Signature(..)
   , ReceivedAt(..)
-  , Ledger(..)
+  , Log(..)
 
   ) where
 

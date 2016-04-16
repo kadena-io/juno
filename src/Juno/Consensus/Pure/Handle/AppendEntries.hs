@@ -23,14 +23,14 @@ import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesRespo
 import Juno.Runtime.Timer (resetElectionTimer)
 import Juno.Util.Util
 import qualified Juno.Runtime.Types as JT
-import Juno.Runtime.Ledger
+import Juno.Runtime.Log
 
 data AppendEntriesEnv = AppendEntriesEnv {
 -- Old Constructors
     _term             :: Term
   , _currentLeader    :: Maybe NodeID
   , _ignoreLeader     :: Bool
-  , _logEntries       :: Ledger LogEntry
+  , _logEntries       :: Log LogEntry
 -- New Constructors
   , _quorumSize       :: Int
   }
@@ -62,7 +62,7 @@ data ValidResponse =
     SendFailureResponse |
     Commit {
         _replay :: Map (NodeID, Signature) (Maybe CommandResult)
-      , _updatedLog :: Ledger LogEntry }
+      , _updatedLog :: Log LogEntry }
 
 -- THREAD: SERVER MAIN. updates state
 handleAppendEntries :: (MonadWriter [String] m, MonadReader AppendEntriesEnv m) => AppendEntries -> m AppendEntriesOut

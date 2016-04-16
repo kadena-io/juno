@@ -1,8 +1,9 @@
 {-# LANGUAGE RecordWildCards #-}
-module Juno.Runtime.Ledger
+module Juno.Runtime.Log
     (
      lookupEntry,lastEntry,takeEntries
-    ,getEntriesAfter,lastLogInfo,logInfoForNextIndex
+    ,getEntriesAfter,logInfoForNextIndex
+    ,lastLogTerm,lastLogHash
     ,entryCount,maxIndex
     ,appendLogEntry,addLogEntriesAt
     ) where
@@ -16,33 +17,30 @@ import Codec.Digest.SHA
 import Data.Serialize
 
 -- | Get last entry.
-lastEntry :: Ledger a -> Maybe a
+lastEntry :: Log a -> Maybe a
 lastEntry (_ :> e) = Just e
 lastEntry _ = Nothing
 
 -- | Get largest index in ledger.
-maxIndex :: Ledger a -> LogIndex
+maxIndex :: Log a -> LogIndex
 maxIndex = subtract 1 . entryCount
 
 -- | Get count of entries in ledger.
-entryCount :: Ledger a -> LogIndex
+entryCount :: Log a -> LogIndex
 entryCount = fromIntegral . Seq.length . view lEntries
 
 -- | Safe index
-lookupEntry :: LogIndex -> Ledger LogEntry -> Maybe LogEntry
+lookupEntry :: LogIndex -> Log LogEntry -> Maybe LogEntry
 lookupEntry i = firstOf (ix i)
 
 -- | take operation
-takeEntries :: LogIndex -> Ledger a -> Seq a
+takeEntries :: LogIndex -> Log a -> Seq a
 takeEntries t = Seq.take (fromIntegral t) . _lEntries
 
 -- | called by leaders sending appendEntries.
 -- given a replica's nextIndex, get the index and term to send as
 -- prevLog(Index/Term)
--- called by leaders sending appendEntries.
--- given a replica's nextIndex, get the index and term to send as
--- prevLog(Index/Term)
-logInfoForNextIndex :: Maybe LogIndex -> Ledger LogEntry -> (LogIndex,Term)
+logInfoForNextIndex :: Maybe LogIndex -> Log LogEntry -> (LogIndex,Term)
 logInfoForNextIndex mni es =
   case mni of
     Just ni -> let pli = ni - 1 in
@@ -54,18 +52,17 @@ logInfoForNextIndex mni es =
     Nothing -> (startIndex, startTerm)
 
 
--- | get the last term, index, hash of a log or default values if log empty.
--- TODO really questionable that we're not just returning the last entry but
--- overwriting the LogIndex. Shouldn't this always be the same or no-pants-situation?
-lastLogInfo :: Ledger LogEntry -> (Term, LogIndex, ByteString)
-lastLogInfo es =
-    case lastEntry es of             -- \/ TODO: This smells weird, should we really use length for this?
-      Just (LogEntry {..}) -> (_leTerm, maxIndex es, _leHash)
-      Nothing -> (startTerm, startIndex, mempty)
+-- | Latest hash or empty
+lastLogHash :: Log LogEntry -> ByteString
+lastLogHash = maybe mempty _leHash . lastEntry
+
+-- | Latest term on log or 'startTerm'
+lastLogTerm :: Log LogEntry -> Term
+lastLogTerm = maybe startTerm _leTerm . lastEntry
 
 -- | get entries after index to beginning, with limit, for AppendEntries message.
 -- TODO make monadic to get 8000 limit from config.
-getEntriesAfter :: LogIndex -> Ledger a -> Seq a
+getEntriesAfter :: LogIndex -> Log a -> Seq a
 getEntriesAfter pli = Seq.take 8000 . Seq.drop (fromIntegral $ pli + 1) . _lEntries
 
 
@@ -83,7 +80,7 @@ getCmdSignedRPC LogEntry{ _leCommand = Command{ _cmdProvenance = NewMsg }} =
   error "Invariant Failure: for a command to be in a log entry, it needs to have been received!"
 
 -- | Recursively hash entries from index to tail.
-updateLogHashesFromIndex :: LogIndex -> Ledger LogEntry -> Ledger LogEntry
+updateLogHashesFromIndex :: LogIndex -> Log LogEntry -> Log LogEntry
 updateLogHashesFromIndex i es =
   case lookupEntry i es of
     Just _ -> updateLogHashesFromIndex (succ i) $
@@ -91,13 +88,13 @@ updateLogHashesFromIndex i es =
     Nothing -> es
 
 -- | Append/hash a single entry
-appendLogEntry :: LogEntry -> Ledger LogEntry -> Ledger LogEntry
+appendLogEntry :: LogEntry -> Log LogEntry -> Log LogEntry
 appendLogEntry le es =
   case lastEntry es of
     Just ple -> over lEntries (Seq.|> hashLogEntry (Just ple) le) es
-    _ -> Ledger $ Seq.singleton (hashLogEntry Nothing le)
+    _ -> Log $ Seq.singleton (hashLogEntry Nothing le)
 
 -- | Add/hash entries at specified index.
-addLogEntriesAt :: LogIndex -> Seq LogEntry -> Ledger LogEntry -> Ledger LogEntry
+addLogEntriesAt :: LogIndex -> Seq LogEntry -> Log LogEntry -> Log LogEntry
 addLogEntriesAt pli newEs = updateLogHashesFromIndex (pli + 1) .
                             over lEntries ((Seq.>< newEs) . Seq.take (fromIntegral pli + 1))

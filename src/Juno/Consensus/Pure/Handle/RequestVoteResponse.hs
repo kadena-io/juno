@@ -18,7 +18,7 @@ import Juno.Runtime.Sender (sendAllAppendEntries)
 import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader,
                            resetElectionTimer)
 import Juno.Util.Util
-import Juno.Runtime.Ledger
+import Juno.Runtime.Log
 import qualified Juno.Runtime.Types as JT
 
 data RequestVoteResponseEnv = RequestVoteResponseEnv {
@@ -80,12 +80,11 @@ handle m = do
   r <- ask
   s <- get
   es <- use JT.logEntries
-  (_,lastLogIndex',_) <- return $ lastLogInfo es
   (o,l) <- runReaderT (runWriterT (handleRequestVoteResponse m))
            (RequestVoteResponseEnv
             (JT._role s)
             (JT._term s)
-            lastLogIndex'
+            (maxIndex es)
             (JT._cYesVotes s)
             (JT._quorumSize r))
   mapM_ debug l
@@ -115,13 +114,12 @@ becomeLeader = do
 revertToLastQuorumState :: Monad m => JT.Raft m ()
 revertToLastQuorumState = do
   es <- use JT.logEntries
-  (lastGoodTerm',_,_) <- return $ lastLogInfo es
   setRole Follower
   -- We don't persist this info and don't want to trust the RVR send's
   -- word so we set it to nothing an await an AE from some Leader of a higher term, then validate the votes
   setCurrentLeader Nothing
   JT.ignoreLeader .= False
-  setTerm lastGoodTerm'
+  setTerm (lastLogTerm es)
   JT.votedFor .= Nothing
   JT.cYesVotes .= Set.empty
   JT.cPotentialVotes .= Set.empty

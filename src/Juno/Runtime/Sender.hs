@@ -28,11 +28,11 @@ import Data.Serialize
 import Juno.Util.Util
 import Juno.Runtime.Types
 import Juno.Runtime.Timer (resetLastBatchUpdate)
-import Juno.Runtime.Ledger
+import Juno.Runtime.Log
 
 createAppendEntries' :: NodeID
                    -> Map NodeID LogIndex
-                   -> Ledger LogEntry
+                   -> Log LogEntry
                    -> Term
                    -> NodeID
                    -> Set NodeID
@@ -84,8 +84,9 @@ createAppendEntriesResponse :: Monad m => Bool -> Bool -> Raft m AppendEntriesRe
 createAppendEntriesResponse success convinced = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  case createAppendEntriesResponse' success convinced ct nid lindex lhash of
+  es <- use logEntries
+  case createAppendEntriesResponse' success convinced ct nid
+           (maxIndex es) (lastLogHash es) of
     AER' aer -> return aer
     _ -> error "deep invariant error"
 
@@ -94,8 +95,9 @@ sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
 sendAppendEntriesResponse target success convinced = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  sendRPC target $ createAppendEntriesResponse' success convinced ct nid lindex lhash
+  es <- use logEntries
+  sendRPC target $ createAppendEntriesResponse' success convinced ct nid
+              (maxIndex es) (lastLogHash es)
   debug $ "Sent AppendEntriesResponse: " ++ show ct
 
 -- no state update but uses state
@@ -103,8 +105,8 @@ sendAllAppendEntriesResponse :: Monad m => Raft m ()
 sendAllAppendEntriesResponse = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  aer <- return $ createAppendEntriesResponse' True True ct nid lindex lhash
+  es <- use logEntries
+  aer <- return $ createAppendEntriesResponse' True True ct nid (maxIndex es) (lastLogHash es)
   oNodes <- view (cfg.otherNodes)
   sendRPCs $ (,aer) <$> Set.toList oNodes
 

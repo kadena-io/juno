@@ -34,7 +34,7 @@ module Juno.Runtime.Types
   , Metric(..)
   , RaftEnv(..), cfg, clusterSize, quorumSize, rs
   , LogEntry(..), leTerm, leCommand, leHash
-  , Ledger(..), lEntries
+  , Log(..), lEntries
   , RaftState(..), role, term, votedFor, lazyVote, currentLeader, ignoreLeader
   , logEntries, commitIndex, commitProof, lastApplied, timerThread, replayMap
   , cYesVotes, cPotentialVotes, lNextIndex, lMatchIndex, lConvinced
@@ -391,20 +391,20 @@ data LogEntry = LogEntry
   deriving (Show, Eq, Generic)
 makeLenses ''LogEntry
 
-newtype Ledger a = Ledger { _lEntries :: Seq a }
+newtype Log a = Log { _lEntries :: Seq a }
     deriving (Eq,Show,Ord,Generic,Monoid,Functor,Foldable,Traversable,Applicative,Monad,NFData)
-makeLenses ''Ledger
-instance (t ~ Ledger a) => Rewrapped (Ledger a) t
-instance Wrapped (Ledger a) where
-    type Unwrapped (Ledger a) = Seq a
-    _Wrapped' = iso _lEntries Ledger
-instance Cons (Ledger a) (Ledger a) a a where
+makeLenses ''Log
+instance (t ~ Log a) => Rewrapped (Log a) t
+instance Wrapped (Log a) where
+    type Unwrapped (Log a) = Seq a
+    _Wrapped' = iso _lEntries Log
+instance Cons (Log a) (Log a) a a where
     _Cons = _Wrapped . _Cons . mapping _Unwrapped
-instance Snoc (Ledger a) (Ledger a) a a where
+instance Snoc (Log a) (Log a) a a where
     _Snoc = _Wrapped . _Snoc . firsting _Unwrapped
-type instance IxValue (Ledger a) = a
-type instance Lens.Index (Ledger a) = LogIndex
-instance Ixed (Ledger a) where ix i = lEntries.ix (fromIntegral i)
+type instance IxValue (Log a) = a
+type instance Lens.Index (Log a) = LogIndex
+instance Ixed (Log a) where ix i = lEntries.ix (fromIntegral i)
 
 
 data LEWire = LEWire (Term, SignedRPC, ByteString)
@@ -797,7 +797,7 @@ data RaftState = RaftState
   , _lazyVote         :: Maybe (Term, NodeID, LogIndex) -- Handler
   , _currentLeader    :: Maybe NodeID -- Client,Handler,Role
   , _ignoreLeader     :: Bool -- Handler
-  , _logEntries       :: Ledger LogEntry -- Handler,Role,Sender
+  , _logEntries       :: Log LogEntry -- Handler,Role,Sender
   , _commitIndex      :: LogIndex -- Handler
   , _lastApplied      :: LogIndex -- Handler
   , _commitProof      :: Map NodeID AppendEntriesResponse -- Handler

@@ -9,7 +9,7 @@ import Control.Monad
 import Data.Maybe
 
 import Juno.Runtime.Types
-import Juno.Runtime.Ledger
+import Juno.Runtime.Log
 import Juno.Consensus.ByzRaft.Commit (doCommit)
 import Juno.Runtime.Sender (sendAllAppendEntries,sendAllAppendEntriesResponse)
 import Juno.Util.Util (debug, dequeueEvent)

@@ -49,7 +49,7 @@ library
                      , Juno.Messaging.ZMQ
                      , Juno.Monitoring.Server
                      , Juno.Persistence.SQLite
-                     , Juno.Runtime.Ledger
+                     , Juno.Runtime.Log
                      , Juno.Runtime.MessageReceiver
                      , Juno.Runtime.Role
                      , Juno.Runtime.Sender
