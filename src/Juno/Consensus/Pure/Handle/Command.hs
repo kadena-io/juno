@@ -16,7 +16,7 @@ import qualified Data.Map as Map
 import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
 
 import Juno.Consensus.ByzRaft.Commit (makeCommandResponse')
-import Juno.Consensus.ByzRaft.Log (addLogEntryAndHash)
+import Juno.Runtime.Log
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendRPC, createAppendEntriesResponse)
 import Juno.Util.Util (getCmdSigOrInvariantError)
@@ -67,7 +67,7 @@ handleCommand cmd@Command{..} = do
       -- we have already seen this request, but have not yet committed it
       -- nothing to do
       return AlreadySeen
-    (_, Leader, _) -> do
+    (_, Leader, _) ->
       -- we're the leader, so append this to our log with the current term
       -- and propagate it to replicas
       return $ CommitAndPropagate (LogEntry ct cmd B.empty) (_cmdClientId, cmdSig)
@@ -96,7 +96,7 @@ handleSingleCommand cmd = do
     (RetransmitToLeader lid rpc) -> sendRPC lid rpc
     (SendCommandResponse cid rpc) -> sendRPC cid rpc
     (CommitAndPropagate newEntry replayKey) -> do
-               JT.logEntries %= addLogEntryAndHash newEntry
+               JT.logEntries %= appendLogEntry newEntry
                JT.replayMap %= Map.insert replayKey Nothing
                myEvidence <- createAppendEntriesResponse True True
                JT.commitProof %= updateCommitProofMap myEvidence
@@ -105,5 +105,4 @@ handle :: Monad m => Command -> JT.Raft m ()
 handle cmd = handleSingleCommand cmd
 
 handleBatch :: Monad m => CommandBatch -> JT.Raft m ()
-handleBatch CommandBatch{..} = do
-  mapM_ handleSingleCommand _cmdbBatch
+handleBatch CommandBatch{..} = mapM_ handleSingleCommand _cmdbBatch

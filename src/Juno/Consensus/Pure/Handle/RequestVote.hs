@@ -11,10 +11,10 @@ import Control.Lens hiding (Index)
 import Control.Monad.Reader
 import Control.Monad.Writer.Strict
 import Control.Monad.State (get)
-import Data.Sequence (Seq)
 
-import Juno.Util.Util (lastLogInfo, debug)
+import Juno.Util.Util (debug)
 import Juno.Runtime.Sender (sendRPC,createRequestVoteResponse)
+import Juno.Runtime.Log
 
 import Juno.Consensus.Pure.Types
 
@@ -27,7 +27,7 @@ data RequestVoteEnv = RequestVoteEnv {
   , _lazyVote         :: Maybe (Term, NodeID, LogIndex)
   , _currentLeader    :: Maybe NodeID
   , _ignoreLeader     :: Bool
-  , _logEntries       :: Seq LogEntry
+  , _logEntries       :: Log LogEntry
 -- New Constructors
   , _myNodeId :: NodeID
   }
@@ -45,7 +45,8 @@ handleRequestVote RequestVote{..} = do
   term' <- view term
   currentLeader' <- view currentLeader
   ignoreLeader' <- view ignoreLeader
-  let (llt, lli, _) = lastLogInfo logEntries'
+  let lli = maxIndex logEntries'
+      llt = lastLogTerm logEntries'
   case votedFor' of
     _      | ignoreLeader' && currentLeader' == Just _rvCandidateId -> return NoAction
       -- don't respond to a candidate if they were leader and a client

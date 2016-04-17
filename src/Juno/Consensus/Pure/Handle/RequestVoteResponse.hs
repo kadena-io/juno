@@ -12,14 +12,13 @@ import Control.Monad.State
 import Control.Monad.Writer.Strict
 import Data.Map as Map
 import Data.Set as Set
-import qualified Data.Sequence as Seq
 
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntries)
 import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader,
                            resetElectionTimer)
-import Juno.Util.Util (debug, lastLogInfo, setRole, setTerm, setCurrentLeader,
-                       setLNextIndex)
+import Juno.Util.Util
+import Juno.Runtime.Log
 import qualified Juno.Runtime.Types as JT
 
 data RequestVoteResponseEnv = RequestVoteResponseEnv {
@@ -45,14 +44,13 @@ handleRequestVoteResponse rvr@RequestVoteResponse{..} = do
   r <- view role
   ct <- view term
   curLog <- view lastLogIndex
-  if (r == Candidate && ct == _rvrTerm)
+  if r == Candidate && ct == _rvrTerm
   then
     if _voteGranted
-    then do
-        (Set.insert rvr <$> view cYesVotes) >>= checkElection
+    then Set.insert rvr <$> view cYesVotes >>= checkElection
     else
         return $ DeletePotentialVote _rvrNodeId
-  else if (ct > _rvrTerm && _rvrCurLogIndex > curLog && r == Candidate)
+  else if ct > _rvrTerm && _rvrCurLogIndex > curLog && r == Candidate
        -- We are a runaway candidate is a bad state and need to revert to our last know good state
        -- A Candidate which reverts to it's last good state (specifically the Term of its last LogEntry)
        -- is not distinguishable from an out of date follower and an out of date follower is already
@@ -69,11 +67,11 @@ handleRequestVoteResponse rvr@RequestVoteResponse{..} = do
 checkElection :: (MonadReader RequestVoteResponseEnv m, MonadWriter [String] m) =>
                  Set.Set RequestVoteResponse -> m RequestVoteResponseOut
 checkElection votes = do
-  nyes <- return $ Set.size $ votes
+  nyes <- return $ Set.size votes
   qsize <- view quorumSize
   tell ["yes votes: " ++ show nyes ++ " quorum size: " ++ show qsize]
-  if (nyes >= qsize)
-  then tell ["becoming leader"] >> (return $ BecomeLeader votes)
+  if nyes >= qsize
+  then tell ["becoming leader"] >> return (BecomeLeader votes)
   else return $ UpdateYesVotes votes
 
 
@@ -82,12 +80,11 @@ handle m = do
   r <- ask
   s <- get
   es <- use JT.logEntries
-  (_,lastLogIndex',_) <- return $ lastLogInfo es
   (o,l) <- runReaderT (runWriterT (handleRequestVoteResponse m))
            (RequestVoteResponseEnv
             (JT._role s)
             (JT._term s)
-            (lastLogIndex')
+            (maxIndex es)
             (JT._cYesVotes s)
             (JT._quorumSize r))
   mapM_ debug l
@@ -106,8 +103,8 @@ becomeLeader :: Monad m => JT.Raft m ()
 becomeLeader = do
   setRole Leader
   setCurrentLeader . Just =<< view (JT.cfg.JT.nodeId)
-  ni <- Seq.length <$> use JT.logEntries
-  setLNextIndex =<< Map.fromSet (const $ LogIndex ni) <$> view (JT.cfg.JT.otherNodes)
+  ni <- entryCount <$> use JT.logEntries
+  setLNextIndex =<< Map.fromSet (const ni) <$> view (JT.cfg.JT.otherNodes)
   (JT.lMatchIndex .=) =<< Map.fromSet (const startIndex) <$> view (JT.cfg.JT.otherNodes)
   JT.lConvinced .= Set.empty
   sendAllAppendEntries
@@ -117,13 +114,12 @@ becomeLeader = do
 revertToLastQuorumState :: Monad m => JT.Raft m ()
 revertToLastQuorumState = do
   es <- use JT.logEntries
-  (lastGoodTerm',_,_) <- return $ lastLogInfo es
   setRole Follower
   -- We don't persist this info and don't want to trust the RVR send's
   -- word so we set it to nothing an await an AE from some Leader of a higher term, then validate the votes
   setCurrentLeader Nothing
   JT.ignoreLeader .= False
-  setTerm lastGoodTerm'
+  setTerm (lastLogTerm es)
   JT.votedFor .= Nothing
   JT.cYesVotes .= Set.empty
   JT.cPotentialVotes .= Set.empty

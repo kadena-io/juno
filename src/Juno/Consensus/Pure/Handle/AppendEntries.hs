@@ -15,24 +15,22 @@ import Data.Map (Map)
 import Data.Sequence (Seq)
 import Data.Set (Set)
 import qualified Data.Map as Map
-import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
 
-import Juno.Consensus.ByzRaft.Log
 import Juno.Consensus.Pure.Types
 import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
 import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse, createAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
-import Juno.Util.Util (seqIndex, debug, setTerm, setRole, setCurrentLeader,
-                       getCmdSigOrInvariantError, logMetric)
+import Juno.Util.Util
 import qualified Juno.Runtime.Types as JT
+import Juno.Runtime.Log
 
 data AppendEntriesEnv = AppendEntriesEnv {
 -- Old Constructors
     _term             :: Term
   , _currentLeader    :: Maybe NodeID
   , _ignoreLeader     :: Bool
-  , _logEntries       :: Seq LogEntry
+  , _logEntries       :: Log LogEntry
 -- New Constructors
   , _quorumSize       :: Int
   }
@@ -64,7 +62,7 @@ data ValidResponse =
     SendFailureResponse |
     Commit {
         _replay :: Map (NodeID, Signature) (Maybe CommandResult)
-      , _updatedLog :: Seq LogEntry }
+      , _updatedLog :: Log LogEntry }
 
 -- THREAD: SERVER MAIN. updates state
 handleAppendEntries :: (MonadWriter [String] m, MonadReader AppendEntriesEnv m) => AppendEntries -> m AppendEntriesOut
@@ -79,7 +77,7 @@ handleAppendEntries ae@AppendEntries{..} = do
     Just leader' | not ignoreLeader' && leader' == _leaderId && _aeTerm == currentTerm' -> do
       plmatch <- prevLogEntryMatches _prevLogIndex _prevLogTerm
       if not plmatch
-        then return $ AppendEntriesOut nlo $ ValidLeaderAndTerm _leaderId $ SendFailureResponse
+        then return $ AppendEntriesOut nlo $ ValidLeaderAndTerm _leaderId SendFailureResponse
         else AppendEntriesOut nlo . ValidLeaderAndTerm _leaderId <$> appendLogEntries _prevLogIndex _aeEntries
           {-|
           if (not (Seq.null _aeEntries))
@@ -125,13 +123,13 @@ confirmElection leader' term' votes = do
     else return False
 
 validateVote :: NodeID -> Term -> RequestVoteResponse -> Bool
-validateVote leader' term' RequestVoteResponse{..} = (_rvrCandidateId == leader' && _rvrTerm == term')
+validateVote leader' term' RequestVoteResponse{..} = _rvrCandidateId == leader' && _rvrTerm == term'
 
 
 prevLogEntryMatches :: MonadReader AppendEntriesEnv m => LogIndex -> Term -> m Bool
 prevLogEntryMatches pli plt = do
   es <- view logEntries
-  case seqIndex es $ fromIntegral pli of
+  case lookupEntry pli es of
     -- if we don't have the entry, only return true if pli is startIndex
     Nothing    -> return (pli == startIndex)
     -- if we do have the entry, return true if the terms match
@@ -141,15 +139,14 @@ appendLogEntries :: (MonadWriter [String] m, MonadReader AppendEntriesEnv m)
                  => LogIndex -> Seq LogEntry -> m ValidResponse
 appendLogEntries pli newEs = do
   les <- view logEntries
-  logEntries' <- return . (Seq.>< newEs) . Seq.take (fromIntegral pli + 1) $ les
+  logEntries'' <- return $ addLogEntriesAt pli newEs les
   replay <- return $
     foldl (\m LogEntry{_leCommand = c@Command{..}} ->
             Map.insert (_cmdClientId, getCmdSigOrInvariantError "appendLogEntries" c) Nothing m)
     Map.empty newEs
-  logEntries'' <- return $ updateLogHashesFromIndex (pli + 1) logEntries'
-  if Seq.length les /= Seq.length logEntries''
+  if entryCount les /= entryCount logEntries''
     then do
-      tell ["replaying LogEntry(s): " ++ show (Seq.length les) ++ " through " ++ show (Seq.length logEntries'') ]
+      tell ["replaying LogEntry(s): " ++ show (entryCount les) ++ " through " ++ show (entryCount logEntries'') ]
       return $ Commit replay logEntries''
     else
       return $ Commit replay logEntries''

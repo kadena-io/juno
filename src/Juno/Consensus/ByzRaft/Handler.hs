@@ -3,13 +3,13 @@ module Juno.Consensus.ByzRaft.Handler
   ( handleEvents )
 where
 
-import qualified Data.ByteString as B
-import Data.Sequence
-import Control.Monad (forever, join)
 import Control.Lens hiding ((:>))
 import Data.AffineSpace
+import Control.Monad
+import Data.Maybe
 
 import Juno.Runtime.Types
+import Juno.Runtime.Log
 import Juno.Consensus.ByzRaft.Commit (doCommit)
 import Juno.Runtime.Sender (sendAllAppendEntries,sendAllAppendEntriesResponse)
 import Juno.Util.Util (debug, dequeueEvent)
@@ -34,19 +34,16 @@ issueBatch = do
       batchTimeDelta' <- view (cfg.batchTimeDelta)
       curTime <- join $ view (rs.getTimestamp)
       (ts, h) <- use lLastBatchUpdate
-      if (curTime .-. ts) >= batchTimeDelta'
-      -- If enough time has elapsed, then figure out if anything new has happened
-      then do
+      when (curTime .-. ts >= batchTimeDelta') $ do
+        -- If enough time has elapsed, then figure out if anything new has happened
+
         -- the main point here is to batch up a bunch of work, specifically:
         --   - dealing with AER's and their responses
         --   - auto-batching commands into a single AE
         --   - delaying the execution of evidence checking
         doCommit
-        les <- use logEntries
-        latestLogHash <- return $ case viewr les of
-          EmptyR -> B.empty
-          _ :> LogEntry _ _ h' -> h'
-        if latestLogHash /= h || latestLogHash == B.empty
+        latestLogHash <- (fmap _leHash.lastEntry) <$> use logEntries
+        if latestLogHash /= h || isNothing latestLogHash
         then do
           sendAllAppendEntriesResponse
           sendAllAppendEntries
@@ -56,8 +53,6 @@ issueBatch = do
         else do
           curTime' <- join $ view (rs.getTimestamp)
           lLastBatchUpdate .= (curTime', h)
-      else
-        return ()
 
 -- THREAD: SERVER MAIN
 handleEvents :: Monad m => Raft m ()

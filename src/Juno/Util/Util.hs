@@ -3,7 +3,6 @@
 
 module Juno.Util.Util
   ( seqIndex
-  , lastLogInfo
   , getQuorumSize
   , debug, debugNoRole
   , randomRIO
@@ -27,10 +26,7 @@ import Juno.Util.Combinator
 import Control.Lens
 import Data.Sequence (Seq)
 import Control.Monad.RWS
-import Data.ByteString (ByteString)
-
 import qualified Control.Concurrent.Lifted as CL
-import qualified Data.ByteString as B
 import qualified Data.Sequence as Seq
 import qualified Data.Map.Strict as Map
 import qualified System.Random as R
@@ -43,13 +39,6 @@ seqIndex s i =
 
 getQuorumSize :: Int -> Int
 getQuorumSize n = minimum [n - f | f <- [0..n], n >= 3*f + 1]
-
--- get the last term and index of a log
-lastLogInfo :: Seq LogEntry -> (Term, LogIndex, ByteString)
-lastLogInfo es =
-  case Seq.viewr es of                 -- \/ TODO: This smells weird, should we really use length for this?
-    _ Seq.:> LogEntry{..} -> (_leTerm, LogIndex $ Seq.length es - 1, _leHash)
-    Seq.EmptyR            -> (startTerm, startIndex, B.empty)
 
 debug :: Monad m => String -> Raft m ()
 debug s = do

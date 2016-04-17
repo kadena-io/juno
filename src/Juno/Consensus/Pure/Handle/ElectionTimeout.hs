@@ -13,13 +13,13 @@ import Control.Monad.State
 import Control.Monad.Writer
 import Data.Foldable (traverse_)
 import qualified Data.Set as Set
-import Data.Sequence (Seq)
 
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (createRequestVoteResponse,sendRPC)
 import Juno.Runtime.Timer (resetElectionTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Combinator ((^$))
-import Juno.Util.Util (lastLogInfo,debug,setTerm,setRole,setCurrentLeader)
+import Juno.Util.Util
+import Juno.Runtime.Log
 import qualified Juno.Runtime.Types as JT
 
 data ElectionTimeoutEnv = ElectionTimeoutEnv {
@@ -28,7 +28,7 @@ data ElectionTimeoutEnv = ElectionTimeoutEnv {
     , _lazyVote :: Maybe (Term,NodeID,LogIndex)
     , _nodeId :: NodeID
     , _otherNodes :: Set.Set NodeID
-    , _logEntries :: Seq LogEntry
+    , _logEntries :: Log LogEntry
     , _leaderWithoutFollowers :: Bool
     , _myPrivateKey :: PrivateKey
     , _myPublicKey :: PublicKey
@@ -60,7 +60,7 @@ handleElectionTimeout s = do
   tell ["election timeout: " ++ s]
   r <- view role
   leaderWithoutFollowers' <- view leaderWithoutFollowers
-  if (r /= Leader)
+  if r /= Leader
   then do
     lv <- view lazyVote
     case lv of
@@ -69,7 +69,7 @@ handleElectionTimeout s = do
         lazyResp <- createRequestVoteResponse lazyTerm lastLogIndex' me lazyCandidate True
         return $ VoteForLazyCandidate lazyTerm lazyCandidate lazyResp
       Nothing -> becomeCandidate
-  else if (r == Leader && leaderWithoutFollowers')
+  else if r == Leader && leaderWithoutFollowers'
        then do
             lv <- view lazyVote
             case lv of
@@ -87,11 +87,11 @@ becomeCandidate = do
   newTerm <- (+1) <$> view term
   me <- view nodeId
   es <- view logEntries
-  (_,lli,_) <- return $ lastLogInfo es
-  selfVote <- createRequestVoteResponse newTerm lli me me True
+  selfVote <- createRequestVoteResponse newTerm (maxIndex es) me me True
   provenance <- selfVoteProvenance selfVote
   potentials <- view otherNodes
-  return $ BecomeCandidate newTerm Candidate me (selfVote {_rvrProvenance = provenance}) potentials
+  return $ BecomeCandidate newTerm Candidate me
+             (selfVote {_rvrProvenance = provenance}) potentials
 
 -- we need to actually sign this one now, or else we'll end up signing it every time we transmit it as evidence (i.e. every AE)
 selfVoteProvenance :: (MonadReader ElectionTimeoutEnv m, MonadWriter [String] m) => RequestVoteResponse -> m Provenance
@@ -162,6 +162,6 @@ sendRequestVote :: Monad m => NodeID -> JT.Raft m ()
 sendRequestVote target = do
   ct <- use JT.term
   nid <- view (JT.cfg.JT.nodeId)
-  (llt, lli, _) <- lastLogInfo <$> use JT.logEntries
+  es <- use JT.logEntries
   debug $ "sendRequestVote: " ++ show ct
-  sendRPC target $ RV' $ RequestVote ct nid lli llt NewMsg
+  sendRPC target $ RV' $ RequestVote ct nid (maxIndex es) (lastLogTerm es) NewMsg
