@@ -31,9 +31,8 @@ messageReceiver = do
     -- NB: This all happens on one thread because it runs in Raft and we're trying (too hard) to avoid running in IO
 
     -- Take a big gulp of AERs, the more we get the more we can skip
-    (howManyAers, alotOfAers, invalidAers) <- toAlotOfAers <$> getAers 2000
-    unless (alotOfAers == mempty) $ do debugNoRole $ "Combined together " ++ show howManyAers ++ " AERs"
-                                       enqueueEvent $ AERs alotOfAers
+    (alotOfAers, invalidAers) <- toAlotOfAers <$> getAers 2000
+    unless (alotOfAers == mempty) $ enqueueEvent $ AERs alotOfAers
     mapM_ debugNoRole invalidAers
     -- sip from the general message stream, this should be relatively underpopulated except during an election but can contain HUGE AEs
     gm 50 >>= sequentialVerify ks
@@ -48,8 +47,8 @@ messageReceiver = do
       debugNoRole $ "AutoBatched " ++ show (length cmds') ++ " Commands"
 
 
-toAlotOfAers :: [(ReceivedAt,SignedRPC)] -> (Int, AlotOfAERs, [String])
-toAlotOfAers s = (length decodedAers, alotOfAers, invalids)
+toAlotOfAers :: [(ReceivedAt,SignedRPC)] -> (AlotOfAERs, [String])
+toAlotOfAers s = (alotOfAers, invalids)
   where
     (invalids, decodedAers) = partitionEithers $ uncurry aerOnlyDecode <$> s
     mkAlot aer@AppendEntriesResponse{..} = AlotOfAERs $ Map.insert _aerNodeId (Set.singleton aer) Map.empty

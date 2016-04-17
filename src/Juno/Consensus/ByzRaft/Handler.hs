@@ -26,8 +26,9 @@ import qualified Juno.Consensus.Pure.Handle.Revolution as PureRevolution
 issueBatch :: Monad m => Raft m ()
 issueBatch = do
   role' <- use role
+  ci <- use commitIndex
   case role' of
-    Follower -> return ()
+    Follower -> debug $ "Commit index is still: " ++ show ci
     Candidate -> return ()
     Leader -> do
       -- right now, only batch if leader
