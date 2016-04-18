@@ -10,7 +10,6 @@ datadump
 cabal.sandbox.config
 datadump.json
 simplerdump.json
-*.html
 *.zip
 *.eventLog
 simple.conf
@@ -57,3 +56,5 @@ sumsumarry.json
 
 # OS X-specific file
 .DS_Store
+/monitor/npm-debug.log
+demoui/node_modules
