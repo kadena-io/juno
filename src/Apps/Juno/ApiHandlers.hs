@@ -11,11 +11,13 @@ module Apps.Juno.ApiHandlers (
                            ) where
 
 import           Control.Concurrent.Chan.Unagi
-
+import           Control.Concurrent.MVar (readMVar)
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Text as T
 import           Data.Maybe (catMaybes)
+import qualified Data.Map as Map
+import           Data.Map (Map)
 
 import           Snap.Core
 import           Data.Aeson (encode)
@@ -31,6 +33,7 @@ import           Juno.Consensus.ByzRaft.Client (
 
 import           Apps.Juno.Ledger
 import           Control.Monad.Reader
+import           Juno.Consensus.ByzRaft.Client (CommandMap(..))
 
 data ApiEnv = ApiEnv {
       _toCommands :: InChan (RequestId, [CommandEntry]),
@@ -44,15 +47,16 @@ apiRoutes = route [
              ,("/transact", transactAPI)
              ,("/query", ledgerQueryAPI)
              ,("/cmd/batch", cmdBatch)
+             ,("/poll", pollForResults)
              ]
 
 apiWrapper :: (BLC.ByteString -> Either BLC.ByteString [CommandEntry]) -> ReaderT ApiEnv Snap ()
 apiWrapper requestHandler = do
-   env <- ask
    modifyResponse $ setHeader "Content-Type" "application/json"
    reqBytes <- (readRequestBody 1000000)
    case (requestHandler reqBytes) of
      Right cmdEntries -> do
+         env <- ask
          reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId (_cmdStatusMap env)
          liftIO $ writeChan (_toCommands env) (reqestId, cmdEntries)
          (writeBS . BLC.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
@@ -135,3 +139,30 @@ cmdBatchHandler bs =
  where
    errorBadCommand = JSON.encode $ commandResponseFailure "" "Malformed cmd or cmds in the submitted batch, could not decode input JSON."
    errorBadCommandBatch = JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+
+-- TODO: _cmdStatusMap needs to be updated by Juno protocol this is never updated
+-- poll for a list of cmdIds, returning the applied results or error
+-- see juno/jmeter/juno_API_jmeter_test.jmx
+pollForResults :: ReaderT ApiEnv Snap ()
+pollForResults = do
+  maybePoll <- liftM JSON.decode (readRequestBody 1000000)
+  modifyResponse $ setHeader "Content-Type" "application/json"
+  case maybePoll of
+    Just (PollPayloadRequest (PollPayload cmdids) _) -> do
+      env <- ask
+      (CommandMap _ m) <- liftIO $ readMVar (_cmdStatusMap env)
+      let rids = fmap (RequestId . read . T.unpack) $ cleanInput cmdids
+      let results = PollResponse $ fmap (toRepresentation . flipIt m) rids
+      writeBS . BLC.toStrict $ JSON.encode results
+    Nothing -> writeBS . BLC.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+ where
+   -- for now allow "" (empty) cmdIds
+   cleanInput = filter (/=T.empty)
+
+   flipIt :: Map RequestId CommandStatus ->  RequestId -> Maybe (RequestId, CommandStatus)
+   flipIt m rId = (fmap . fmap) (\cmd -> (rId, cmd)) (`Map.lookup` m) rId
+
+   toRepresentation :: Maybe (RequestId, CommandStatus) -> PollResult
+   toRepresentation (Just (RequestId rid, cmdStatus)) =
+       cmdStatus2PollResult (RequestId rid) cmdStatus
+   toRepresentation Nothing = cmdStatusError

@@ -14,7 +14,6 @@ import Data.Maybe (catMaybes)
 import System.IO
 
 import qualified Data.ByteString.Lazy.Char8 as BLC
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as BSC
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Text as T
@@ -23,13 +22,11 @@ import Snap.Core
 import Control.Lens hiding ((.=))
 import Data.Ratio
 import Data.Aeson (encode, object, (.=))
-import qualified Data.Aeson as JSON
 
 import Snap.CORS
 import Data.List
 import Text.Read (readMaybe)
 import Data.Monoid
-import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Control.Concurrent.MVar
 import qualified Control.Concurrent.Lifted as CL
@@ -38,10 +35,9 @@ import Schwifty.Swift.M105.Types
 import Schwifty.Swift.M105.Parser
 
 import Juno.Spec.Simple
-import Juno.Runtime.Types (CommandEntry(..),CommandResult(..),CommandStatus(..),RequestId(..))
+import Juno.Runtime.Types (CommandEntry(..),CommandResult(..),CommandStatus(..))
 import Juno.Consensus.ByzRaft.Client (CommandMVarMap, CommandMap(..), initCommandMap, setNextCmdRequestId)
 
-import Apps.Juno.JsonTypes
 import Apps.Juno.ApiHandlers
 import Apps.Juno.Parser
 import Apps.Juno.Ledger
@@ -122,37 +118,11 @@ snapServer toCommands cmdStatusMap = httpServe serverConf $
     applyCORS defaultOptions $ methods [GET, POST]
     (ifTop (writeBS "use /hopper for commands") <|>
      route [ ("/api/juno/v1", runReaderT apiRoutes (ApiEnv toCommands cmdStatusMap))
-           , ("/api/juno/v1/poll", pollForResults cmdStatusMap)
            , ("hopper", hopperHandler toCommands cmdStatusMap)
            , ("swift", swiftHandler toCommands cmdStatusMap)
            , ("api/swift-submit", swiftSubmission toCommands cmdStatusMap)
            , ("api/ledger-query", ledgerQuery toCommands cmdStatusMap)
            ])
-
--- poll for a list of cmdIds, returning the applied results or error
--- see juno/jmeter/juno_API_jmeter_test.jmx
-pollForResults :: CommandMVarMap -> Snap ()
-pollForResults cmdStatusMap = do
-  maybePoll <- liftM JSON.decode (readRequestBody 1000000)
-  modifyResponse $ setHeader "Content-Type" "application/json"
-  case maybePoll of
-    Just (PollPayloadRequest (PollPayload cmdids) _) -> do
-      (CommandMap _ m) <- liftIO $ readMVar cmdStatusMap
-      let rids = fmap (RequestId . read . T.unpack) $ cleanInput cmdids
-      let results = PollResponse $ fmap (toRepresentation . flipIt m) rids
-      writeBS . BL.toStrict $ JSON.encode results
-    Nothing -> writeBS . BL.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
- where
-   -- for now allow "" cmdIds
-   cleanInput = filter (/=T.empty)
-
-   flipIt :: Map RequestId CommandStatus ->  RequestId -> Maybe (RequestId, CommandStatus)
-   flipIt m rId = (fmap . fmap) (\cmd -> (rId, cmd)) (`Map.lookup` m) rId
-
-   toRepresentation :: Maybe (RequestId, CommandStatus) -> PollResult
-   toRepresentation (Just (RequestId rid, cmdStatus)) =
-       cmdStatus2PollResult (RequestId rid) cmdStatus
-   toRepresentation Nothing = cmdStatusError
 
 swiftSubmission :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Snap ()
 swiftSubmission toCommands cmdStatusMap = do
