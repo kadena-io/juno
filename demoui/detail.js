@@ -14,11 +14,13 @@ export default function Detail(props) {
   case "london-branch":
     title = "London Branch";
     ptitle = `Branch Statement ${props.londonBranch}`;
-    deets = (<BranchDetail {...props} />); break;
+    deets = (<BranchDetail branch={props.londonBranch}
+             branchAccts={[props.tesla,props.amazon]} {...props} />); break;
   case "tokyo-branch":
     title = "Tokyo Branch";
     ptitle = `Branch Statement ${props.tokyoBranch}`;
-    deets = (<BranchDetail {...props} />); break;
+    deets = (<BranchDetail branch={props.tokyoBranch}
+             branchAccts={[props.nintendo,props.sony]} {...props} />); break;
   case "new-york-branch":
     ptitle = "Nostro Accounts";
     title = "New York Branch";

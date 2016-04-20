@@ -6,8 +6,8 @@ export default class NostroDetail extends React.Component {
 
     var rows = [];
     const nostros = [this.props.tokyoNostro,this.props.londonNostro];
-    if (this.props.model != null) {
-      rows = this.props.model
+    if (this.props.nostroData != null) {
+      rows = this.props.nostroData
         .filter(r => nostros.includes(r.from) && nostros.includes(r.to))
         .map(r => {
           const [londonAmt,tokyoAmt] = r.from == this.props.londonNostro ?

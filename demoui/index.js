@@ -19,22 +19,23 @@ import Detail from './detail';
 
 const junoUrl = '//localhost:8000/api';
 const [londonNostro,tokyoNostro,londonBranch,tokyoBranch]=['101','102','100','103'];
+const [nintendo,sony,tesla,amazon]=['003','004','000','001'];
 const accounts = {
-  '003': {
+  nintendo: {
     name: 'Nintendo',
     type: 'Client'
   },
-  '004': {
+  sony: {
     name: 'Sony',
     type: 'Client'
   },
 
-  '000': {
+  tesla: {
     name: 'Tesla',
     type: 'Client'
   },
 
-  '001': {
+  amazon: {
     name: 'Amazon',
     type: 'Client'
   },
@@ -84,36 +85,51 @@ class App extends React.Component {
     case "add-payments":
       break;
     case "new-york-branch":
-      this.fetchNostro(currentPane);
+      this.fetchNostro();
       break;
     case "london-branch":
+      this.fetchBranch(londonBranch);
       break;
     case "tokyo-branch":
+      this.fetchBranch(tokyoBranch);
       break;
     }
   }
 
-  fetchNostro(currentPane) {
+  fetchNostro() {
     fetch(`${junoUrl}/ledger-query?account=${londonNostro}`, {
       method: 'get',
       mode: 'cors'
     }).then(response => response.json())
       .then(jsonData => {
-        const model = jsonData.trans;
-        this.setState({model});
+        const nostroData = jsonData.trans;
+        this.setState({nostroData});
       });
   }
 
+  fetchBranch(branch) {
+    fetch(`${junoUrl}/ledger-query?account=${branch}`, {
+      method: 'get',
+      mode: 'cors'
+    }).then(response => response.json())
+      .then(jsonData => {
+        const branchData = {};
+        branchData[branch] = jsonData;
+        this.setState({branchData});
+      });
+
+  }
+
   render() {
-    const {model,currentPane} = this.state;
     return (
-      <div className="app">
-        <HeaderNav currentPane={currentPane} />
-        <Sidebar handleChangePane={(pane)=>this.handleChangePane(pane)} currentPane={currentPane} />
-        <Detail currentPane={currentPane} junoUrl={junoUrl} accounts={accounts} model={model}
+        <div className="app">
+        <HeaderNav {...this.state} />
+        <Sidebar handleChangePane={(pane)=>this.handleChangePane(pane)} {...this.state} />
+        <Detail junoUrl={junoUrl} accounts={accounts}
+      nintendo={nintendo} sony={sony} amazon={amazon} tesla={tesla}
       tokyoNostro={tokyoNostro} londonNostro={londonNostro}
-      londonBranch={londonBranch} tokyoBranch={tokyoBranch}/>
-      </div>
+      londonBranch={londonBranch} tokyoBranch={tokyoBranch} {...this.state} />
+        </div>
     );
   }
 
