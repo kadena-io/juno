@@ -5,9 +5,6 @@ require('./public/css/style.css');
 import React from 'react';
 import ReactDOM from 'react-dom';
 
-//// import Health from './health';
-//// import Nodes from './nodes';
-//// import Consensus from './consensus';
 import HeaderNav from './header-nav';
 import Sidebar from './sidebar';
 import Detail from './detail';
@@ -19,6 +16,49 @@ import Detail from './detail';
 //// const dataWindow = 60 * 6;
 
 //// const LOST_NODE = 'LOST_NODE';
+
+const junoUrl = '//localhost:8000/api';
+const [londonNostro,tokyoNostro,londonBranch,tokyoBranch]=['101','102','100','103'];
+const accounts = {
+  '003': {
+    name: 'Nintendo',
+    type: 'Client'
+  },
+  '004': {
+    name: 'Sony',
+    type: 'Client'
+  },
+
+  '000': {
+    name: 'Tesla',
+    type: 'Client'
+  },
+
+  '001': {
+    name: 'Amazon',
+    type: 'Client'
+  },
+
+  londonBranch: {
+    name: 'London',
+    type: 'Branch'
+  },
+
+  londonNostro: {
+    name: 'London Nostro',
+    type: 'Correspondent'
+  },
+
+  tokyoNostro: {
+    name: 'Tokyo Nostro',
+    type: 'Correspondent'
+  },
+
+  tokyoBranch: {
+    name: 'Tokyo',
+    type: 'Branch'
+  }
+};
 
 
 class App extends React.Component {
@@ -40,40 +80,40 @@ class App extends React.Component {
 
   handleChangePane(currentPane) {
     this.setState({currentPane});
-    //alert(currentPane);
+    switch (currentPane) {
+    case "add-payments":
+      break;
+    case "new-york-branch":
+      this.fetchNostro(currentPane);
+      break;
+    case "london-branch":
+      break;
+    case "tokyo-branch":
+      break;
+    }
   }
+
+  fetchNostro(currentPane) {
+    fetch(`${junoUrl}/ledger-query?account=${londonNostro}`, {
+      method: 'get',
+      mode: 'cors'
+    }).then(response => response.json())
+      .then(jsonData => {
+        const model = jsonData.trans;
+        this.setState({model});
+      });
+  }
+
   render() {
-////    const {leaderData, data} = this.state;
-    const {data,currentPane} = this.state;
+    const {model,currentPane} = this.state;
     return (
       <div className="app">
         <HeaderNav currentPane={currentPane} />
         <Sidebar handleChangePane={(pane)=>this.handleChangePane(pane)} currentPane={currentPane} />
-        <Detail currentPane={currentPane}/>
-
-   </div>
-
-////      <section>
-////        <header>
-////          <nav class="rad-navigation">
-////            <div class="rad-logo-container">
-////              <a href="#" class="rad-logo">Payments Ledger</a>
-////              <a href="#" class="rad-toggle-btn pull-right"><i class="fa fa-bars"></i></a>
-////            </div>
-////	      <a href="#" class="rad-logo-hidden">Payments Ledger</a>
-////      <div className="app">
-////        <h1 className="cluster-header">
-////          JUNO CLUSTER
-////          <div className="border-underline" />
-////        </h1>
-////        <div className="float-section">
-////          <Consensus data={leaderData} />
-////          <Health data={leaderData} />
-////        </div>
-////        <div className="float-section">
-////          <Nodes data={data} />
-////        </div>
-////      </div>
+        <Detail currentPane={currentPane} junoUrl={junoUrl} accounts={accounts} model={model}
+      tokyoNostro={tokyoNostro} londonNostro={londonNostro}
+      londonBranch={londonBranch} tokyoBranch={tokyoBranch}/>
+      </div>
     );
   }
 
