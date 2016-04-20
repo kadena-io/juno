@@ -6,7 +6,7 @@ import Control.Lens
 import qualified Data.Set as Set
 
 import Juno.Consensus.ByzRaft.Handler
-import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Juno.Util.Util
 import Juno.Runtime.Timer
 import Juno.Runtime.MessageReceiver

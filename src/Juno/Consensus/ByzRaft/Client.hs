@@ -22,6 +22,7 @@ import Data.Thyme.Time.Core (unUTCTime, toMicroseconds)
 
 import Juno.Runtime.Timer
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendRPC)
 import Juno.Runtime.MessageReceiver
@@ -71,7 +72,8 @@ runRaftClient getEntries cmdStatusMap rconf spec@RaftSpec{..} = do
     -- TODO: because UTC can flow backwards, this request ID is problematic:
     initialRaftState {_currentRequestId = rid}-- only use currentLeader and logEntries
 
-
+-- TODO: don't run in raft, own monad stack
+-- StateT ClientState (ReaderT ClientEnv IO)
 -- THREAD: CLIENT MAIN
 raftClient :: Raft IO (RequestId, [CommandEntry]) -> CommandMVarMap -> Raft IO ()
 raftClient getEntries cmdStatusMap = do
@@ -207,7 +209,7 @@ clientHandleCommandResponse cmdStatusMap CommandResponse{..} = do
     setCurrentLeader $ Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
     -- cmdStatusMap shared with the client, client can poll this map to await applied result
-    liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert _cmdrRequestId (CmdApplied _cmdrResult) m)))
+    liftIO (modifyMVar_ cmdStatusMap (\(CommandMap rid m) -> return $ CommandMap rid (Map.insert _cmdrRequestId (CmdApplied _cmdrResult) m)))
     numTimeouts .= 0
     prcount <- fmap Map.size (use pendingRequests)
     -- if we still have pending requests, reset the timer

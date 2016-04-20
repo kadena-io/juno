@@ -55,6 +55,7 @@ library
                      , Juno.Runtime.Sender
                      , Juno.Runtime.Timer
                      , Juno.Runtime.Types
+                     , Juno.Runtime.Protocol.Types
                      , Juno.Spec.Simple
                      , Juno.Util.Combinator
                      , Juno.Util.Util

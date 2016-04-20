@@ -19,7 +19,7 @@ import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader,
                            resetElectionTimer)
 import Juno.Util.Util
 import Juno.Runtime.Log
-import qualified Juno.Runtime.Types as JT
+import qualified Juno.Runtime.Protocol.Types as JT
 
 data RequestVoteResponseEnv = RequestVoteResponseEnv {
       _role :: Role

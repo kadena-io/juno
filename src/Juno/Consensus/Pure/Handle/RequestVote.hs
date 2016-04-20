@@ -18,7 +18,7 @@ import Juno.Runtime.Log
 
 import Juno.Consensus.Pure.Types
 
-import qualified Juno.Runtime.Types as JT
+import qualified Juno.Runtime.Protocol.Types as JT
 
 data RequestVoteEnv = RequestVoteEnv {
 -- Old Constructors

@@ -16,6 +16,7 @@ import qualified Data.Serialize as S
 import qualified Data.Set as Set
 
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Juno.Util.Util (debugNoRole,enqueueEvent)
 
 

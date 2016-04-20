@@ -19,6 +19,7 @@ import qualified Data.Map as Map
 import Data.Foldable (toList)
 
 import Juno.Runtime.Types hiding (valid)
+import Juno.Runtime.Protocol.Types
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendResults)
 import Juno.Runtime.Log

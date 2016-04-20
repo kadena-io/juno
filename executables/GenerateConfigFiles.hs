@@ -6,6 +6,7 @@ import Data.Ratio
 import Crypto.Ed25519.Pure
 import Text.Read
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Data.Thyme.Clock
 import System.IO
 import System.FilePath

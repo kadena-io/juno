@@ -32,4 +32,5 @@ module Juno.Consensus.Pure.Types (
   ) where
 
 
+import Juno.Runtime.Protocol.Types
 import Juno.Runtime.Types

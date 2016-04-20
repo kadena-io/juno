@@ -15,7 +15,7 @@ import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendAllAppendEntries)
 import Juno.Runtime.Timer (resetHeartbeatTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Util (debug,enqueueEvent)
-import qualified Juno.Runtime.Types as JT
+import qualified Juno.Runtime.Protocol.Types as JT
 
 data HeartbeatTimeoutEnv = HeartbeatTimeoutEnv {
       _role :: Role

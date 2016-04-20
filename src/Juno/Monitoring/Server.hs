@@ -5,8 +5,8 @@ module Juno.Monitoring.Server
   ( startMonitoring
   ) where
 
-import Juno.Runtime.Types (Config, Metric(..), LogIndex(..), Term(..),
-                           NodeID(..), nodeId, _port)
+import Juno.Runtime.Protocol.Types (Config, nodeId, Metric(..), LogIndex(..), Term(..))
+import Juno.Runtime.Types (NodeID(..), _port)
 
 import Juno.Monitoring.EkgMonitor (Server, forkServer, getLabel, getGauge,
                                  getDistribution)

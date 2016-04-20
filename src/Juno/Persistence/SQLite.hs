@@ -18,6 +18,7 @@ import Data.ByteString hiding (concat)
 import qualified Data.Text as T
 
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 
 -- These live here as orphans, and not in Types, because trying to Serialize these things should be a type level error
 -- with rare exception (i.e. for hashing the log entry). Moreover, accidentally sending Provenance over the wire could

@@ -21,6 +21,7 @@ module Juno.Util.Util
   ) where
 
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Juno.Util.Combinator
 
 import Control.Lens

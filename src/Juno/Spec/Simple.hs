@@ -14,6 +14,7 @@ import Juno.Consensus.ByzRaft.Server
 import Juno.Consensus.ByzRaft.Client
 import Juno.Runtime.Types
 import Juno.Messaging.Types
+import Juno.Runtime.Protocol.Types
 import Juno.Messaging.ZMQ
 import Juno.Monitoring.Server (startMonitoring)
 

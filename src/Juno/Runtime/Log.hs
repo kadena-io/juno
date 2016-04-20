@@ -9,6 +9,7 @@ module Juno.Runtime.Log
     ) where
 
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Control.Lens
 import Data.ByteString (ByteString)
 import qualified Data.Sequence as Seq
