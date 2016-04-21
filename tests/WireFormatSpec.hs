@@ -9,6 +9,7 @@ import qualified Data.Set as Set
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 
 
 spec :: Spec

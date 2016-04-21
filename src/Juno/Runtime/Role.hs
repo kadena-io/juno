@@ -4,7 +4,6 @@ module Juno.Runtime.Role
   ) where
 
 import Juno.Runtime.Timer
-import Juno.Runtime.Types
 import Juno.Runtime.Protocol.Types
 import Juno.Util.Util
 
