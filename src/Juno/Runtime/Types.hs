@@ -25,6 +25,7 @@ module Juno.Runtime.Types
   , CommandEntry(..)
   , CommandResult(..)
   , CommandStatus(..)
+  , CommandMap(..), CommandMVarMap, initCommandMap, setNextCmdRequestId
   , RequestId(..), startRequestId, toRequestId
   , Command(..)
   , CommandResponse(..)
@@ -36,6 +37,7 @@ module Juno.Runtime.Types
   ) where
 
 import Control.Monad (mzero)
+import Control.Concurrent (MVar, newMVar, takeMVar, putMVar)
 import Crypto.Ed25519.Pure ( PublicKey, PrivateKey, Signature(..), sign, valid
                            , importPublic, importPrivate, exportPublic, exportPrivate)
 import Data.Map (Map)
@@ -49,13 +51,37 @@ import Data.Word (Word64)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Data.Thyme.Clock
 import Data.Thyme.Time.Core ()
+import Data.Thyme.Time.Core (unUTCTime, toMicroseconds)
 import Data.Thyme.Internal.Micro (Micro)
-
 import Data.Aeson (genericParseJSON,genericToJSON,parseJSON,toJSON,ToJSON,FromJSON,Value(..))
 import Data.Aeson.Types (defaultOptions,Options(..))
 
 import GHC.Int (Int64)
 import GHC.Generics hiding (from)
+
+-- Shared between API and Juno protocol
+-- holds the command result when the status is CmdApplied
+data CommandMap = CommandMap
+  { _cmvNextRequestId :: RequestId
+  , _cmvMap :: Map RequestId CommandStatus
+  } deriving (Show)
+
+type CommandMVarMap = MVar CommandMap
+
+-- If we initialize the request ID from zero every time, then when you restart the client the rid resets too.
+-- We've hit bugs by doing this before. The hack we use is to initialize it to UTC Time
+initCommandMap :: IO CommandMVarMap
+initCommandMap = do
+  UTCTime _ time <- unUTCTime <$> getCurrentTime
+  newMVar $ CommandMap (RequestId $ toMicroseconds time) Map.empty
+
+-- move to utils, this is the only CommandStatus that should inc the requestId
+-- NB: this only works when we have a single client, but punting on solving this for now is a good idea.
+setNextCmdRequestId :: CommandMVarMap -> IO RequestId
+setNextCmdRequestId cmdStatusMap = do
+  (CommandMap nextId m) <- takeMVar cmdStatusMap
+  putMVar cmdStatusMap $ CommandMap (nextId + 1) (Map.insert nextId CmdSubmitted m)
+  return nextId
 
 newtype CommandEntry = CommandEntry { unCommandEntry :: ByteString }
   deriving (Show, Eq, Ord, Generic, Serialize)

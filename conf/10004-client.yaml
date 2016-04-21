@@ -15,6 +15,9 @@ publicKeys:
 heartbeatTimeout: 1500000
 clientPublicKeys:
 - - host: '127.0.0.1'
+    port: 10003
+  - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
+- - host: '127.0.0.1'
     port: 10004
   - 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
 electionTimeoutRange:

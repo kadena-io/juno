@@ -28,6 +28,8 @@ module Juno.Runtime.Protocol.Types
   , sendMessages, getMessage, getMessages, getNewCommands, getNewEvidence
   , debugPrint, publishMetric, getTimestamp, random
   , enqueue, enqueueMultiple, dequeue, enqueueLater, killEnqueued
+  -- for API <-> Juno communication
+  , dequeueFromApi ,cmdStatusMap, updateCmdMap
   , NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
@@ -72,12 +74,10 @@ module Juno.Runtime.Protocol.Types
 
 import Control.Monad (mzero)
 import Control.Parallel.Strategies
-import Control.Concurrent (ThreadId)
+import Control.Concurrent (MVar, ThreadId)
 import Control.Lens hiding (Index, (|>))
 import qualified Control.Lens as Lens
 import Control.Monad.RWS (RWST)
---import Crypto.Ed25519.Pure ( PublicKey, PrivateKey, Signature(..), sign, valid
---                           , importPublic, importPrivate, exportPublic, exportPrivate)
 import Data.Sequence (Seq, (|>))
 import qualified Data.Sequence as Seq
 import Data.Map (Map)
@@ -640,6 +640,13 @@ data RaftSpec m = RaftSpec
   , _killEnqueued     :: ThreadId -> m () -- Simple,Timer
 
   , _dequeue          :: m Event -- Simple,Util(dequeueEvent)
+
+  -- how the API communicates with Raft, later could be redis w/e, etc.
+  , _updateCmdMap     :: (MVar CommandMap -> RequestId -> CommandStatus -> m ())
+
+  , _cmdStatusMap     :: CommandMVarMap -- same mvar map as _updateCmdMVarMap needs to run in Raft m
+
+  , _dequeueFromApi   :: m (RequestId, [CommandEntry])
   }
 makeLenses (''RaftSpec)
 

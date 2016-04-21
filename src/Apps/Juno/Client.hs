@@ -35,8 +35,7 @@ import Schwifty.Swift.M105.Types
 import Schwifty.Swift.M105.Parser
 
 import Juno.Spec.Simple
-import Juno.Runtime.Types (CommandEntry(..),CommandResult(..),CommandStatus(..))
-import Juno.Consensus.ByzRaft.Client (CommandMVarMap, CommandMap(..), initCommandMap, setNextCmdRequestId)
+import Juno.Runtime.Types
 
 import Apps.Juno.ApiHandlers
 import Apps.Juno.Parser
@@ -220,7 +219,6 @@ main = do
   -- `toResult` is unused. There seem to be API's that use/block on fromResult.
   -- Either we need to kill this channel full stop or `toResult` needs to be used.
   cmdStatusMap <- initCommandMap
-  void $ CL.fork $ snapServer toCommands cmdStatusMap
   let -- getEntry :: (IO et)
       getEntries :: IO (RequestId, [CommandEntry])
       getEntries = readChan fromCommands

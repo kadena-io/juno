@@ -25,15 +25,9 @@ import qualified Data.Aeson as JSON
 
 import           Apps.Juno.JsonTypes
 import           Juno.Runtime.Types hiding (CommandBatch)
-import           Juno.Consensus.ByzRaft.Client (
-                                                CommandMVarMap
-                                               ,setNextCmdRequestId
-                                               )
-
 
 import           Apps.Juno.Ledger
 import           Control.Monad.Reader
-import           Juno.Consensus.ByzRaft.Client (CommandMap(..))
 
 data ApiEnv = ApiEnv {
       _toCommands :: InChan (RequestId, [CommandEntry]),

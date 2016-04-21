@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Juno.Spec.Simple
-  ( runServer
+  ( runJuno
   , runClient
   , RequestId
   , CommandStatus
@@ -17,24 +17,24 @@ import Juno.Messaging.Types
 import Juno.Runtime.Protocol.Types
 import Juno.Messaging.ZMQ
 import Juno.Monitoring.Server (startMonitoring)
+import Juno.Runtime.Api.ApiServer
 
 import Control.Lens
 import Control.Monad
-import Control.Concurrent (yield, threadDelay, takeMVar, putMVar, newMVar, MVar)
+import Control.Concurrent (modifyMVar_, yield, threadDelay, takeMVar, putMVar, newMVar, MVar)
 import qualified Control.Concurrent.Lifted as CL
 import Control.Concurrent.Chan.Unagi
 import qualified Control.Concurrent.Chan.Unagi.NoBlocking as NoBlock
 import qualified Control.Concurrent.Chan.Unagi.Bounded as Bounded
 
+import Data.ByteString (ByteString)
+import qualified Data.Map as Map
 import Data.Thyme.Clock (getCurrentTime)
+import Data.Thyme.LocalTime
 
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
-import Data.Thyme.LocalTime
-
-
-import Data.ByteString (ByteString)
 
 import Control.Monad.IO.Class
 
@@ -87,8 +87,12 @@ simpleRaftSpec :: MonadIO m
                -> (CommandEntry -> m CommandResult)
                -> (NodeID -> String -> m ())
                -> (Metric -> m ())
+               -> (MVar CommandMap -> RequestId -> CommandStatus -> m ())
+               -> CommandMVarMap
+               -> OutChan (RequestId, [CommandEntry]) --IO (RequestId, [CommandEntry])
                -> RaftSpec m
-simpleRaftSpec inboxRead cmdInboxRead aerInboxRead outboxWrite eventRead eventWrite applyFn debugFn pubMetricFn = RaftSpec
+simpleRaftSpec inboxRead cmdInboxRead aerInboxRead outboxWrite eventRead eventWrite
+               applyFn debugFn pubMetricFn updateMapFn cmdMVarMap getCommands = RaftSpec
     {
       -- TODO don't read log entries
       _readLogEntry    = return . const Nothing
@@ -133,6 +137,11 @@ simpleRaftSpec inboxRead cmdInboxRead aerInboxRead outboxWrite eventRead eventWr
     -- _dequeue :: OutChan (Event nt et rt) -> m (Event nt et rt)
     , _dequeue = liftIO $ Bounded.readChan eventRead
 
+    , _updateCmdMap = updateMapFn
+
+    , _cmdStatusMap = cmdMVarMap
+
+    , _dequeueFromApi = liftIO $ readChan getCommands
     }
 
 getMsgSync :: MVar (NoBlock.Stream (ReceivedAt,SignedRPC)) -> IO (ReceivedAt,SignedRPC)
@@ -176,28 +185,40 @@ sendMsg outboxWrite n s = do
   writeChan outboxWrite msg
   yield
 
-runServer :: (CommandEntry -> IO CommandResult) -> IO ()
-runServer applyFn = do
-  rconf <- getConfig
-  me <- return $ nodeIDtoAddr $ rconf ^. nodeId
-  (inboxWrite, inboxRead) <- NoBlock.newChan
-  inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead
-  (cmdInboxWrite, cmdInboxRead) <- NoBlock.newChan
-  cmdInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 cmdInboxRead
-  (aerInboxWrite, aerInboxRead) <- NoBlock.newChan
-  aerInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 aerInboxRead
-  (outboxWrite, outboxRead) <- newChan
-  -- the 50 provides the back pressure on the msg stream.
-  -- When the writer blocks, the messages will build up in the inboxRead, which is unbounded
-  (eventWrite, eventRead) <- Bounded.newChan 20
-  let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
-  pubMetric <- startMonitoring rconf
-  runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me []
-  let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead' outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
-  runRaftServer rconf raftSpec
+updateCmdMapFn :: MonadIO m => MVar CommandMap -> RequestId -> CommandStatus -> m ()
+updateCmdMapFn cmdMapMvar rid cmdStatus =
+    liftIO $ (modifyMVar_ cmdMapMvar
+     (\(CommandMap nextRid map') ->
+          return $ CommandMap nextRid (Map.insert rid cmdStatus map')
+     )
+    )
 
+--runServer :: (CommandEntry -> IO CommandResult) -> IO ()
+--runServer applyFn = do
+--  rconf <- getConfig
+--  me <- return $ nodeIDtoAddr $ rconf ^. nodeId
+--  (inboxWrite, inboxRead) <- NoBlock.newChan
+--  inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead
+--  (cmdInboxWrite, cmdInboxRead) <- NoBlock.newChan
+--  cmdInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 cmdInboxRead
+--  (aerInboxWrite, aerInboxRead) <- NoBlock.newChan
+--  aerInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 aerInboxRead
+--  (outboxWrite, outboxRead) <- newChan
+--  -- the 50 provides the back pressure on the msg stream.
+--  -- When the writer blocks, the messages will build up in the inboxRead, which is unbounded
+--  (eventWrite, eventRead) <- Bounded.newChan 20
+--  let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
+--  pubMetric <- startMonitoring rconf
+--  runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me []
+--  -- STUBs mocking
+--  (_, stubGetApiCommands) <- newChan
+--  let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead'
+--                 outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
+--                 (liftIO . pubMetric) updateCmdMapFn cmdStatusMap' stubGetApiCommands
+--  runRaftServer rconf raftSpec
+--
 runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
-runClient applyFn getEntries cmdStatusMap = do
+runClient applyFn getEntries cmdStatusMap' = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
   (inboxWrite, inboxRead) <- NoBlock.newChan
@@ -211,9 +232,53 @@ runClient applyFn getEntries cmdStatusMap = do
   let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
   pubMetric <- startMonitoring rconf
   runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me [] -- ZMQ
-  let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead' outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn) (liftIO . pubMetric)
-  runRaftClient getEntries cmdStatusMap rconf raftSpec
+  -- STUBs mocking
+  (_, stubGetApiCommands) <- newChan
+  let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead'
+                 outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
+                 (liftIO . pubMetric) updateCmdMapFn cmdStatusMap' stubGetApiCommands
+  runRaftClient getEntries cmdStatusMap' rconf raftSpec
 
+-- | sets up and runs both API and raft protocol
+--   shared state between API and protocol: sharedCmdStatusMap
+--   comminication channel btw API and protocol:
+--   [API write/place command -> toCommands] [getApiCommands -> juno read/poll command]
+runJuno :: (CommandEntry -> IO CommandResult) -> InChan (RequestId, [CommandEntry])
+        -> OutChan (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
+runJuno applyFn toCommands getApiCommands sharedCmdStatusMap = do
+  rconf <- getConfig
+  me <- return $ nodeIDtoAddr $ rconf ^. nodeId
+  (NodeID _ p) <- return $ rconf ^. nodeId
+
+  -- Start The Api Server, communicates with the Juno protocol via sharedCmdStatusMap
+  -- API interface will run on 800{nodeNum} for now, where the nodeNum for 10003 is 3
+  void $ CL.fork $ runApiServer toCommands sharedCmdStatusMap $ setAPIPort $ (fromInteger . toInteger) p
+
+  (inboxWrite, inboxRead) <- NoBlock.newChan
+  inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead -- all (!aer !cmds)
+  (cmdInboxWrite, cmdInboxRead) <- NoBlock.newChan
+  cmdInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 cmdInboxRead -- outside cmds
+  (aerInboxWrite, aerInboxRead) <- NoBlock.newChan
+  aerInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 aerInboxRead
+  (outboxWrite, outboxRead) <- newChan -- raft writes to outbox, client reads
+  (eventWrite, eventRead) <- Bounded.newChan 20 -- timer events
+  let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
+
+  -- each node has its own snap monitoring server
+  pubMetric <- startMonitoring rconf
+
+  runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me [] -- ZMQ forks
+  let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead'
+                 outboxWrite eventRead eventWrite (liftIO . applyFn)
+                 (liftIO2 debugFn) (liftIO . pubMetric) updateCmdMapFn
+                 sharedCmdStatusMap getApiCommands
+  runRaftServer rconf raftSpec
+ where
+   -- this is a punt so that the APIs can all run
+   -- on the same machine, i.e. 10001 -> 8001, 10002 -> 8002, etc.
+   -- protocol port start with 1000{nodeNum} api 800{nodeNum}
+   setAPIPort :: Int -> Int
+   setAPIPort protoPort = protoPort - 2000
 
 -- | lift a two-arg action into MonadIO
 liftIO2 :: MonadIO m => (a -> b -> IO c) -> a -> b -> m c

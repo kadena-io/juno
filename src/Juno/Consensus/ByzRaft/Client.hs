@@ -3,22 +3,15 @@
 
 module Juno.Consensus.ByzRaft.Client
   ( runRaftClient
-  , CommandMap(..)
-  , CommandMVarMap
-  , initCommandMap
-  , setNextCmdRequestId
   ) where
 
 import Control.Lens hiding (Index)
 import Control.Monad.RWS
 import Data.Foldable (traverse_)
-import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Text.Read (readMaybe)
 import qualified Data.ByteString.Char8 as SB8
-import Data.Thyme.Clock
-import Data.Thyme.Time.Core (unUTCTime, toMicroseconds)
 
 import Juno.Runtime.Timer
 import Juno.Runtime.Types
@@ -27,31 +20,8 @@ import Juno.Util.Util
 import Juno.Runtime.Sender (sendRPC)
 import Juno.Runtime.MessageReceiver
 
-import           Control.Concurrent (MVar, modifyMVar_, takeMVar, putMVar, newMVar, readMVar)
+import           Control.Concurrent (modifyMVar_, readMVar)
 import qualified Control.Concurrent.Lifted as CL
-
--- shared holds the command result when the status is CmdApplied
-data CommandMap = CommandMap
-  { _cmvNextRequestId :: RequestId
-  , _cmvMap :: Map RequestId CommandStatus
-  } deriving (Show)
-
-type CommandMVarMap = MVar CommandMap
-
--- If we initialize the request ID from zero every time, then when you restart the client the rid resets too.
--- We've hit bugs by doing this before. The hack we use is to initialize it to UTC Time
-initCommandMap :: IO CommandMVarMap
-initCommandMap = do
-  UTCTime _ time <- unUTCTime <$> getCurrentTime
-  newMVar $ CommandMap (RequestId $ toMicroseconds time) Map.empty
-
--- move to utils, this is the only CommandStatus that should inc the requestId
--- NB: this only works when we have a single client, but punting on solving this for now is a good idea.
-setNextCmdRequestId :: CommandMVarMap -> IO RequestId
-setNextCmdRequestId cmdStatusMap = do
-  (CommandMap nextId m) <- takeMVar cmdStatusMap
-  putMVar cmdStatusMap $ CommandMap (nextId + 1) (Map.insert nextId CmdSubmitted m)
-  return nextId
 
 -- main entry point wired up by Simple.hs
 -- getEntry (readChan) useResult (writeChan) replace by
@@ -61,13 +31,13 @@ runRaftClient :: IO (RequestId, [CommandEntry])
               -> Config
               -> RaftSpec (Raft IO)
               -> IO ()
-runRaftClient getEntries cmdStatusMap rconf spec@RaftSpec{..} = do
+runRaftClient getEntries cmdStatusMap' rconf spec@RaftSpec{..} = do
   let csize = Set.size $ rconf ^. otherNodes
       qsize = getQuorumSize csize
   -- TODO: do we really need currentRequestId in state any longer, doing this to keep them in sync
-  (CommandMap rid _) <- readMVar cmdStatusMap
+  (CommandMap rid _) <- readMVar cmdStatusMap'
   runRWS_
-    (raftClient (lift getEntries) cmdStatusMap)
+    (raftClient (lift getEntries) cmdStatusMap')
     (RaftEnv rconf csize qsize spec)
     -- TODO: because UTC can flow backwards, this request ID is problematic:
     initialRaftState {_currentRequestId = rid}-- only use currentLeader and logEntries
@@ -76,19 +46,19 @@ runRaftClient getEntries cmdStatusMap rconf spec@RaftSpec{..} = do
 -- StateT ClientState (ReaderT ClientEnv IO)
 -- THREAD: CLIENT MAIN
 raftClient :: Raft IO (RequestId, [CommandEntry]) -> CommandMVarMap -> Raft IO ()
-raftClient getEntries cmdStatusMap = do
+raftClient getEntries cmdStatusMap' = do
   nodes <- view (cfg.otherNodes)
   when (Set.null nodes) $ error "The client has no nodes to send requests to."
   setCurrentLeader $ Just $ Set.findMin nodes
   void $ CL.fork messageReceiver -- THREAD: CLIENT MESSAGE RECEIVER
-  void $ CL.fork $ commandGetter getEntries cmdStatusMap -- THREAD: CLIENT COMMAND REPL?
+  void $ CL.fork $ commandGetter getEntries cmdStatusMap' -- THREAD: CLIENT COMMAND REPL?
   pendingRequests .= Map.empty
-  clientHandleEvents cmdStatusMap -- forever read chan loop
+  clientHandleEvents cmdStatusMap' -- forever read chan loop
 
 -- get commands with getEntry and put them on the event queue to be sent
 -- THREAD: CLIENT COMMAND
 commandGetter :: MonadIO m => Raft m (RequestId, [CommandEntry]) -> CommandMVarMap -> Raft m ()
-commandGetter getEntries cmdStatusMap = do
+commandGetter getEntries cmdStatusMap' = do
   nid <- view (cfg.nodeId)
   forever $ do
     (rid@(RequestId _), cmdEntries) <- getEntries
@@ -100,7 +70,7 @@ commandGetter getEntries cmdStatusMap = do
                _ -> liftIO $ sequence $ fmap (nextRid nid) cmdEntries
     -- set current requestId in Raft to the value associated with this request.
     rid' <- setNextRequestId rid
-    liftIO (modifyMVar_ cmdStatusMap (\(CommandMap n m) -> return $ CommandMap n (Map.insert rid CmdAccepted m)))
+    liftIO (modifyMVar_ cmdStatusMap' (\(CommandMap n m) -> return $ CommandMap n (Map.insert rid CmdAccepted m)))
     -- hack set the head to the org rid
     let cmds'' = case cmds' of
                    ((Command entry nid' _ NewMsg):rest) -> (Command entry nid' rid' NewMsg):rest
@@ -112,7 +82,7 @@ commandGetter getEntries cmdStatusMap = do
 
     nextRid :: NodeID -> CommandEntry -> IO Command
     nextRid nid entry = do
-      rid <- (setNextCmdRequestId cmdStatusMap)
+      rid <- (setNextCmdRequestId cmdStatusMap')
       return (Command entry nid rid NewMsg)
 
     hardcodedTransfers :: NodeID -> IO Command
@@ -128,12 +98,12 @@ setNextRequestId rid = do
 
 -- THREAD: CLIENT MAIN. updates state
 clientHandleEvents :: MonadIO m => CommandMVarMap -> Raft m ()
-clientHandleEvents cmdStatusMap = forever $ do
+clientHandleEvents cmdStatusMap' = forever $ do
   e <- dequeueEvent -- blocking queue
   case e of
     ERPC (CMDB' cmdb)   -> clientSendCommandBatch cmdb
     ERPC (CMD' cmd)     -> clientSendCommand cmd -- these are commands coming from the commandGetter thread
-    ERPC (CMDR' cmdr)   -> clientHandleCommandResponse cmdStatusMap cmdr
+    ERPC (CMDR' cmdr)   -> clientHandleCommandResponse cmdStatusMap' cmdr
     HeartbeatTimeout _ -> do
       debug "caught a heartbeat"
       timeouts <- use numTimeouts
@@ -203,13 +173,13 @@ clientSendCommandBatch cmdb@CommandBatch{..} = do
 -- THREAD: CLIENT MAIN. updates state
 -- Command has been applied
 clientHandleCommandResponse :: MonadIO m => CommandMVarMap -> CommandResponse -> Raft m ()
-clientHandleCommandResponse cmdStatusMap CommandResponse{..} = do
+clientHandleCommandResponse cmdStatusMap' CommandResponse{..} = do
   prs <- use pendingRequests
   when (Map.member _cmdrRequestId prs) $ do
     setCurrentLeader $ Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
     -- cmdStatusMap shared with the client, client can poll this map to await applied result
-    liftIO (modifyMVar_ cmdStatusMap (\(CommandMap rid m) -> return $ CommandMap rid (Map.insert _cmdrRequestId (CmdApplied _cmdrResult) m)))
+    liftIO (modifyMVar_ cmdStatusMap' (\(CommandMap rid m) -> return $ CommandMap rid (Map.insert _cmdrRequestId (CmdApplied _cmdrResult) m)))
     numTimeouts .= 0
     prcount <- fmap Map.size (use pendingRequests)
     -- if we still have pending requests, reset the timer
