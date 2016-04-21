@@ -8,6 +8,7 @@ import ReactDOM from 'react-dom';
 import HeaderNav from './header-nav';
 import Sidebar from './sidebar';
 import Detail from './detail';
+import SwiftDetails from './swift-detail.js';
 
 
 //// const ports = [10000, 10001, 10002, 10003];
@@ -28,15 +29,15 @@ const londonNostro = '101',
       amazon = '001';
 const accounts = { londonNostro,tokyoNostro,londonBranch,tokyoBranch,
   nintendo,sony,tesla,amazon };
-const acctNames = {
-  nintendo: 'Nintendo',
-  sony: 'Sony',
-  tesla: 'Tesla',
-  amazon: 'Amazon',
-  londonBranch: 'London',
-  londonNostro: 'London Nostro',
-  tokyoNostro: 'Tokyo Nostro',
-  tokyoBranch: 'Tokyo'
+const acctInfo = {
+  [nintendo]: { name: 'Nintendo', type: 'Client' },
+  [sony]: { name: 'Sony', type: 'Client' },
+  [tesla]: { name: 'Tesla', type: 'Client' },
+  [amazon]: { name: 'Amazon', type: 'Client' },
+  [londonBranch]: { name: 'London', type: 'Branch' },
+  [londonNostro]: { name: 'London Nostro', type: 'Correspondent' },
+  [tokyoNostro]: { name: 'Tokyo Nostro', type: 'Correspondent' },
+  [tokyoBranch]: { name: 'Tokyo', type: 'Branch' }
 };
 
 
@@ -74,6 +75,20 @@ class App extends React.Component {
     }
   }
 
+  fetchTx(transId,branch) {
+    fetch(`${junoUrl}/ledger-query?tx=${transId}`, {
+      method: 'get',
+      mode: 'cors'
+    }).then(response => response.json())
+      .then(jsonData => {
+        this.setState((prev,curr) => {
+          const txData = prev.txData == null ? {} : prev.txData;
+          txData[branch] = jsonData;
+          return { txData };
+        });
+      });
+  }
+
   fetchNostro() {
     fetch(`${junoUrl}/ledger-query?account=${londonNostro}`, {
       method: 'get',
@@ -105,7 +120,9 @@ class App extends React.Component {
         <div className="app">
         <HeaderNav {...this.state} />
         <Sidebar handleChangePane={(pane)=>this.handleChangePane(pane)} {...this.state} />
-        <Detail junoUrl={junoUrl} acctNames={acctNames} {...accounts} {...this.state} />
+        <Detail junoUrl={junoUrl} acctInfo={acctInfo}
+                fetchTx={(t,a)=>this.fetchTx(t,a)}
+                {...accounts} {...this.state} />
         </div>
     );
   }
