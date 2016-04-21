@@ -10,7 +10,7 @@ module Juno.Runtime.Api.ApiServer (runApiServer) where
 --   * check status of command, i.e. communication between API server and Raft (MVar for now, but this could be redis or another key value store running on every node
 --   * Parse Commands, and change CommandEntry -> [Command (with nodeId)] .. should this happen here? Or should that be in the protocol?
 
-import           Juno.Runtime.Types hiding (Config)
+import           Juno.Runtime.Types
 
 import           Apps.Juno.ApiHandlers
 import           Control.Applicative
@@ -40,7 +40,7 @@ snapApiServer :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Int -> 
 snapApiServer toCommands cmdStatusMap port = httpServe (serverConf port) $
     applyCORS (defaultOptions) $ methods [GET, POST]
     (ifTop (writeBS "use /hopper for commands") <|>
-     route [ ("/api/juno/v1", runReaderT apiRoutes (ApiEnv toCommands cmdStatusMap))]
+     route [ ("/", runReaderT apiRoutes (ApiEnv toCommands cmdStatusMap))] -- api/juno/v1
     )
 
 serverConf :: MonadSnap m => Int -> Config m a
