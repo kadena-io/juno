@@ -32,7 +32,7 @@ export default function SwiftDetail(props) {
   });
   return detailPane
   (`Swift Details [${txId}]`,
-   (<div>
+   (<div className="panel-body">
     <div>
     <div style={{ width: '50%', float: 'left', paddingRight: '10px'}}>
     <table style={{width: '100%', tableLayout: 'fixed'}} className="table table-striped"><tbody>

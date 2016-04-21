@@ -30,7 +30,7 @@ export default function BranchDetail(props) {
 
   const deets=detailPane
   (`Branch Statement [${props.branch}]`,
-   (<div><table style={{ width: '100%', tableLayout: 'fixed'}} className="table table-striped">
+   (<div className="panel-body"><table style={{ width: '100%', tableLayout: 'fixed'}} className="table table-striped">
           <thead>
           <tr><td>Date</td><td>Txn ID</td><td>Account Name</td><td>Account Number</td>
                 <td>Currency</td><td className="currency">Debit</td><td className="currency">Credit</td>

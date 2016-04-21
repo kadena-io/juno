@@ -11,14 +11,8 @@ import Detail from './detail';
 import SwiftDetails from './swift-detail.js';
 
 
-//// const ports = [10000, 10001, 10002, 10003];
-
-////// number of datapoints to keep around (5 mins + 1 min)
-//// const dataWindow = 60 * 6;
-
-//// const LOST_NODE = 'LOST_NODE';
-
 const junoUrl = '//localhost:8000/api';
+
 const londonNostro = '101',
       tokyoNostro = '102',
       londonBranch = '100',
@@ -27,8 +21,10 @@ const londonNostro = '101',
       sony = '004',
       tesla = '000',
       amazon = '001';
+
 const accounts = { londonNostro,tokyoNostro,londonBranch,tokyoBranch,
-  nintendo,sony,tesla,amazon };
+                   nintendo,sony,tesla,amazon };
+
 const acctInfo = {
   [nintendo]: { name: 'Nintendo', type: 'Client' },
   [sony]: { name: 'Sony', type: 'Client' },
@@ -44,13 +40,6 @@ const acctInfo = {
 class App extends React.Component {
   constructor(props) {
     super();
-
-    const data = {
-
-    };
-    //// for (let port of ports) {
-    ////   data[`127.0.0.1:${port}`] = LOST_NODE;
-    //// };
 
     this.state = {
       currentPane: "add-payments"
@@ -73,6 +62,26 @@ class App extends React.Component {
       this.fetchBranch(tokyoBranch);
       break;
     }
+  }
+
+  handleSwiftText(e) {
+    this.setState({ swiftText: e.target.value, submitResponse: null });
+  }
+
+  handleSwiftSubmit(e) {
+    e.preventDefault();
+    if (this.state.swiftText == null || this.state.swiftText == "") { return; }
+    this.setState({ submitResponse: { status: "Sending ..." }});
+    fetch(`${junoUrl}/swift-submit`, {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: this.state.swiftText
+    }).then(response => response.json())
+      .then(response => {
+        this.setState({ submitResponse: response });
+    });
+
   }
 
   fetchTx(transId,branch) {
@@ -121,74 +130,14 @@ class App extends React.Component {
         <HeaderNav {...this.state} />
         <Sidebar handleChangePane={(pane)=>this.handleChangePane(pane)} {...this.state} />
         <Detail junoUrl={junoUrl} acctInfo={acctInfo}
+      handleSwiftText={e=>this.handleSwiftText(e)}
+      handleSwiftSubmit={e=>this.handleSwiftSubmit(e)}
                 fetchTx={(t,a)=>this.fetchTx(t,a)}
                 {...accounts} {...this.state} />
         </div>
     );
   }
 
-  componentDidMount() {
-    ////this._setInterval();
-  }
-
-  componentDidUpdate() {
-    ////this._setInterval();
-  }
-
-////  _setInterval() {
-////    for (let port of ports) {
-////      const id = `_id${port}`;
-////      window.clearInterval(this[id]);
-////      this[id] = window.setInterval(() => {
-////        this._fetch(port);
-////      }, 1000);
-////    }
-////  }
-////
-////  _fetch(port: number) {
-////    fetch(`//localhost:${port+80}`, {
-////      method: 'get',
-////      headers: new Headers({
-////        'Accept': 'application/json',
-////      }),
-////      mode: 'cors'
-////    }).then(response => response.json())
-////      .then(newDatum => {
-////        const nodeDatum = newDatum.juno.node;
-////        const id = nodeDatum.id.val;
-////        const role = nodeDatum.role.val;
-////        const appliedIndex = nodeDatum.applied_index.val;
-////        const leaderData = role === "Leader" ? newDatum : this.state.leaderData;
-////        const stateData = this.state.data;
-////
-////        // re-initialize if we've found it again; add in new data and cap the
-////        // size at the number of data points we track
-////        const newData = stateData[id] === LOST_NODE
-////          ? [newDatum]
-////          : stateData[id].data.concat([newDatum]).slice(-dataWindow);
-////
-////        const data = {
-////          ...stateData,
-////          [id]: {
-////            data: newData,
-////            role,
-////            appliedIndex,
-////          },
-////        };
-////
-////        this.setState({ data, leaderData });
-////    }).catch(err => {
-////      const id = `127.0.0.1:${port}`;
-////      const stateData = this.state.data;
-////      const data = {
-////        ...stateData,
-////        [id]: LOST_NODE,
-////      };
-////
-////      this.setState({data});
-////    });
-////  }
-////
 }
 
 ReactDOM.render(<App />, document.querySelector("#myApp"));

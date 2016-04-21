@@ -719,10 +719,13 @@ a:active {
 	transform: scale3d(0, 0, 0);
 }
 
+.submit-response {
+    padding-left: 10px;
+}
+
 .panel-body {
 	position: relative;
 	-webkit-transition: all .2s linear;
-	height: 250px;
 }
 
 .panel-heading {

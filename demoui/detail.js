@@ -27,6 +27,7 @@ export default function Detail(props) {
     title = "New York Branch";
     ui = detailPane("Nostro Accounts",
                     (<NostroDetail {...props} />));
+    break;
   default:
     title = "Console";
     ui = (<div></div>);
