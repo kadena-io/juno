@@ -29,7 +29,8 @@
     "react": "0.14.7",
     "react-dom": "0.14.7",
     "react-radio-group": "^2.2.0",
-    "react-vis": "^0.2.0"
+    "react-vis": "^0.2.0",
+    "ramda": "^0.21.0"
   },
   "devDependencies": {
     "babel-core": "6.7.0",

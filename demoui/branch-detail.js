@@ -1,16 +1,19 @@
 import React from 'react';
+import R from 'ramda';
+import { prettyMoneyPrint } from './util.js';
 
 export default function BranchDetail(props) {
 
   var rows = [];
   if (props.branchData != null && props.branchData[props.branch] != null) {
-    rows = props.branchData[props.branch].trans
-        .filter(r => props.branchAccts.includes(r.from) || props.branchAccts.includes(r.to))
-        .map(r => {
+    rows = R.pipe
+    (R.filter(r => props.branchAccts.includes(r.from) || props.branchAccts.includes(r.to)),
+     R.sortBy(R.prop("transId")),
+     R.map(r => {
           var [credit,debit,account] = r.to == props.branch ?
               [null,r.amount,r.from] :
               [r.amount,null,r.to];
-          var accountName = props.accounts[account];
+          var accountName = props.acctNames[account];
           return (
             <tr>
          <td>1/14/2016</td>
@@ -21,7 +24,7 @@ export default function BranchDetail(props) {
          <td className="currency">{ prettyMoneyPrint(debit) }</td>
          <td className="currency">{ prettyMoneyPrint(credit) }</td>
          </tr>);
-        });
+     }))(props.branchData[props.branch].trans);
   }
   return (<div><table style={{ width: '100%', tableLayout: 'fixed'}} className="table table-striped">
           <thead>
@@ -32,16 +35,4 @@ export default function BranchDetail(props) {
           {rows}
           </tbody>
           </table></div>);
-}
-
-function prettyMoneyPrint(val) {
-  if (val) {
-	var sign = '';
-
-	if (val < 0) {
-	  sign = '-';
-	}
-
-	return sign + Math.abs(val).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
-  }
 }

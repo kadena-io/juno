@@ -18,47 +18,25 @@ import Detail from './detail';
 //// const LOST_NODE = 'LOST_NODE';
 
 const junoUrl = '//localhost:8000/api';
-const [londonNostro,tokyoNostro,londonBranch,tokyoBranch]=['101','102','100','103'];
-const [nintendo,sony,tesla,amazon]=['003','004','000','001'];
-const accounts = {
-  nintendo: {
-    name: 'Nintendo',
-    type: 'Client'
-  },
-  sony: {
-    name: 'Sony',
-    type: 'Client'
-  },
-
-  tesla: {
-    name: 'Tesla',
-    type: 'Client'
-  },
-
-  amazon: {
-    name: 'Amazon',
-    type: 'Client'
-  },
-
-  londonBranch: {
-    name: 'London',
-    type: 'Branch'
-  },
-
-  londonNostro: {
-    name: 'London Nostro',
-    type: 'Correspondent'
-  },
-
-  tokyoNostro: {
-    name: 'Tokyo Nostro',
-    type: 'Correspondent'
-  },
-
-  tokyoBranch: {
-    name: 'Tokyo',
-    type: 'Branch'
-  }
+const londonNostro = '101',
+      tokyoNostro = '102',
+      londonBranch = '100',
+      tokyoBranch = '103',
+      nintendo = '003',
+      sony = '004',
+      tesla = '000',
+      amazon = '001';
+const accounts = { londonNostro,tokyoNostro,londonBranch,tokyoBranch,
+  nintendo,sony,tesla,amazon };
+const acctNames = {
+  nintendo: 'Nintendo',
+  sony: 'Sony',
+  tesla: 'Tesla',
+  amazon: 'Amazon',
+  londonBranch: 'London',
+  londonNostro: 'London Nostro',
+  tokyoNostro: 'Tokyo Nostro',
+  tokyoBranch: 'Tokyo'
 };
 
 
@@ -113,9 +91,11 @@ class App extends React.Component {
       mode: 'cors'
     }).then(response => response.json())
       .then(jsonData => {
-        const branchData = {};
-        branchData[branch] = jsonData;
-        this.setState({branchData});
+        this.setState((prev,curr) => {
+          const branchData = prev.branchData == null ? {} : prev.branchData;
+          branchData[branch] = jsonData;
+          return { branchData };
+        });
       });
 
   }
@@ -125,10 +105,7 @@ class App extends React.Component {
         <div className="app">
         <HeaderNav {...this.state} />
         <Sidebar handleChangePane={(pane)=>this.handleChangePane(pane)} {...this.state} />
-        <Detail junoUrl={junoUrl} accounts={accounts}
-      nintendo={nintendo} sony={sony} amazon={amazon} tesla={tesla}
-      tokyoNostro={tokyoNostro} londonNostro={londonNostro}
-      londonBranch={londonBranch} tokyoBranch={tokyoBranch} {...this.state} />
+        <Detail junoUrl={junoUrl} acctNames={acctNames} {...accounts} {...this.state} />
         </div>
     );
   }
