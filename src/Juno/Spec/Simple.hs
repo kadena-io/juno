@@ -10,8 +10,8 @@ module Juno.Spec.Simple
   , CommandStatus
   ) where
 
-import Juno.Consensus.ByzRaft.Server
-import Juno.Consensus.ByzRaft.Client
+import Juno.Consensus.Server
+import Juno.Consensus.Client
 import Juno.Messaging.Types
 import Juno.Types
 import Juno.Messaging.ZMQ

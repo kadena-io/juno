@@ -26,20 +26,20 @@ library
                      , Apps.Juno.ApiHandlers
                      , Apps.Juno.Ledger
                      , Apps.Juno.Parser
-                     , Juno.Consensus.ByzRaft.Api
-                     , Juno.Consensus.ByzRaft.Handler
-                     , Juno.Consensus.ByzRaft.Server
-                     , Juno.Consensus.ByzRaft.Client
-                     , Juno.Consensus.ByzRaft.Commit
-                     , Juno.Consensus.Pure.Types
-                     , Juno.Consensus.Pure.Handle.AppendEntries
-                     , Juno.Consensus.Pure.Handle.AppendEntriesResponse
-                     , Juno.Consensus.Pure.Handle.RequestVote
-                     , Juno.Consensus.Pure.Handle.RequestVoteResponse
-                     , Juno.Consensus.Pure.Handle.Command
-                     , Juno.Consensus.Pure.Handle.ElectionTimeout
-                     , Juno.Consensus.Pure.Handle.HeartbeatTimeout
-                     , Juno.Consensus.Pure.Handle.Revolution
+                     , Juno.Consensus.Api
+                     , Juno.Consensus.Handle
+                     , Juno.Consensus.Server
+                     , Juno.Consensus.Client
+                     , Juno.Consensus.Commit
+                     , Juno.Consensus.Handle.Types
+                     , Juno.Consensus.Handle.AppendEntries
+                     , Juno.Consensus.Handle.AppendEntriesResponse
+                     , Juno.Consensus.Handle.Command
+                     , Juno.Consensus.Handle.RequestVote
+                     , Juno.Consensus.Handle.RequestVoteResponse
+                     , Juno.Consensus.Handle.ElectionTimeout
+                     , Juno.Consensus.Handle.HeartbeatTimeout
+                     , Juno.Consensus.Handle.Revolution
                      , Juno.Hoplite.Eval
                      , Juno.Hoplite.Heap
                      , Juno.Hoplite.STExcept

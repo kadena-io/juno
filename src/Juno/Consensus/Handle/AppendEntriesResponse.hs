@@ -4,7 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.Pure.Handle.AppendEntriesResponse
+module Juno.Consensus.Handle.AppendEntriesResponse
   (handle
   ,handleAlotOfAers
   ,updateCommitProofMap)
@@ -21,8 +21,8 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Juno.Consensus.ByzRaft.Commit (doCommit)
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Commit (doCommit)
+import Juno.Consensus.Handle.Types
 
 import Juno.Runtime.Timer (resetElectionTimerLeader)
 import Juno.Util.Util (debug, updateLNextIndex)

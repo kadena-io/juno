@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.ByzRaft.Commit
+module Juno.Consensus.Commit
   (doCommit
   ,makeCommandResponse
   ,makeCommandResponse')

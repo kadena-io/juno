@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Juno.Consensus.ByzRaft.Client
+module Juno.Consensus.Client
   ( runRaftClient
   ) where
 

@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.Pure.Handle.RequestVoteResponse
+module Juno.Consensus.Handle.RequestVoteResponse
     (handle)
 where
 
@@ -13,7 +13,7 @@ import Control.Monad.Writer.Strict
 import Data.Map as Map
 import Data.Set as Set
 
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 import Juno.Runtime.Sender (sendAllAppendEntries)
 import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader,
                            resetElectionTimer)

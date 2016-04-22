@@ -1,7 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
-module Juno.Consensus.Pure.Handle.Command
+
+module Juno.Consensus.Handle.Command
     (handle
     ,handleBatch)
     where
@@ -13,15 +14,14 @@ import Control.Monad.Writer
 import Data.ByteString as B
 import qualified Data.Map as Map
 
-import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
-
-import Juno.Consensus.ByzRaft.Commit (makeCommandResponse')
+import Juno.Consensus.Commit (makeCommandResponse')
 import Juno.Types.Log
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 import Juno.Runtime.Sender (sendRPC, createAppendEntriesResponse)
 import Juno.Util.Util (getCmdSigOrInvariantError)
-
 import qualified Juno.Types as JT
+
+import Juno.Consensus.Handle.AppendEntriesResponse (updateCommitProofMap)
 
 data CommandEnv = CommandEnv {
       _nodeRole :: Role

@@ -2,7 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types #-}
 
-module Juno.Consensus.Pure.Types (
+module Juno.Consensus.Handle.Types (
     NodeID(..)
   , CommandEntry(..)
   , CommandResult(..)
@@ -28,8 +28,8 @@ module Juno.Consensus.Pure.Types (
   , PrivateKey, PublicKey, Signature(..)
   , ReceivedAt(..)
   , Log(..)
-
   ) where
 
+-- This module exists so we don't need to do a bunch of selective/hiding imports
 
 import Juno.Types

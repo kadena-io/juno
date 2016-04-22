@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Juno.Consensus.Pure.Handle.HeartbeatTimeout
+module Juno.Consensus.Handle.HeartbeatTimeout
     (handle)
 where
 
@@ -11,7 +11,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 import Juno.Runtime.Sender (sendAllAppendEntries)
 import Juno.Runtime.Timer (resetHeartbeatTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Util (debug,enqueueEvent)

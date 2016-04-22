@@ -2,10 +2,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Juno.Consensus.Pure.Handle.ElectionTimeout
+module Juno.Consensus.Handle.ElectionTimeout
     (handle)
     where
-
 
 import Control.Lens
 import Control.Monad.Reader
@@ -14,12 +13,13 @@ import Control.Monad.Writer
 import Data.Foldable (traverse_)
 import qualified Data.Set as Set
 
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 import Juno.Runtime.Sender (createRequestVoteResponse,sendRPC)
 import Juno.Runtime.Timer (resetElectionTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Combinator ((^$))
 import Juno.Util.Util
 import Juno.Types.Log
+
 import qualified Juno.Types as JT
 
 data ElectionTimeoutEnv = ElectionTimeoutEnv {

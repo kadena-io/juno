@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.Pure.Handle.RequestVote (
+module Juno.Consensus.Handle.RequestVote (
   handle
   ) where
 
@@ -16,7 +16,7 @@ import Juno.Util.Util (debug)
 import Juno.Runtime.Sender (sendRPC,createRequestVoteResponse)
 import Juno.Types.Log
 
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 
 import qualified Juno.Types as JT
 

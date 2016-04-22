@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Juno.Consensus.Pure.Handle.Revolution
+module Juno.Consensus.Handle.Revolution
     (handle)
 where
 
@@ -13,8 +13,9 @@ import Control.Monad.Writer
 
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 import Juno.Util.Util (debug, getRevSigOrInvariantError)
+
 import qualified Juno.Types as JT
 
 data RevolutionEnv = RevolutionEnv {

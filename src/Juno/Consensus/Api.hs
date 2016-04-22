@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Juno.Consensus.ByzRaft.Api
+module Juno.Consensus.Api
   ( apiReceiver
   ) where
 
