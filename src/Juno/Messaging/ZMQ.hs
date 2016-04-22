@@ -19,7 +19,8 @@ import Data.Thyme.Clock
 import Data.Serialize
 
 import Juno.Messaging.Types
-import Juno.Runtime.Types (ReceivedAt(..),SignedRPC(..),Digest(..),MsgType(..))
+import Juno.Runtime.Types (ReceivedAt(..),Digest(..),MsgType(..))
+import Juno.Runtime.Protocol.Types (SignedRPC(..))
 
 sendProcess :: OutChan (OutBoundMsg String ByteString)
             -> Rolodex String (Socket z Push)

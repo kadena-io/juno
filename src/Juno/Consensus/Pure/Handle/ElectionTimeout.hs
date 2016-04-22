@@ -20,7 +20,7 @@ import Juno.Runtime.Timer (resetElectionTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Combinator ((^$))
 import Juno.Util.Util
 import Juno.Runtime.Log
-import qualified Juno.Runtime.Types as JT
+import qualified Juno.Runtime.Protocol.Types as JT
 
 data ElectionTimeoutEnv = ElectionTimeoutEnv {
       _role :: Role

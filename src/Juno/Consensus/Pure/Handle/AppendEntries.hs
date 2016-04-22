@@ -22,7 +22,7 @@ import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
 import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse, createAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
 import Juno.Util.Util
-import qualified Juno.Runtime.Types as JT
+import qualified Juno.Runtime.Protocol.Types as JT
 import Juno.Runtime.Log
 
 data AppendEntriesEnv = AppendEntriesEnv {

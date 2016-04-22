@@ -26,7 +26,7 @@ import Juno.Consensus.Pure.Types
 
 import Juno.Runtime.Timer (resetElectionTimerLeader)
 import Juno.Util.Util (debug, updateLNextIndex)
-import qualified Juno.Runtime.Types as JT
+import qualified Juno.Runtime.Protocol.Types as JT
 
 data AEResponseEnv = AEResponseEnv {
 -- Old Constructors

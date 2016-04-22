@@ -6,7 +6,8 @@ import Control.Lens
 import qualified Data.Set as Set
 
 import Juno.Consensus.ByzRaft.Handler
-import Juno.Runtime.Types
+import Juno.Consensus.ByzRaft.Api (apiReceiver)
+import Juno.Runtime.Protocol.Types
 import Juno.Util.Util
 import Juno.Runtime.Timer
 import Juno.Runtime.MessageReceiver
@@ -28,5 +29,6 @@ raft :: Raft IO ()
 raft = do
   logStaticMetrics
   void $ CL.fork messageReceiver -- THREAD: SERVER MESSAGE RECEIVER
+  void $ CL.fork apiReceiver     -- THREAD: waits for cmds from API, signs and sends to leader.
   resetElectionTimer
   handleEvents

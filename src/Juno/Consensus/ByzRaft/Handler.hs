@@ -9,6 +9,7 @@ import Control.Monad
 import Data.Maybe
 
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Juno.Runtime.Log
 import Juno.Consensus.ByzRaft.Commit (doCommit)
 import Juno.Runtime.Sender (sendAllAppendEntries,sendAllAppendEntriesResponse)

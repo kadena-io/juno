@@ -9,7 +9,7 @@ module Juno.Runtime.Timer
 
 import Control.Monad
 import Control.Lens hiding (Index)
-import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Juno.Runtime.Log
 import Juno.Util.Util
 

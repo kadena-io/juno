@@ -11,26 +11,30 @@ module Apps.Juno.ApiHandlers (
                            ) where
 
 import           Control.Concurrent.Chan.Unagi
-
+import           Control.Concurrent.MVar (readMVar)
+import           Control.Concurrent.Lifted (threadDelay)
+import           Control.Lens hiding ((.=))
+import           Control.Monad.Reader
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Text as T
+import           Data.List (intercalate)
 import           Data.Maybe (catMaybes)
-
-import           Snap.Core
-import           Data.Aeson (encode)
+import qualified Data.Map as Map
+import           Data.Map (Map)
+import           Data.Monoid ((<>))
+import           Data.Text.Encoding (decodeUtf8)
+import           Data.Ratio
+import           Data.Aeson (encode, object, (.=))
 import qualified Data.Aeson as JSON
+import           Snap.Core
 
 import           Apps.Juno.JsonTypes
-import           Juno.Runtime.Types hiding (CommandBatch)
-import           Juno.Consensus.ByzRaft.Client (
-                                                CommandMVarMap
-                                               ,setNextCmdRequestId
-                                               )
-
-
 import           Apps.Juno.Ledger
-import           Control.Monad.Reader
+import           Apps.Juno.Parser
+import           Juno.Runtime.Types hiding (CommandBatch)
+import           Schwifty.Swift.M105.Types
+import           Schwifty.Swift.M105.Parser
 
 data ApiEnv = ApiEnv {
       _toCommands :: InChan (RequestId, [CommandEntry]),
@@ -39,20 +43,26 @@ data ApiEnv = ApiEnv {
 
 apiRoutes :: ReaderT ApiEnv Snap ()
 apiRoutes = route [
-              ("/accounts/create", createAccount)
-             ,("/accounts/adjust", adjustAccount)
-             ,("/transact", transactAPI)
-             ,("/query", ledgerQueryAPI)
-             ,("/cmd/batch", cmdBatch)
+              ("api/juno/v1/accounts/create", createAccount)
+             ,("api/juno/v1/accounts/adjust", adjustAccount)
+             ,("api/juno/v1/transact", transactAPI)
+             ,("api/juno/v1/query", ledgerQueryAPI)
+             ,("api/juno/v1/cmd/batch", cmdBatch)
+             ,("api/juno/v1/poll", pollForResults)
+              -- original API
+             ,("hopper", hopperHandler)
+             ,("swift", swiftHandler)
+             ,("api/swift-submit", swiftSubmission)
+             ,("api/ledger-query", ledgerQuery)
              ]
 
 apiWrapper :: (BLC.ByteString -> Either BLC.ByteString [CommandEntry]) -> ReaderT ApiEnv Snap ()
 apiWrapper requestHandler = do
-   env <- ask
    modifyResponse $ setHeader "Content-Type" "application/json"
    reqBytes <- (readRequestBody 1000000)
    case (requestHandler reqBytes) of
      Right cmdEntries -> do
+         env <- ask
          reqestId@(RequestId rId) <- liftIO $ setNextCmdRequestId (_cmdStatusMap env)
          liftIO $ writeChan (_toCommands env) (reqestId, cmdEntries)
          (writeBS . BLC.toStrict . JSON.encode) $ commandResponseSuccess ((T.pack . show) rId) ""
@@ -135,3 +145,142 @@ cmdBatchHandler bs =
  where
    errorBadCommand = JSON.encode $ commandResponseFailure "" "Malformed cmd or cmds in the submitted batch, could not decode input JSON."
    errorBadCommandBatch = JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+
+-- TODO: _cmdStatusMap needs to be updated by Juno protocol this is never updated
+-- poll for a list of cmdIds, returning the applied results or error
+-- see juno/jmeter/juno_API_jmeter_test.jmx
+pollForResults :: ReaderT ApiEnv Snap ()
+pollForResults = do
+  maybePoll <- liftM JSON.decode (readRequestBody 1000000)
+  modifyResponse $ setHeader "Content-Type" "application/json"
+  case maybePoll of
+    Just (PollPayloadRequest (PollPayload cmdids) _) -> do
+      env <- ask
+      (CommandMap _ m) <- liftIO $ readMVar (_cmdStatusMap env)
+      let rids = fmap (RequestId . read . T.unpack) $ cleanInput cmdids
+      let results = PollResponse $ fmap (toRepresentation . flipIt m) rids
+      writeBS . BLC.toStrict $ JSON.encode results
+    Nothing -> writeBS . BLC.toStrict . JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+ where
+   -- for now allow "" (empty) cmdIds
+   cleanInput = filter (/=T.empty)
+
+   flipIt :: Map RequestId CommandStatus ->  RequestId -> Maybe (RequestId, CommandStatus)
+   flipIt m rId = (fmap . fmap) (\cmd -> (rId, cmd)) (`Map.lookup` m) rId
+
+   toRepresentation :: Maybe (RequestId, CommandStatus) -> PollResult
+   toRepresentation (Just (RequestId rid, cmdStatus)) =
+       cmdStatus2PollResult (RequestId rid) cmdStatus
+   toRepresentation Nothing = cmdStatusError
+
+
+---
+swiftSubmission :: ReaderT ApiEnv Snap ()
+swiftSubmission = do
+  (ApiEnv toCommands cmdStatusMap) <- ask
+  bdy <- readRequestBody 1000000
+  cmd <- return $ BLC.toStrict bdy
+  logError $ "swiftSubmission: " <> cmd
+  let unparsedSwift = decodeUtf8 cmd
+  case parseSwift unparsedSwift of
+    -- TODO: get to work with `errDone 400 $`
+    Left err ->
+        writeBS $ BLC.toStrict $ encode $
+                object ["status" .= ("Failure" :: T.Text), "reason" .= err]
+    Right v -> do
+      -- TODO: maybe the swift blob should be serialized vs json-ified
+      let blob = SwiftBlob unparsedSwift $ swiftToHopper v
+      rId <- liftIO $ setNextCmdRequestId cmdStatusMap
+      liftIO $ writeChan toCommands (rId, [CommandEntry $ BLC.toStrict $ encode blob])
+      resp <- liftIO $ waitForCommand cmdStatusMap rId
+      logError $ "swiftSubmission: " <> resp
+      modifyResponse $ setHeader "Content-Type" "application/json"
+      writeBS resp
+
+ledgerQuery :: ReaderT ApiEnv Snap ()
+ledgerQuery = do
+  (ApiEnv toCommands cmdStatusMap) <- ask
+  mBySwift <- fmap BySwiftId <$> getIntegerParam "tx"
+  mBySender <- fmap (ByAcctName Sender) <$> getTextParam "sender"
+  mByReceiver <- fmap (ByAcctName Receiver) <$> getTextParam "receiver"
+  mByBoth <- fmap (ByAcctName Both) <$> getTextParam "account"
+  let query = And $ catMaybes [mBySwift, mBySender, mByReceiver, mByBoth]
+  -- TODO: if you are querying the ledger should we wait for the command to be applied here?
+  rId <- liftIO $ setNextCmdRequestId cmdStatusMap
+  liftIO $ writeChan toCommands (rId, [CommandEntry $ BLC.toStrict $ encode query])
+  resp <- liftIO $ waitForCommand cmdStatusMap rId
+  modifyResponse $ setHeader "Content-Type" "application/json"
+  writeBS resp
+
+  where
+    getIntegerParam p = (>>= fmap fst . BSC.readInteger) <$> getQueryParam p
+    getTextParam p = fmap decodeUtf8 <$> getQueryParam p
+
+swiftHandler :: ReaderT ApiEnv Snap ()
+swiftHandler = do
+  (ApiEnv toCommands cmdStatusMap) <- ask
+  bdy <- readRequestBody 1000000
+  cmd <- return $ BLC.toStrict bdy
+  logError $ "swiftHandler: " <> cmd
+  case parseSwift $ decodeUtf8 cmd of
+     -- TODO: get to work with `errDone 400 $`
+    Left err -> writeBS $ BLC.toStrict $ encode $
+                object ["status" .= ("Failure" :: T.Text), "reason" .= err]
+    Right v -> do
+        rId <- liftIO $ setNextCmdRequestId cmdStatusMap
+        liftIO $ writeChan toCommands (rId, [CommandEntry $ BSC.pack (swiftToHopper v)])
+        resp <- liftIO $ waitForCommand cmdStatusMap rId
+        modifyResponse $ setHeader "Content-Type" "application/json"
+        logError $ "swiftHandler: SUCCESS: " <> resp
+        writeBS resp
+
+
+errDone :: Int -> BSC.ByteString -> Snap ()
+errDone c bs = logError bs >> writeBS bs >> withResponse (finishWith . setResponseCode c)
+
+swiftToHopper :: SWIFT -> String
+swiftToHopper m = hopperProgram to' from' inter' amt'
+  where
+    to' :: String
+    to' = T.unpack $ view (sCode59a . bcAccount) m
+    from' :: String
+    from' = T.unpack $ dirtyPickOutAccount50a m
+    intermediaries :: [String]
+    intermediaries = ["100","101","102","103"]
+    branchA2BranchB = intercalate "->" intermediaries
+    branchB2BranchA = intercalate "->" (reverse intermediaries)
+    det71a = view sCode71A m
+    inter' = case det71a of
+               Beneficiary -> branchB2BranchA
+               _ -> branchA2BranchB
+    amt' :: Ratio Int
+    amt' = fromIntegral (view (sCode32A . vcsSettlementAmount . vWhole) m) + view (sCode32A . vcsSettlementAmount . vPart) m
+    hopperProgram :: String -> String -> String -> Ratio Int -> String
+    hopperProgram t f i a = "transfer(" ++ f ++ "->" ++ i ++ "->" ++ t ++ "," ++ show a ++ ")"
+
+hopperHandler :: ReaderT ApiEnv Snap ()
+hopperHandler = do
+    (ApiEnv toCommands cmdStatusMap) <- ask
+    bdy <- readRequestBody 1000000
+    logError $ "hopper: " <> BLC.toStrict bdy
+    cmd <- return $ BLC.toStrict bdy
+    case readHopper cmd of
+      -- TODO: get to work with `errDone 400 $`
+      Left err -> writeBS $ BSC.pack err
+      Right _ -> do
+        rId <- liftIO $ setNextCmdRequestId cmdStatusMap
+        liftIO $ writeChan toCommands (rId, [CommandEntry cmd])
+        resp <- liftIO $ waitForCommand cmdStatusMap rId
+        writeBS resp
+
+-- wait for the command to be present in the MVar (used by hopperHandler, swiftHandler, etc.)
+waitForCommand :: CommandMVarMap -> RequestId -> IO BSC.ByteString
+waitForCommand cmdMap rId =
+    threadDelay 1000 >> do
+      (CommandMap _ m) <- readMVar cmdMap
+      case Map.lookup rId m of
+        Nothing -> return $ BSC.pack $ "RequestId [" ++ show rId ++ "] not found."
+        Just (CmdApplied (CommandResult bs)) ->
+          return $ bs
+        Just _ -> -- not applied yet, loop and wait
+          waitForCommand cmdMap rId

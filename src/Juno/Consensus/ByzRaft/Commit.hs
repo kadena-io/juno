@@ -19,6 +19,7 @@ import qualified Data.Map as Map
 import Data.Foldable (toList)
 
 import Juno.Runtime.Types hiding (valid)
+import Juno.Runtime.Protocol.Types
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendResults)
 import Juno.Runtime.Log
@@ -68,8 +69,16 @@ applyCommand cmd@Command{..} = do
   apply <- view (rs.applyLogEntry)
   logApplyLatency cmd
   result <- apply _cmdEntry
+  updateCmdStatusMap cmd result -- shared with the API and to query state
   replayMap %= Map.insert (_cmdClientId, getCmdSigOrInvariantError "applyCommand" cmd) (Just result)
   ((,) _cmdClientId) <$> makeCommandResponse cmd result
+
+updateCmdStatusMap :: Monad m => Command -> CommandResult -> Raft m ()
+updateCmdStatusMap cmd cmdResult = do
+  rid <- return $ _cmdRequestId cmd
+  mvarMap <- view (rs.cmdStatusMap)
+  updateMapFn <- view (rs.updateCmdMap)
+  void $ updateMapFn mvarMap rid (CmdApplied cmdResult)
 
 makeCommandResponse :: Monad m => Command -> CommandResult -> Raft m CommandResponse
 makeCommandResponse cmd result = do

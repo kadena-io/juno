@@ -26,6 +26,7 @@ library
                      , Apps.Juno.ApiHandlers
                      , Apps.Juno.Ledger
                      , Apps.Juno.Parser
+                     , Juno.Consensus.ByzRaft.Api
                      , Juno.Consensus.ByzRaft.Handler
                      , Juno.Consensus.ByzRaft.Server
                      , Juno.Consensus.ByzRaft.Client
@@ -49,12 +50,14 @@ library
                      , Juno.Messaging.ZMQ
                      , Juno.Monitoring.Server
                      , Juno.Persistence.SQLite
+                     , Juno.Runtime.Api.ApiServer
                      , Juno.Runtime.Log
                      , Juno.Runtime.MessageReceiver
                      , Juno.Runtime.Role
                      , Juno.Runtime.Sender
                      , Juno.Runtime.Timer
                      , Juno.Runtime.Types
+                     , Juno.Runtime.Protocol.Types
                      , Juno.Spec.Simple
                      , Juno.Util.Combinator
                      , Juno.Util.Util

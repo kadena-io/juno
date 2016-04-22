@@ -9,6 +9,7 @@ module Juno.Util.Util
   , runRWS_
   , enqueueEvent, enqueueEventLater
   , dequeueEvent
+  , dequeueCommand
   , logMetric
   , logStaticMetrics
   , setTerm
@@ -21,6 +22,7 @@ module Juno.Util.Util
   ) where
 
 import Juno.Runtime.Types
+import Juno.Runtime.Protocol.Types
 import Juno.Util.Combinator
 
 import Control.Lens
@@ -74,6 +76,10 @@ enqueueEventLater t event = view (rs.enqueueLater) >>= \f -> f t event
 -- no state update
 dequeueEvent :: Monad m => Raft m Event
 dequeueEvent = join $ view (rs.dequeue)
+
+-- dequeue command from API interface
+dequeueCommand :: MonadIO m => Raft m (RequestId, [CommandEntry])
+dequeueCommand = join $ view (rs.dequeueFromApi)
 
 logMetric :: Monad m => Metric -> Raft m ()
 logMetric metric = view (rs.publishMetric) >>= \f -> f metric

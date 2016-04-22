@@ -2,15 +2,20 @@ module Apps.Juno.Server
   ( main
   ) where
 
-import Juno.Spec.Simple
-import Juno.Runtime.Types (CommandEntry, CommandResult)
+import Control.Concurrent.Chan.Unagi
+
 import Apps.Juno.Command
+import Juno.Spec.Simple
+import Juno.Runtime.Types (CommandEntry, CommandResult, initCommandMap)
 
 -- | Runs a 'Raft nt String String mt'.
 main :: IO ()
 main = do
   stateVariable <- starterEnv
+  (toCommands, fromCommands) <- newChan -- (RequestId, [CommandEntries])
+  -- shared on a node basis between API interface and protocol
+  sharedCmdStatusMap <- initCommandMap
   let -- applyFn :: et -> IO rt
       applyFn :: CommandEntry -> IO CommandResult
       applyFn = runCommand stateVariable
-  runServer applyFn
+  runJuno applyFn toCommands fromCommands sharedCmdStatusMap

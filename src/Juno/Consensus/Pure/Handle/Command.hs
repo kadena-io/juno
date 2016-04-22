@@ -21,8 +21,7 @@ import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendRPC, createAppendEntriesResponse)
 import Juno.Util.Util (getCmdSigOrInvariantError)
 
-import qualified Juno.Runtime.Types as JT
-
+import qualified Juno.Runtime.Protocol.Types as JT
 
 data CommandEnv = CommandEnv {
       _role :: Role
