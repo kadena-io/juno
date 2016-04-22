@@ -11,6 +11,7 @@ module Juno.Spec.Simple
   ) where
 
 import Juno.Consensus.Server
+import qualified Juno.Runtime.MessageReceiver as RENV
 import Juno.Consensus.Client
 import Juno.Messaging.Types
 import Juno.Types
@@ -67,6 +68,11 @@ getConfig = do
         Left err -> putStrLn (Y.prettyPrintParseException err) >> exitFailure
         Right conf' -> return conf'
     (_,_,errs)     -> mapM_ putStrLn errs >> exitFailure
+
+showDebug' :: String -> IO ()
+showDebug' msg = do
+  (ZonedTime (LocalTime _ t) _) <- getZonedTime
+  putStrLn $ (take 15 $ show t) ++ " " ++ msg
 
 showDebug :: NodeID -> String -> IO ()
 showDebug _ msg = do
@@ -142,6 +148,20 @@ simpleRaftSpec inboxRead cmdInboxRead aerInboxRead outboxWrite eventRead eventWr
 
     , _dequeueFromApi = liftIO $ readChan getCommands
     }
+
+simpleReceiverEnv :: MVar (NoBlock.Stream (ReceivedAt, SignedRPC))
+                  -> MVar (NoBlock.Stream (ReceivedAt, SignedRPC))
+                  -> MVar (NoBlock.Stream (ReceivedAt, SignedRPC))
+                  -> Config
+                  -> Bounded.InChan Event
+                  -> RENV.ReceiverEnv
+simpleReceiverEnv inboxRead cmdInboxRead aerInboxRead conf eventWrite = RENV.ReceiverEnv
+  (getBacklog inboxRead)
+  (getBacklog cmdInboxRead)
+  (getBacklog aerInboxRead)
+  (KeySet (view publicKeys conf) (view clientPublicKeys conf))
+  (\e -> Bounded.writeChan eventWrite e >> yield)
+  showDebug'
 
 getMsgSync :: MVar (NoBlock.Stream (ReceivedAt,SignedRPC)) -> IO (ReceivedAt,SignedRPC)
 getMsgSync m = do
@@ -236,7 +256,8 @@ runClient applyFn getEntries cmdStatusMap' = do
   let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead'
                  outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
                  (liftIO . pubMetric) updateCmdMapFn cmdStatusMap' stubGetApiCommands
-  runRaftClient getEntries cmdStatusMap' rconf raftSpec
+  let receiverEnv = simpleReceiverEnv inboxRead' cmdInboxRead' aerInboxRead' rconf eventWrite
+  runRaftClient receiverEnv getEntries cmdStatusMap' rconf raftSpec
 
 -- | sets up and runs both API and raft protocol
 --   shared state between API and protocol: sharedCmdStatusMap
@@ -261,7 +282,7 @@ runJuno applyFn toCommands getApiCommands sharedCmdStatusMap = do
   aerInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 aerInboxRead
   (outboxWrite, outboxRead) <- newChan -- raft writes to outbox, client reads
   (eventWrite, eventRead) <- Bounded.newChan 20 -- timer events
-  let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
+  let debugFn = if rconf ^. enableDebug then showDebug else noDebug
 
   -- each node has its own snap monitoring server
   pubMetric <- startMonitoring rconf
@@ -271,7 +292,8 @@ runJuno applyFn toCommands getApiCommands sharedCmdStatusMap = do
                  outboxWrite eventRead eventWrite (liftIO . applyFn)
                  (liftIO2 debugFn) (liftIO . pubMetric) updateCmdMapFn
                  sharedCmdStatusMap getApiCommands
-  runRaftServer rconf raftSpec
+  let receiverEnv = simpleReceiverEnv inboxRead' cmdInboxRead' aerInboxRead' rconf eventWrite
+  runRaftServer receiverEnv rconf raftSpec
  where
    -- this is a punt so that the APIs can all run
    -- on the same machine, i.e. 10001 -> 8001, 10002 -> 8002, etc.

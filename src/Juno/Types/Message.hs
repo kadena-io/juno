@@ -28,7 +28,7 @@ data RPC = AE'   AppendEntries
          | CMDB' CommandBatch
          | CMDR' CommandResponse
          | REV'  Revolution
-  deriving (Show, Generic)
+  deriving (Show, Eq, Generic)
 
 signedRPCtoRPC :: Maybe ReceivedAt -> KeySet -> SignedRPC -> Either String RPC
 signedRPCtoRPC ts ks s@(SignedRPC (Digest _ _ _ AE)   _) = (\rpc -> rpc `seq` AE'   rpc) <$> fromWire ts ks s

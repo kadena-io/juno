@@ -4,7 +4,7 @@
 module Juno.Util.Util
   ( seqIndex
   , getQuorumSize
-  , debug, debugNoRole
+  , debug
   , randomRIO
   , runRWS_
   , enqueueEvent, enqueueEventLater
@@ -51,12 +51,6 @@ debug s = do
         Follower -> "\ESC[0;32m[FOLLOWER]\ESC[0m"
         Candidate -> "\ESC[1;33m[CANDIDATE]\ESC[0m"
   dbg nid $ prettyRole ++ ": " ++ s
-
-debugNoRole :: Monad m => String -> Raft m ()
-debugNoRole s = do
-  dbg <- view (rs.debugPrint)
-  nid <- view (cfg.nodeId)
-  dbg nid s
 
 randomRIO :: (Monad m, R.Random a) => (a,a) -> Raft m a
 randomRIO rng = view (rs.random) >>= \f -> f rng -- R.randomRIO

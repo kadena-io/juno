@@ -15,10 +15,11 @@ import Juno.Runtime.MessageReceiver
 import qualified Control.Concurrent.Lifted as CL
 import Control.Monad
 
-runRaftServer :: Config -> RaftSpec (Raft IO) -> IO ()
-runRaftServer rconf spec = do
+runRaftServer :: ReceiverEnv -> Config -> RaftSpec (Raft IO) -> IO ()
+runRaftServer renv rconf spec = do
   let csize = 1 + Set.size (rconf ^. otherNodes)
       qsize = getQuorumSize csize
+  void $ runMessageReceiver renv
   runRWS_
     raft
     (RaftEnv rconf csize qsize spec)
@@ -28,7 +29,6 @@ runRaftServer rconf spec = do
 raft :: Raft IO ()
 raft = do
   logStaticMetrics
-  void $ CL.fork messageReceiver -- THREAD: SERVER MESSAGE RECEIVER
   void $ CL.fork apiReceiver     -- THREAD: waits for cmds from API, signs and sends to leader.
   resetElectionTimer
   handleEvents
