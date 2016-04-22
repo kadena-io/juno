@@ -15,7 +15,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Juno.Consensus.Pure.Types
 import Juno.Util.Util (debug, getRevSigOrInvariantError)
-import qualified Juno.Runtime.Protocol.Types as JT
+import qualified Juno.Types as JT
 
 data RevolutionEnv = RevolutionEnv {
     _lazyVote         :: Maybe (Term, NodeID, LogIndex) -- Handler

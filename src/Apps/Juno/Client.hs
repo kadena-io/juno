@@ -4,22 +4,19 @@ module Apps.Juno.Client
   ( main
   ) where
 
-import Control.Concurrent.Chan.Unagi
+import Control.Concurrent.MVar
 import Control.Concurrent.Lifted (threadDelay)
+import qualified Control.Concurrent.Lifted as CL
+import Control.Concurrent.Chan.Unagi
 import Control.Monad.Reader
-
+import qualified Data.ByteString.Char8 as BSC
 import Data.Either ()
+import qualified Data.Map as Map
+import Text.Read (readMaybe)
 import System.IO
 
-import qualified Data.ByteString.Char8 as BSC
-
-import Text.Read (readMaybe)
-import qualified Data.Map as Map
-import           Control.Concurrent.MVar
-import qualified Control.Concurrent.Lifted as CL
-
 import Juno.Spec.Simple
-import Juno.Runtime.Types
+import Juno.Types
 
 import Apps.Juno.Parser
 
@@ -37,47 +34,47 @@ readPrompt = flushStr prompt >> getLine
 
 -- should we poll here till we get a result?
 showResult :: CommandMVarMap -> RequestId -> IO ()
-showResult cmdStatusMap rId =
+showResult cmdStatusMap' rId =
   threadDelay 1000 >> do
-    (CommandMap _ m) <- readMVar cmdStatusMap
+    (CommandMap _ m) <- readMVar cmdStatusMap'
     case Map.lookup rId m of
       Nothing -> print $ "RequestId [" ++ show rId ++ "] not found."
       Just (CmdApplied (CommandResult x)) -> putStrLn $ promptGreen ++ BSC.unpack x
       Just _ -> -- not applied yet, loop and wait
-        showResult cmdStatusMap rId
+        showResult cmdStatusMap' rId
 
 --  -> OutChan CommandResult
 runREPL :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
-runREPL toCommands cmdStatusMap = do
+runREPL toCommands' cmdStatusMap' = do
   cmd <- readPrompt
   case cmd of
-    "" -> runREPL toCommands cmdStatusMap
+    "" -> runREPL toCommands' cmdStatusMap'
     _ -> do
       cmd' <- return $ BSC.pack cmd
       if take 11 cmd == "batch test:"
       then do
-        rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-        writeChan toCommands (rId, [CommandEntry cmd'])
+        rId <- liftIO $ setNextCmdRequestId cmdStatusMap'
+        writeChan toCommands' (rId, [CommandEntry cmd'])
         threadDelay 1000
-        runREPL toCommands cmdStatusMap
+        runREPL toCommands' cmdStatusMap'
       else if take 10 cmd == "many test:"
       then
         case readMaybe $ drop 10 cmd of
           Just n -> do
             cmds <- replicateM n
-                      (do rid <- setNextCmdRequestId cmdStatusMap; return (rid, [CommandEntry "transfer(Acct1->Acct2, 1%1)"]))
-            writeList2Chan toCommands cmds
+                      (do rid <- setNextCmdRequestId cmdStatusMap'; return (rid, [CommandEntry "transfer(Acct1->Acct2, 1%1)"]))
+            writeList2Chan toCommands' cmds
             threadDelay 1000
-            runREPL toCommands cmdStatusMap
-          Nothing -> runREPL toCommands cmdStatusMap
+            runREPL toCommands' cmdStatusMap'
+          Nothing -> runREPL toCommands' cmdStatusMap'
       else
         case readHopper cmd' of
-          Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommands cmdStatusMap
+          Left err -> putStrLn cmd >> putStrLn err >> runREPL toCommands' cmdStatusMap'
           Right _ -> do
-            rId <- liftIO $ setNextCmdRequestId cmdStatusMap
-            writeChan toCommands (rId, [CommandEntry cmd'])
-            showResult cmdStatusMap rId
-            runREPL toCommands cmdStatusMap
+            rId <- liftIO $ setNextCmdRequestId cmdStatusMap'
+            writeChan toCommands' (rId, [CommandEntry cmd'])
+            showResult cmdStatusMap' rId
+            runREPL toCommands' cmdStatusMap'
 
 -- | Runs a 'Raft nt String String mt'.
 -- Simple fixes nt to 'HostPort' and mt to 'String'.
@@ -86,13 +83,13 @@ main = do
   (toCommands, fromCommands) <- newChan
   -- `toResult` is unused. There seem to be API's that use/block on fromResult.
   -- Either we need to kill this channel full stop or `toResult` needs to be used.
-  cmdStatusMap <- initCommandMap
+  cmdStatusMap' <- initCommandMap
   let -- getEntry :: (IO et)
       getEntries :: IO (RequestId, [CommandEntry])
       getEntries = readChan fromCommands
       -- applyFn :: et -> IO rt
       applyFn :: CommandEntry -> IO CommandResult
       applyFn _x = return $ CommandResult "Failure"
-  void $ CL.fork $ runClient applyFn getEntries cmdStatusMap
+  void $ CL.fork $ runClient applyFn getEntries cmdStatusMap'
   threadDelay 100000
-  runREPL toCommands cmdStatusMap
+  runREPL toCommands cmdStatusMap'

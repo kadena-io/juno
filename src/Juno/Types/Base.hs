@@ -1,16 +1,8 @@
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -22,10 +14,13 @@
 
 module Juno.Types.Base
   ( NodeID(..)
+  , Term(..), startTerm
+  , LogIndex(..), startIndex
   , RequestId(..), startRequestId, toRequestId
   , ReceivedAt(..)
   -- for simplicity, re-export some core types that we need all over the place
   , PublicKey, PrivateKey, Signature(..), sign, valid, importPublic, importPrivate
+  , Role(..)
   ) where
 
 import Control.Monad (mzero)
@@ -56,6 +51,18 @@ instance ToJSON NodeID where
 instance FromJSON NodeID where
   parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = drop 1 }
 
+newtype Term = Term Int
+  deriving (Show, Read, Eq, Enum, Num, Ord, Generic, Serialize)
+
+startTerm :: Term
+startTerm = Term (-1)
+
+newtype LogIndex = LogIndex Int
+  deriving (Show, Read, Eq, Ord, Enum, Num, Real, Integral, Generic, Serialize)
+
+startIndex :: LogIndex
+startIndex = LogIndex (-1)
+
 newtype RequestId = RequestId Int64
   deriving (Show, Read, Eq, Ord, Enum, Num, Generic, Serialize)
 
@@ -64,6 +71,12 @@ startRequestId = RequestId 0
 
 toRequestId :: Int64 -> RequestId
 toRequestId a = RequestId a
+
+deriving instance Eq Signature
+deriving instance Ord Signature
+instance Serialize Signature where
+  put (Sig s) = S.put s
+  get = Sig <$> (S.get >>= S.getByteString)
 
 instance Eq PublicKey where
   b == b' = exportPublic b == exportPublic b'
@@ -87,6 +100,7 @@ instance ToJSON (Map NodeID PublicKey) where
   toJSON = toJSON . Map.toList
 instance FromJSON (Map NodeID PublicKey) where
   parseJSON = fmap Map.fromList . parseJSON
+
 instance Eq PrivateKey where
   b == b' = exportPrivate b == exportPrivate b'
 instance Ord PrivateKey where
@@ -126,3 +140,8 @@ instance Serialize ReceivedAt
 instance Serialize UTCTime
 instance Serialize NominalDiffTime
 instance Serialize Micro
+
+data Role = Follower
+          | Candidate
+          | Leader
+  deriving (Show, Generic, Eq)

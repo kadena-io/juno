@@ -16,15 +16,15 @@ import qualified Data.Map as Map
 import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
 
 import Juno.Consensus.ByzRaft.Commit (makeCommandResponse')
-import Juno.Runtime.Log
+import Juno.Types.Log
 import Juno.Consensus.Pure.Types
 import Juno.Runtime.Sender (sendRPC, createAppendEntriesResponse)
 import Juno.Util.Util (getCmdSigOrInvariantError)
 
-import qualified Juno.Runtime.Protocol.Types as JT
+import qualified Juno.Types as JT
 
 data CommandEnv = CommandEnv {
-      _role :: Role
+      _nodeRole :: Role
     , _term :: Term
     , _currentLeader :: Maybe NodeID
     , _replayMap :: Map.Map (NodeID, Signature) (Maybe CommandResult)
@@ -51,7 +51,7 @@ data CommandOut =
 handleCommand :: (MonadReader CommandEnv m,MonadWriter [String] m) => Command -> m CommandOut
 handleCommand cmd@Command{..} = do
   tell ["got a command RPC"]
-  r <- view role
+  r <- view nodeRole
   ct <- view term
   mlid <- view currentLeader
   replays <- view replayMap
@@ -84,7 +84,7 @@ handleSingleCommand cmd = do
   c <- view JT.cfg
   s <- get
   (out,_) <- runReaderT (runWriterT (handleCommand cmd)) $
-             CommandEnv (JT._role s)
+             CommandEnv (JT._nodeRole s)
                         (JT._term s)
                         (JT._currentLeader s)
                         (JT._replayMap s)

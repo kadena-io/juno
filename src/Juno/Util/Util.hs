@@ -21,8 +21,7 @@ module Juno.Util.Util
   , getRevSigOrInvariantError
   ) where
 
-import Juno.Runtime.Types
-import Juno.Runtime.Protocol.Types
+import Juno.Types
 import Juno.Util.Combinator
 
 import Control.Lens
@@ -46,7 +45,7 @@ debug :: Monad m => String -> Raft m ()
 debug s = do
   dbg <- view (rs.debugPrint)
   nid <- view (cfg.nodeId)
-  role' <- use role
+  role' <- use nodeRole
   let prettyRole = case role' of
         Leader -> "\ESC[0;34m[LEADER]\ESC[0m"
         Follower -> "\ESC[0;32m[FOLLOWER]\ESC[0m"
@@ -99,7 +98,7 @@ setTerm t = do
 
 setRole :: Monad m => Role -> Raft m ()
 setRole newRole = do
-  role .= newRole
+  nodeRole .= newRole
   logMetric $ MetricRole newRole
 
 setCurrentLeader :: Monad m => Maybe NodeID -> Raft m ()

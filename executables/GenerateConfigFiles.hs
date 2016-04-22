@@ -5,8 +5,6 @@ import Crypto.Random
 import Data.Ratio
 import Crypto.Ed25519.Pure
 import Text.Read
-import Juno.Runtime.Types
-import Juno.Runtime.Protocol.Types
 import Data.Thyme.Clock
 import System.IO
 import System.FilePath
@@ -15,6 +13,8 @@ import qualified Data.Yaml as Y
 import qualified Data.Set as Set
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+
+import Juno.Types
 
 nodes :: [NodeID]
 nodes = iterate (\n@(NodeID _ p) -> n {_port = p + 1}) (NodeID "127.0.0.1" 10000)
@@ -45,8 +45,8 @@ main = do
       let isNotAClient nid _ = not $ Set.member nid (Set.fromList clientIds)
       clusterKeyMaps <- return $ (Map.filterWithKey isNotAClient *** Map.filterWithKey isNotAClient) keyMaps'
       clientKeyMaps <- return $ (Map.filterWithKey isAClient *** Map.filterWithKey isAClient) keyMaps'
-      clusterConfs <- return ((createClusterConfig clusterKeyMaps (snd clientKeyMaps)) <$> take n nodes)
-      clientConfs <- return ((createClientConfig (snd clusterKeyMaps) clientKeyMaps) <$> clientIds)
+      clusterConfs <- return (createClusterConfig clusterKeyMaps (snd clientKeyMaps) <$> take n nodes)
+      clientConfs <- return (createClientConfig (snd clusterKeyMaps) clientKeyMaps <$> clientIds)
       mapM_ (\c' -> Y.encodeFile ("conf" </> show (_port $ _nodeId c') ++ "-cluster.yaml") c') clusterConfs
       mapM_ (\c' -> Y.encodeFile ("conf" </> show (_port $ _nodeId c') ++ "-client.yaml") c') clientConfs
     _ -> putStrLn "Failed to read either input into a number, please try again"

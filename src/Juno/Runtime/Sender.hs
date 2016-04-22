@@ -26,10 +26,8 @@ import qualified Data.Set as Set
 import Data.Serialize
 
 import Juno.Util.Util
-import Juno.Runtime.Types
-import Juno.Runtime.Protocol.Types
+import Juno.Types
 import Juno.Runtime.Timer (resetLastBatchUpdate)
-import Juno.Runtime.Log
 
 createAppendEntries' :: NodeID
                    -> Map NodeID LogIndex

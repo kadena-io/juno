@@ -5,11 +5,6 @@ module Juno.Monitoring.Server
   ( startMonitoring
   ) where
 
-import Juno.Runtime.Protocol.Types (Config, nodeId, Metric(..), LogIndex(..), Term(..))
-import Juno.Runtime.Types (NodeID(..), _port)
-
-import Juno.Monitoring.EkgMonitor (Server, forkServer, getLabel, getGauge,
-                                 getDistribution)
 import Control.Lens ((^.), to)
 import Data.Text.Encoding (decodeUtf8)
 
@@ -18,6 +13,9 @@ import qualified Data.Text as T
 import qualified System.Metrics.Label as Label
 import qualified System.Metrics.Gauge as Gauge
 import qualified System.Metrics.Distribution as Dist
+
+import Juno.Types (Config, nodeId, Metric(..), LogIndex(..), Term(..), NodeID(..), _port)
+import Juno.Monitoring.EkgMonitor (Server, forkServer, getLabel, getGauge, getDistribution)
 
 -- TODO: possibly switch to 'newStore' API. this allows us to use groups.
 

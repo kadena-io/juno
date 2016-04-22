@@ -5,20 +5,20 @@ module Juno.Consensus.ByzRaft.Api
   ( apiReceiver
   ) where
 
-import           Control.Lens
+import Control.Lens
 import qualified Data.Set as Set
-import           Control.Monad
-import           Juno.Runtime.Types
-import           Juno.Runtime.Protocol.Types
-import           Juno.Util.Util
-import           Juno.Runtime.Timer
-
+import Control.Monad
 import qualified Data.Map as Map
 import qualified Data.ByteString.Char8 as SB8
-import           Control.Monad.RWS
-import           Text.Read (readMaybe)
-import           Control.Concurrent (takeMVar, putMVar, modifyMVar_)
-import           Juno.Runtime.Sender (sendRPC)
+import Control.Monad.RWS
+import Text.Read (readMaybe)
+import Control.Concurrent (takeMVar, putMVar, modifyMVar_)
+
+import Juno.Types
+import Juno.Util.Util
+import Juno.Runtime.Timer
+import Juno.Runtime.Sender (sendRPC)
+
 
 -- TODO do we need all this? can we just enqueueEvent directly?
 -- get commands with getEntry and put them on the event queue to be sent
@@ -32,8 +32,8 @@ apiReceiver = do
     -- support for special REPL command "> batch test:5000", runs hardcoded batch job
     cmds' <- case cmdEntries of
                (CommandEntry cmd):[] | SB8.take 11 cmd == "batch test:" -> do
-                                          let missiles = take (batchSize cmd) $ repeat $ hardcodedTransfers nid cmdMap
-                                          liftIO $ sequence $ missiles
+                                          let missiles = replicate (batchSize cmd) $ hardcodedTransfers nid cmdMap
+                                          liftIO $ sequence missiles
                _ -> liftIO $ sequence $ fmap ((nextRid nid) cmdMap) cmdEntries
     -- set current requestId in Raft to the value associated with this request.
     rid' <- setNextRequestId' rid
@@ -101,17 +101,3 @@ setLeaderToFirst' = do
   nodes <- view (cfg.otherNodes)
   when (Set.null nodes) $ error "the client has no nodes to send requests to"
   setCurrentLeader $ Just $ Set.findMin nodes
-
--- TODO: remove these (still in Client.hs)
---       this only need to be command related, there should not longer be code
---       for handling other events, this is done by the protocol.
--- THREAD: CLIENT MAIN. updates state.
-setLeaderToNext' :: Monad m => Raft m ()
-setLeaderToNext' = do
-  mlid <- use currentLeader
-  nodes <- view (cfg.otherNodes)
-  case mlid of
-    Just lid -> case Set.lookupGT lid nodes of
-      Just nlid -> setCurrentLeader $ Just nlid
-      Nothing   -> setLeaderToFirst'
-    Nothing -> setLeaderToFirst'

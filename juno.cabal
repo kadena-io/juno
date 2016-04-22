@@ -48,30 +48,37 @@ library
                      , Juno.Hoplite.Types
                      , Juno.Messaging.Types
                      , Juno.Messaging.ZMQ
+                     , Juno.Monitoring.EkgJson
+                     , Juno.Monitoring.EkgMonitor
+                     , Juno.Monitoring.EkgSnap
                      , Juno.Monitoring.Server
                      , Juno.Persistence.SQLite
                      , Juno.Runtime.Api.ApiServer
-                     , Juno.Runtime.Log
                      , Juno.Runtime.MessageReceiver
                      , Juno.Runtime.Role
                      , Juno.Runtime.Sender
                      , Juno.Runtime.Timer
-                     , Juno.Runtime.Types
-                     , Juno.Runtime.Protocol.Types
                      , Juno.Spec.Simple
                      , Juno.Types
                      , Juno.Types.Base
                      , Juno.Types.Command
                      , Juno.Types.Config
+                     , Juno.Types.Log
                      , Juno.Types.Message
+                     , Juno.Types.Message.Signed
+                     , Juno.Types.Message.CMD
+                     , Juno.Types.Message.CMDR
+                     , Juno.Types.Message.AE
+                     , Juno.Types.Message.AER
+                     , Juno.Types.Message.RV
+                     , Juno.Types.Message.RVR
+                     , Juno.Types.Message.REV
+                     , Juno.Types.Metric
                      , Juno.Types.State
                      , Juno.Util.Combinator
                      , Juno.Util.Util
                      , Schwifty.Swift.M105.Types
                      , Schwifty.Swift.M105.Parser
-                     , Juno.Monitoring.EkgJson
-                     , Juno.Monitoring.EkgMonitor
-                     , Juno.Monitoring.EkgSnap
   build-depends:       SHA2
                      , aeson
                      , aeson-pretty
