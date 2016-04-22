@@ -1,14 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
------------------------------------------------------------------------------
--- |
--- Module      :  Juno.Runtime.Protocol.Types
---
--- Holds the core Juno/Raft Types used to implement BFT Raft
--- the types here are internal to the protocol nodes, but for now they share
--- some types Runtime/Types.hs with Api/Types.hs.
-
 module Juno.Types.State
   ( Raft
   , RaftSpec(..)

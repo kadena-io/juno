@@ -4,14 +4,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
------------------------------------------------------------------------------
--- |
--- Module      :  Juno.Runtime.Types
---
--- Share types used in Api/Types.hs and Protocol/Types.
--- Api is responisble for accepting outside commands
--- Protocol is part of BFT raft implementation.
-
 module Juno.Types.Base
   ( NodeID(..)
   , Term(..), startTerm
