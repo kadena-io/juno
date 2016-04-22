@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Juno.Runtime.Api.ApiServer (runApiServer) where
+module Juno.Runtime.Api.ApiServer
+  (runApiServer
+  ) where
 
 -- | Api server is the interface between outside clients
 --   and the internal Juno/Raft protocol.

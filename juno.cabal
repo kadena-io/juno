@@ -59,6 +59,12 @@ library
                      , Juno.Runtime.Types
                      , Juno.Runtime.Protocol.Types
                      , Juno.Spec.Simple
+                     , Juno.Types
+                     , Juno.Types.Base
+                     , Juno.Types.Command
+                     , Juno.Types.Config
+                     , Juno.Types.Message
+                     , Juno.Types.State
                      , Juno.Util.Combinator
                      , Juno.Util.Util
                      , Schwifty.Swift.M105.Types
