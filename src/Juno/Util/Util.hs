@@ -26,7 +26,7 @@ import Juno.Util.Combinator
 
 import Control.Lens
 import Data.Sequence (Seq)
-import Control.Monad.RWS
+import Control.Monad.RWS.Strict
 import qualified Control.Concurrent.Lifted as CL
 import qualified Data.Sequence as Seq
 import qualified Data.Map.Strict as Map

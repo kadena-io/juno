@@ -23,7 +23,7 @@ module Juno.Types.State
 
 import Control.Concurrent (MVar, ThreadId)
 import Control.Lens hiding (Index, (|>))
-import Control.Monad.RWS (RWST)
+import Control.Monad.RWS.Strict (RWST)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)

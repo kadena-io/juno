@@ -2,12 +2,13 @@
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Juno.Messaging.ZMQ (
   runMsgServer
   ) where
 
-import Control.Concurrent (forkIO, threadDelay, yield)
+import Control.Concurrent (forkIO, threadDelay, yield, newMVar, takeMVar, putMVar, yield)
 import Control.Concurrent.Chan.Unagi
 import qualified Control.Concurrent.Chan.Unagi.NoBlocking as NoBlock
 import Control.Monad.State.Strict
@@ -19,44 +20,52 @@ import Data.Thyme.Clock
 import Data.Serialize
 
 import Juno.Messaging.Types
-import Juno.Types (ReceivedAt(..),Digest(..),MsgType(..), SignedRPC(..))
+import Juno.Types (ReceivedAt(..),Digest(..),MsgType(..),SignedRPC(..))
 
 sendProcess :: OutChan (OutBoundMsg String ByteString)
             -> Rolodex String (Socket z Push)
-            -> ZMQ z (Rolodex String (Socket z Push))
-sendProcess outboxRead r = do
-  (OutBoundMsg addrs msg) <- liftIO $ readChan outboxRead
-  newRol <- updateRolodex r addrs
-  toPoll <- recipList newRol addrs
-  mapM_ (\s -> send s [] msg) toPoll
-  sendProcess outboxRead newRol
+            -> ZMQ z ()
+sendProcess outboxRead !r = do
+  rMvar <- liftIO $ newMVar r
+  forever $ do
+    (OutBoundMsg !addrs !msg) <- liftIO $! readChan outboxRead
+    r' <- liftIO $ takeMVar rMvar
+    !newRol <- updateRolodex r' addrs
+    !toPoll <- recipList newRol addrs
+    mapM_ (\s -> send s [] msg) toPoll
+    liftIO $ putMVar rMvar newRol >> yield
 
 updateRolodex :: Rolodex String (Socket z Push) -> Recipients String -> ZMQ z (Rolodex String (Socket z Push))
-updateRolodex r@(Rolodex _rol) RAll = return r
-updateRolodex r@(Rolodex rol) (RSome addrs) =
-  if addrs `Set.isSubsetOf` Map.keysSet rol
-  then return r
-  else addNewAddrs r $ Set.toList addrs
-updateRolodex r@(Rolodex rol) (ROne addr) =
-  if Set.member addr $ Map.keysSet rol
-  then return r
-  else addNewAddrs r [addr]
+updateRolodex r@(Rolodex !_rol) RAll = return $! r
+updateRolodex r@(Rolodex !rol) (RSome !addrs) =
+  if Set.isSubsetOf addrs $! Map.keysSet rol
+  then return $! r
+  else do
+    !a <- addNewAddrs r $! Set.toList addrs
+    return $! a
+updateRolodex r@(Rolodex !rol) (ROne !addr) =
+  if Set.member addr $! Map.keysSet rol
+  then return $! r
+  else do
+    !a <- addNewAddrs r [addr]
+    return $! a
 
 addNewAddrs :: Rolodex String (Socket z Push) -> [Addr String] -> ZMQ z (Rolodex String (Socket z Push))
-addNewAddrs r [] = return r
-addNewAddrs (Rolodex r) (x:xs) = do
-  r' <- if Map.member x r
-        then return $ Rolodex r
+addNewAddrs !r [] = return r
+addNewAddrs (Rolodex !r) (x:xs) = do
+  !r' <- if Map.member x r
+        then return $! Rolodex r
         else do
           s <- socket Push
+          _ <- setConflate True s
           _ <- connect s $ _unAddr x
-          return $ Rolodex $ Map.insert x (ListenOn s) r
-  addNewAddrs r' xs
+          return $! Rolodex $! Map.insert x (ListenOn s) r
+  r' `seq` addNewAddrs r' xs
 
 recipList :: Rolodex String (Socket z Push) -> Recipients String -> ZMQ z [Socket z Push]
-recipList (Rolodex r) RAll = return $ _unListenOn <$> Map.elems r
-recipList (Rolodex r) (RSome addrs) = return $ _unListenOn . (r Map.!) <$> Set.toList addrs
-recipList (Rolodex r) (ROne addr) = return $ _unListenOn <$> [r Map.! addr]
+recipList (Rolodex r) RAll = return $! _unListenOn <$> Map.elems r
+recipList (Rolodex r) (RSome addrs) = return $! _unListenOn . (r Map.!) <$> Set.toList addrs
+recipList (Rolodex r) (ROne addr) = return $! _unListenOn <$> [r Map.! addr]
 
 runMsgServer :: NoBlock.InChan (ReceivedAt, SignedRPC)
              -> NoBlock.InChan (ReceivedAt, SignedRPC)
