@@ -187,7 +187,7 @@ getBacklog m cnt = do
     else threadDelay 1000 >> return []
 
 nodeIDtoAddr :: NodeID -> Addr String
-nodeIDtoAddr (NodeID _ p) = Addr $ "tcp://127.0.0.1:" ++ show p
+nodeIDtoAddr (NodeID _ _ a) = Addr $ a
 
 toMsg :: NodeID -> msg -> OutBoundMsg String msg
 toMsg n b = OutBoundMsg (ROne $ nodeIDtoAddr n) b
@@ -268,7 +268,7 @@ runJuno :: (CommandEntry -> IO CommandResult) -> InChan (RequestId, [CommandEntr
 runJuno applyFn toCommands getApiCommands sharedCmdStatusMap = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
-  (NodeID _ p) <- return $ rconf ^. nodeId
+  (NodeID _ p _) <- return $ rconf ^. nodeId
 
   -- Start The Api Server, communicates with the Juno protocol via sharedCmdStatusMap
   -- API interface will run on 800{nodeNum} for now, where the nodeNum for 10003 is 3

@@ -2,23 +2,41 @@ clientTimeoutLimit: 50000
 publicKeys:
 - - host: '127.0.0.1'
     port: 10000
+    fullAddr: 'tcp://127.0.0.1:10000'
   - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
 - - host: '127.0.0.1'
     port: 10001
+    fullAddr: 'tcp://127.0.0.1:10001'
   - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
 - - host: '127.0.0.1'
     port: 10002
+    fullAddr: 'tcp://127.0.0.1:10002'
   - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
 - - host: '127.0.0.1'
     port: 10003
+    fullAddr: 'tcp://127.0.0.1:10003'
   - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
 heartbeatTimeout: 1500000
 clientPublicKeys:
 - - host: '127.0.0.1'
+    port: 10000
+    fullAddr: 'tcp://127.0.0.1:10000'
+  - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
+- - host: '127.0.0.1'
+    port: 10001
+    fullAddr: 'tcp://127.0.0.1:10001'
+  - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
+- - host: '127.0.0.1'
+    port: 10002
+    fullAddr: 'tcp://127.0.0.1:10002'
+  - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
+- - host: '127.0.0.1'
     port: 10003
+    fullAddr: 'tcp://127.0.0.1:10003'
   - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
 - - host: '127.0.0.1'
     port: 10004
+    fullAddr: 'tcp://127.0.0.1:10004'
   - 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
 electionTimeoutRange:
 - 3000000
@@ -26,16 +44,21 @@ electionTimeoutRange:
 otherNodes:
 - host: '127.0.0.1'
   port: 10000
+  fullAddr: 'tcp://127.0.0.1:10000'
 - host: '127.0.0.1'
   port: 10001
+  fullAddr: 'tcp://127.0.0.1:10001'
 - host: '127.0.0.1'
   port: 10002
+  fullAddr: 'tcp://127.0.0.1:10002'
 - host: '127.0.0.1'
   port: 10003
+  fullAddr: 'tcp://127.0.0.1:10003'
 myPublicKey: 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
 nodeId:
   host: '127.0.0.1'
   port: 10004
+  fullAddr: 'tcp://127.0.0.1:10004'
 enableDebug: false
 myPrivateKey: 5ba30a2164d6e36e600e4203b80c575e1b04667e3351b22a5319ab3fcc3da602
 batchTimeDelta: 1 % 100

@@ -35,7 +35,7 @@ import Data.Aeson.Types (defaultOptions,Options(..))
 import GHC.Int (Int64)
 import GHC.Generics hiding (from)
 
-data NodeID = NodeID { _host :: !String, _port :: !Word64 }
+data NodeID = NodeID { _host :: !String, _port :: !Word64, _fullAddr :: !String }
   deriving (Eq,Ord,Read,Show,Generic)
 instance Serialize NodeID
 instance ToJSON NodeID where
