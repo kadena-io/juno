@@ -1,6 +1,7 @@
 *.swp
 .dir-locals.el
 .stack-work/
+.stack-work-prof/
 *~
 log/*
 dist/*

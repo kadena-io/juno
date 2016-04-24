@@ -173,6 +173,20 @@ executable junoclient
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
+executable zmqleak
+  main-is:             ZmqLeak.hs
+  build-depends:       base < 5
+                     , bytestring
+                     , random
+                     , containers
+                     , unagi-chan
+                     , thyme
+                     , zeromq4-haskell
+  hs-source-dirs:      executables
+  ghc-options:         -Wall -threaded -rtsopts -O2 +RTS -N4 -RTS
+  ghc-prof-options:    -fprof-auto -fprof-auto-calls
+  default-language:    Haskell2010
+
 executable simplepartest
   main-is:             SimpleSeqVsParVsAsync.hs
   build-depends:       async
@@ -183,7 +197,7 @@ executable simplepartest
                      , ed25519-donna
                      , parallel
   hs-source-dirs:      criterion
-  ghc-options:         -Wall -threaded -eventlog -rtsopts -O2 +RTS -N4 -RTS
+  ghc-options:         -Wall -threaded -rtsopts -O2 +RTS -N4 -RTS
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
