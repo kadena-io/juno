@@ -11,10 +11,11 @@ import           Data.Aeson.Types (Options(..),defaultOptions,parseMaybe)
 import qualified Data.Text as T
 import           Data.Text (Text)
 import           GHC.Generics
-import           Juno.Runtime.Types (CommandStatus(..),CommandResult(..),RequestId(..))
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import           Control.Applicative
+
+import           Juno.Types (CommandStatus(..),CommandResult(..),RequestId(..))
 
 removeUnderscore :: String -> String
 removeUnderscore = drop 1

@@ -27,30 +27,8 @@ import Data.Map.Strict (Map)
 import Data.Ratio
 import qualified Data.Map.Strict as Map
 
-
 import Juno.Hoplite.Eval (TransactionId(..), OpId(..), OrderedOp, Cmd(..))
 import Schwifty.Swift.M105.Types
-
-
---newtype JunoEnv = JunoEnv {getStateMVar :: MV.MVar (DEval.PersistentState, Map.Map DEval.TransactionId SWIFT)}
---
---data Cmd = Cmd {from :: Text , to :: Text , posAmount :: Rational , fakeCryptoSig:: Text }
---  deriving (Eq,Ord,Show,Read,Data,Typeable)
---
---newtype TransactionId = TransactionId Natural
---  deriving (Eq, Show, Num, Enum, Ord)
---
---newtype OpId = OpId Natural
---  deriving (Eq, Show, Num, Enum, Ord)
---
---type OrderedOp = (OpId, Cmd)
---
---data PersistentState
---  = PersistentState { _persistentNextTxId :: TransactionId
---                    , _persistentBalances :: Map.Map Text Rational
---                    , _persistentTxes :: [(TransactionId, [OrderedOp])]
---                    }
---  deriving (Eq, Show)
 
 data Transaction = Transaction {
    transId :: Int

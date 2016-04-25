@@ -1,13 +1,13 @@
-module Juno.Consensus.ByzRaft.Server
+module Juno.Consensus.Server
   ( runRaftServer
   ) where
 
 import Control.Lens
 import qualified Data.Set as Set
 
-import Juno.Consensus.ByzRaft.Handler
-import Juno.Consensus.ByzRaft.Api (apiReceiver)
-import Juno.Runtime.Protocol.Types
+import Juno.Consensus.Handle
+import Juno.Consensus.Api (apiReceiver)
+import Juno.Types
 import Juno.Util.Util
 import Juno.Runtime.Timer
 import Juno.Runtime.MessageReceiver

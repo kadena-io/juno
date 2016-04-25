@@ -6,7 +6,7 @@ import Control.Concurrent.Chan.Unagi
 
 import Apps.Juno.Command
 import Juno.Spec.Simple
-import Juno.Runtime.Types (CommandEntry, CommandResult, initCommandMap)
+import Juno.Types (CommandEntry, CommandResult, initCommandMap)
 
 -- | Runs a 'Raft nt String String mt'.
 main :: IO ()

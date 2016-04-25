@@ -1,21 +1,102 @@
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RecordWildCards #-}
-module Juno.Runtime.Log
-    (
-     lookupEntry,lastEntry,takeEntries
-    ,getEntriesAfter,logInfoForNextIndex
-    ,lastLogTerm,lastLogHash
-    ,entryCount,maxIndex
-    ,appendLogEntry,addLogEntriesAt
-    ) where
+{-# LANGUAGE TemplateHaskell #-}
 
-import Juno.Runtime.Types
-import Juno.Runtime.Protocol.Types
-import Control.Lens
-import Data.ByteString (ByteString)
-import qualified Data.Sequence as Seq
-import Data.Sequence (Seq)
+module Juno.Types.Log
+  ( LogEntry(..), leTerm, leCommand, leHash
+  , Log(..), lEntries
+  , LEWire(..), encodeLEWire, decodeLEWire, decodeLEWire', toSeqLogEntry
+  , lookupEntry
+  , lastEntry
+  , takeEntries
+  , getEntriesAfter
+  , logInfoForNextIndex
+  , lastLogTerm
+  , lastLogHash
+  , entryCount
+  , maxIndex
+  , appendLogEntry
+  , addLogEntriesAt
+  ) where
+
+import Control.Parallel.Strategies
+import Control.Lens hiding (Index, (|>))
 import Codec.Digest.SHA
+import qualified Control.Lens as Lens
+import Data.Sequence (Seq, (|>))
+import qualified Data.Sequence as Seq
+import Data.ByteString (ByteString)
 import Data.Serialize
+import Data.Foldable
+import Data.Thyme.Time.Core ()
+import GHC.Generics
+
+import Juno.Types.Base
+import Juno.Types.Config
+import Juno.Types.Message.Signed
+import Juno.Types.Message.CMD
+
+data LogEntry = LogEntry
+  { _leTerm    :: !Term
+  , _leCommand :: !Command
+  , _leHash    :: !ByteString
+  }
+  deriving (Show, Eq, Generic)
+makeLenses ''LogEntry
+
+newtype Log a = Log { _lEntries :: Seq a }
+    deriving (Eq,Show,Ord,Generic,Monoid,Functor,Foldable,Traversable,Applicative,Monad,NFData)
+makeLenses ''Log
+instance (t ~ Log a) => Rewrapped (Log a) t
+instance Wrapped (Log a) where
+    type Unwrapped (Log a) = Seq a
+    _Wrapped' = iso _lEntries Log
+instance Cons (Log a) (Log a) a a where
+    _Cons = _Wrapped . _Cons . mapping _Unwrapped
+instance Snoc (Log a) (Log a) a a where
+    _Snoc = _Wrapped . _Snoc . firsting _Unwrapped
+type instance IxValue (Log a) = a
+type instance Lens.Index (Log a) = LogIndex
+instance Ixed (Log a) where ix i = lEntries.ix (fromIntegral i)
+
+data LEWire = LEWire (Term, SignedRPC, ByteString)
+  deriving (Show, Generic)
+instance Serialize LEWire
+
+decodeLEWire' :: Maybe ReceivedAt -> KeySet -> LEWire -> Either String LogEntry
+decodeLEWire' !ts !ks (LEWire !(t,cmd,hsh)) = case fromWire ts ks cmd of
+      Left !err -> Left $!err
+      Right !cmd' -> Right $! LogEntry t cmd' hsh
+{-# INLINE decodeLEWire' #-}
+
+-- TODO: check if `toSeqLogEntry ele = Seq.fromList <$> sequence ele` is fusable?
+toSeqLogEntry :: [Either String LogEntry] -> Either String (Seq LogEntry)
+toSeqLogEntry !ele = go ele mempty
+  where
+    go [] s = Right $! s
+    go (Right le:les) s = go les (s |> le)
+    go (Left err:_) _ = Left $! err
+{-# INLINE toSeqLogEntry #-}
+
+decodeLEWire :: Maybe ReceivedAt -> KeySet -> [LEWire] -> Either String (Seq LogEntry)
+decodeLEWire !ts !ks !les = go les Seq.empty
+  where
+    go [] s = Right $! s
+    go (LEWire !(t,cmd,hsh):ls) v = case fromWire ts ks cmd of
+      Left err -> Left $! err
+      Right cmd' -> go ls (v |> LogEntry t cmd' hsh)
+{-# INLINE decodeLEWire #-}
+
+encodeLEWire :: NodeID -> PublicKey -> PrivateKey -> Seq LogEntry -> [LEWire]
+encodeLEWire nid pubKey privKey les =
+  (\LogEntry{..} -> LEWire (_leTerm, toWire nid pubKey privKey _leCommand, _leHash)) <$> toList les
+{-# INLINE encodeLEWire #-}
 
 -- | Get last entry.
 lastEntry :: Log a -> Maybe a

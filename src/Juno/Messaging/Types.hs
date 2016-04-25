@@ -17,7 +17,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.Serialize
 import GHC.Generics (Generic)
-import Juno.Runtime.Types (ReceivedAt)
+import Juno.Types (ReceivedAt)
 
 data Spec addr msg sock = Spec {
   -- | Messages for you

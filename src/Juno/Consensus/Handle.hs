@@ -1,5 +1,5 @@
 
-module Juno.Consensus.ByzRaft.Handler
+module Juno.Consensus.Handle
   ( handleEvents )
 where
 
@@ -8,25 +8,23 @@ import Data.AffineSpace
 import Control.Monad
 import Data.Maybe
 
-import Juno.Runtime.Types
-import Juno.Runtime.Protocol.Types
-import Juno.Runtime.Log
-import Juno.Consensus.ByzRaft.Commit (doCommit)
+import Juno.Types
+import Juno.Consensus.Commit (doCommit)
 import Juno.Runtime.Sender (sendAllAppendEntries,sendAllAppendEntriesResponse)
 import Juno.Util.Util (debug, dequeueEvent)
-import qualified Juno.Consensus.Pure.Handle.AppendEntries as PureAppendEntries
-import qualified Juno.Consensus.Pure.Handle.AppendEntriesResponse as PureAppendEntriesResponse
-import qualified Juno.Consensus.Pure.Handle.RequestVote as PureRequestVote
-import qualified Juno.Consensus.Pure.Handle.RequestVoteResponse as PureRequestVoteResponse
-import qualified Juno.Consensus.Pure.Handle.Command as PureCommand
-import qualified Juno.Consensus.Pure.Handle.ElectionTimeout as PureElectionTimeout
-import qualified Juno.Consensus.Pure.Handle.HeartbeatTimeout as PureHeartbeatTimeout
-import qualified Juno.Consensus.Pure.Handle.Revolution as PureRevolution
 
+import qualified Juno.Consensus.Handle.AppendEntries as PureAppendEntries
+import qualified Juno.Consensus.Handle.AppendEntriesResponse as PureAppendEntriesResponse
+import qualified Juno.Consensus.Handle.RequestVote as PureRequestVote
+import qualified Juno.Consensus.Handle.RequestVoteResponse as PureRequestVoteResponse
+import qualified Juno.Consensus.Handle.Command as PureCommand
+import qualified Juno.Consensus.Handle.ElectionTimeout as PureElectionTimeout
+import qualified Juno.Consensus.Handle.HeartbeatTimeout as PureHeartbeatTimeout
+import qualified Juno.Consensus.Handle.Revolution as PureRevolution
 
 issueBatch :: Monad m => Raft m ()
 issueBatch = do
-  role' <- use role
+  role' <- use nodeRole
   ci <- use commitIndex
   case role' of
     Follower -> debug $ "Commit index is still: " ++ show ci

@@ -26,20 +26,20 @@ library
                      , Apps.Juno.ApiHandlers
                      , Apps.Juno.Ledger
                      , Apps.Juno.Parser
-                     , Juno.Consensus.ByzRaft.Api
-                     , Juno.Consensus.ByzRaft.Handler
-                     , Juno.Consensus.ByzRaft.Server
-                     , Juno.Consensus.ByzRaft.Client
-                     , Juno.Consensus.ByzRaft.Commit
-                     , Juno.Consensus.Pure.Types
-                     , Juno.Consensus.Pure.Handle.AppendEntries
-                     , Juno.Consensus.Pure.Handle.AppendEntriesResponse
-                     , Juno.Consensus.Pure.Handle.RequestVote
-                     , Juno.Consensus.Pure.Handle.RequestVoteResponse
-                     , Juno.Consensus.Pure.Handle.Command
-                     , Juno.Consensus.Pure.Handle.ElectionTimeout
-                     , Juno.Consensus.Pure.Handle.HeartbeatTimeout
-                     , Juno.Consensus.Pure.Handle.Revolution
+                     , Juno.Consensus.Api
+                     , Juno.Consensus.Handle
+                     , Juno.Consensus.Server
+                     , Juno.Consensus.Client
+                     , Juno.Consensus.Commit
+                     , Juno.Consensus.Handle.Types
+                     , Juno.Consensus.Handle.AppendEntries
+                     , Juno.Consensus.Handle.AppendEntriesResponse
+                     , Juno.Consensus.Handle.Command
+                     , Juno.Consensus.Handle.RequestVote
+                     , Juno.Consensus.Handle.RequestVoteResponse
+                     , Juno.Consensus.Handle.ElectionTimeout
+                     , Juno.Consensus.Handle.HeartbeatTimeout
+                     , Juno.Consensus.Handle.Revolution
                      , Juno.Hoplite.Eval
                      , Juno.Hoplite.Heap
                      , Juno.Hoplite.STExcept
@@ -48,24 +48,37 @@ library
                      , Juno.Hoplite.Types
                      , Juno.Messaging.Types
                      , Juno.Messaging.ZMQ
+                     , Juno.Monitoring.EkgJson
+                     , Juno.Monitoring.EkgMonitor
+                     , Juno.Monitoring.EkgSnap
                      , Juno.Monitoring.Server
                      , Juno.Persistence.SQLite
                      , Juno.Runtime.Api.ApiServer
-                     , Juno.Runtime.Log
                      , Juno.Runtime.MessageReceiver
                      , Juno.Runtime.Role
                      , Juno.Runtime.Sender
                      , Juno.Runtime.Timer
-                     , Juno.Runtime.Types
-                     , Juno.Runtime.Protocol.Types
                      , Juno.Spec.Simple
+                     , Juno.Types
+                     , Juno.Types.Base
+                     , Juno.Types.Command
+                     , Juno.Types.Config
+                     , Juno.Types.Log
+                     , Juno.Types.Message
+                     , Juno.Types.Message.Signed
+                     , Juno.Types.Message.CMD
+                     , Juno.Types.Message.CMDR
+                     , Juno.Types.Message.AE
+                     , Juno.Types.Message.AER
+                     , Juno.Types.Message.RV
+                     , Juno.Types.Message.RVR
+                     , Juno.Types.Message.REV
+                     , Juno.Types.Metric
+                     , Juno.Types.State
                      , Juno.Util.Combinator
                      , Juno.Util.Util
                      , Schwifty.Swift.M105.Types
                      , Schwifty.Swift.M105.Parser
-                     , Juno.Monitoring.EkgJson
-                     , Juno.Monitoring.EkgMonitor
-                     , Juno.Monitoring.EkgSnap
   build-depends:       SHA2
                      , aeson
                      , aeson-pretty

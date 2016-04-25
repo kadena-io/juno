@@ -2,10 +2,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Juno.Consensus.Pure.Handle.ElectionTimeout
+module Juno.Consensus.Handle.ElectionTimeout
     (handle)
     where
-
 
 import Control.Lens
 import Control.Monad.Reader
@@ -14,16 +13,17 @@ import Control.Monad.Writer
 import Data.Foldable (traverse_)
 import qualified Data.Set as Set
 
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 import Juno.Runtime.Sender (createRequestVoteResponse,sendRPC)
 import Juno.Runtime.Timer (resetElectionTimer, hasElectionTimerLeaderFired)
 import Juno.Util.Combinator ((^$))
 import Juno.Util.Util
-import Juno.Runtime.Log
-import qualified Juno.Runtime.Protocol.Types as JT
+import Juno.Types.Log
+
+import qualified Juno.Types as JT
 
 data ElectionTimeoutEnv = ElectionTimeoutEnv {
-      _role :: Role
+      _nodeRole :: Role
     , _term :: Term
     , _lazyVote :: Maybe (Term,NodeID,LogIndex)
     , _nodeId :: NodeID
@@ -58,7 +58,7 @@ data ElectionTimeoutOut =
 handleElectionTimeout :: (MonadReader ElectionTimeoutEnv m, MonadWriter [String] m) => String -> m ElectionTimeoutOut
 handleElectionTimeout s = do
   tell ["election timeout: " ++ s]
-  r <- view role
+  r <- view nodeRole
   leaderWithoutFollowers' <- view leaderWithoutFollowers
   if r /= Leader
   then do
@@ -109,7 +109,7 @@ handle msg = do
   leaderWithoutFollowers' <- hasElectionTimerLeaderFired
   (out,l) <- runReaderT (runWriterT (handleElectionTimeout msg)) $
              ElectionTimeoutEnv
-             (JT._role s)
+             (JT._nodeRole s)
              (JT._term s)
              (JT._lazyVote s)
              (JT._nodeId c)

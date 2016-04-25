@@ -4,7 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.Pure.Handle.AppendEntriesResponse
+module Juno.Consensus.Handle.AppendEntriesResponse
   (handle
   ,handleAlotOfAers
   ,updateCommitProofMap)
@@ -21,16 +21,16 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Juno.Consensus.ByzRaft.Commit (doCommit)
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Commit (doCommit)
+import Juno.Consensus.Handle.Types
 
 import Juno.Runtime.Timer (resetElectionTimerLeader)
 import Juno.Util.Util (debug, updateLNextIndex)
-import qualified Juno.Runtime.Protocol.Types as JT
+import qualified Juno.Types as JT
 
 data AEResponseEnv = AEResponseEnv {
 -- Old Constructors
-    _role             :: Role
+    _nodeRole             :: Role
   , _term             :: Term
   , _commitProof      :: Map NodeID AppendEntriesResponse
   }
@@ -65,7 +65,7 @@ handleAEResponse :: (MonadWriter [String] m, MonadReader AEResponseEnv m) => App
 handleAEResponse aer@AppendEntriesResponse{..} = do
     --tell ["got an appendEntriesResponse RPC"]
     mcp <- updateCommitProofMap aer <$> view commitProof
-    role' <- view role
+    role' <- view nodeRole
     currentTerm' <- view term
     if (role' == Leader)
     then
@@ -113,7 +113,7 @@ handle :: Monad m => AppendEntriesResponse -> JT.Raft m ()
 handle ae = do
   s <- get
   let ape = AEResponseEnv
-              (JT._role s)
+              (JT._nodeRole s)
               (JT._term s)
               (JT._commitProof s)
   (AEResponseOut{..}, l) <- runReaderT (runWriterT (handleAEResponse ae)) ape
@@ -156,9 +156,9 @@ processSetAer ks s = go [] (Set.toDescList s)
 
 -- | Verify if needed on `ReceivedMsg` provenance
 aerReVerify :: KeySet -> AppendEntriesResponse -> Either String ()
-aerReVerify  _ (AppendEntriesResponse { _aerWasVerified = True }) = Right ()
-aerReVerify  _ (AppendEntriesResponse { _aerProvenance = NewMsg }) = Right ()
-aerReVerify ks (AppendEntriesResponse {
+aerReVerify  _ AppendEntriesResponse{ _aerWasVerified = True } = Right ()
+aerReVerify  _ AppendEntriesResponse{ _aerProvenance = NewMsg } = Right ()
+aerReVerify ks AppendEntriesResponse{
                   _aerWasVerified = False,
                   _aerProvenance = ReceivedMsg{..}
-                }) = verifySignedRPC ks $ SignedRPC _pDig _pOrig
+                } = verifySignedRPC ks $ SignedRPC _pDig _pOrig

@@ -1,7 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
-module Juno.Consensus.Pure.Handle.Command
+
+module Juno.Consensus.Handle.Command
     (handle
     ,handleBatch)
     where
@@ -13,18 +14,17 @@ import Control.Monad.Writer
 import Data.ByteString as B
 import qualified Data.Map as Map
 
-import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
-
-import Juno.Consensus.ByzRaft.Commit (makeCommandResponse')
-import Juno.Runtime.Log
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Commit (makeCommandResponse')
+import Juno.Types.Log
+import Juno.Consensus.Handle.Types
 import Juno.Runtime.Sender (sendRPC, createAppendEntriesResponse)
 import Juno.Util.Util (getCmdSigOrInvariantError)
+import qualified Juno.Types as JT
 
-import qualified Juno.Runtime.Protocol.Types as JT
+import Juno.Consensus.Handle.AppendEntriesResponse (updateCommitProofMap)
 
 data CommandEnv = CommandEnv {
-      _role :: Role
+      _nodeRole :: Role
     , _term :: Term
     , _currentLeader :: Maybe NodeID
     , _replayMap :: Map.Map (NodeID, Signature) (Maybe CommandResult)
@@ -51,7 +51,7 @@ data CommandOut =
 handleCommand :: (MonadReader CommandEnv m,MonadWriter [String] m) => Command -> m CommandOut
 handleCommand cmd@Command{..} = do
   tell ["got a command RPC"]
-  r <- view role
+  r <- view nodeRole
   ct <- view term
   mlid <- view currentLeader
   replays <- view replayMap
@@ -84,7 +84,7 @@ handleSingleCommand cmd = do
   c <- view JT.cfg
   s <- get
   (out,_) <- runReaderT (runWriterT (handleCommand cmd)) $
-             CommandEnv (JT._role s)
+             CommandEnv (JT._nodeRole s)
                         (JT._term s)
                         (JT._currentLeader s)
                         (JT._replayMap s)

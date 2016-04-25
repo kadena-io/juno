@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Juno.Consensus.ByzRaft.Client
+module Juno.Consensus.Client
   ( runRaftClient
   ) where
 
@@ -14,8 +14,7 @@ import Text.Read (readMaybe)
 import qualified Data.ByteString.Char8 as SB8
 
 import Juno.Runtime.Timer
-import Juno.Runtime.Types
-import Juno.Runtime.Protocol.Types
+import Juno.Types
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendRPC)
 import Juno.Runtime.MessageReceiver

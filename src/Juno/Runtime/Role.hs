@@ -4,7 +4,7 @@ module Juno.Runtime.Role
   ) where
 
 import Juno.Runtime.Timer
-import Juno.Runtime.Protocol.Types
+import Juno.Types
 import Juno.Util.Util
 
 -- THREAD: unknown/unused. updates state

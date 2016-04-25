@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.Pure.Handle.AppendEntries
+module Juno.Consensus.Handle.AppendEntries
   (handle)
 where
 
@@ -17,13 +17,13 @@ import Data.Set (Set)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Juno.Consensus.Pure.Types
-import Juno.Consensus.Pure.Handle.AppendEntriesResponse (updateCommitProofMap)
+import Juno.Consensus.Handle.Types
+import Juno.Consensus.Handle.AppendEntriesResponse (updateCommitProofMap)
 import Juno.Runtime.Sender (sendAllAppendEntriesResponse, sendAppendEntriesResponse, createAppendEntriesResponse)
 import Juno.Runtime.Timer (resetElectionTimer)
 import Juno.Util.Util
-import qualified Juno.Runtime.Protocol.Types as JT
-import Juno.Runtime.Log
+import qualified Juno.Types as JT
+import Juno.Types.Log
 
 data AppendEntriesEnv = AppendEntriesEnv {
 -- Old Constructors

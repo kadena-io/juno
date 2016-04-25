@@ -15,15 +15,14 @@ import qualified Control.Concurrent.MVar as MV
 import Control.Exception (SomeException, handle)
 import Control.Lens hiding ((.=))
 
-
 import Data.Aeson (encode, object, (.=))
 import Data.Aeson.Encode.Pretty (encodePretty)
 
-import Juno.Runtime.Types (CommandEntry(..), CommandResult(..))
+import Juno.Types (CommandEntry(..), CommandResult(..))
+import Schwifty.Swift.M105.Types (SWIFT)
 
 import Apps.Juno.Parser
 import Apps.Juno.Ledger (runQuery, convertQuery)
-import Schwifty.Swift.M105.Types (SWIFT)
 
 -- state of hopper
 newtype JunoEnv = JunoEnv {getStateMVar :: MV.MVar (DEval.PersistentState, Map.Map DEval.TransactionId SWIFT)}

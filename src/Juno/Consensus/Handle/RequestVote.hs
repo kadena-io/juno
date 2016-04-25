@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.Pure.Handle.RequestVote (
+module Juno.Consensus.Handle.RequestVote (
   handle
   ) where
 
@@ -14,11 +14,11 @@ import Control.Monad.State (get)
 
 import Juno.Util.Util (debug)
 import Juno.Runtime.Sender (sendRPC,createRequestVoteResponse)
-import Juno.Runtime.Log
+import Juno.Types.Log
 
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 
-import qualified Juno.Runtime.Protocol.Types as JT
+import qualified Juno.Types as JT
 
 data RequestVoteEnv = RequestVoteEnv {
 -- Old Constructors
@@ -70,12 +70,12 @@ handleRequestVote RequestVote{..} = do
       m <- createRequestVoteResponse' _rvCandidateId lli False
       return $ VoteForRPCSender m
 
-    _ | _lastLogIndex < lli -> do
+    _ | _rvLastLogIndex < lli -> do
       tell ["Candidate has an out of date log, so vote no immediately"]
       m <- createRequestVoteResponse' _rvCandidateId lli False
       return $ VoteForRPCSender m
 
-    _ | (_lastLogTerm, _lastLogIndex) >= (llt, lli) -> do
+    _ | (_rvLastLogTerm, _rvLastLogIndex) >= (llt, lli) -> do
       -- we have no recorded vote, or this request is for a higher term
       -- (we don't externalize votes without updating our own term, so we
       -- haven't voted in the higher term before)

@@ -10,11 +10,10 @@ module Juno.Spec.Simple
   , CommandStatus
   ) where
 
-import Juno.Consensus.ByzRaft.Server
-import Juno.Consensus.ByzRaft.Client
-import Juno.Runtime.Types
+import Juno.Consensus.Server
+import Juno.Consensus.Client
 import Juno.Messaging.Types
-import Juno.Runtime.Protocol.Types
+import Juno.Types
 import Juno.Messaging.ZMQ
 import Juno.Monitoring.Server (startMonitoring)
 import Juno.Runtime.Api.ApiServer

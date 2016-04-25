@@ -8,9 +8,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
-import Juno.Runtime.Types
-import Juno.Runtime.Protocol.Types
-
+import Juno.Types
 
 spec :: Spec
 spec = describe "WireFormat RoundTrips" testWireRoundtrip
@@ -275,8 +273,8 @@ rvRPC :: RequestVote
 rvRPC = RequestVote
   { _rvTerm        = Term 0
   , _rvCandidateId = nodeIdLeader
-  , _lastLogIndex  = LogIndex (-1)
-  , _lastLogTerm   = Term (-1)
+  , _rvLastLogIndex  = LogIndex (-1)
+  , _rvLastLogTerm   = Term (-1)
   , _rvProvenance  = NewMsg
   }
 

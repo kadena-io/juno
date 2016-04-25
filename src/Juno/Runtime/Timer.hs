@@ -9,8 +9,7 @@ module Juno.Runtime.Timer
 
 import Control.Monad
 import Control.Lens hiding (Index)
-import Juno.Runtime.Protocol.Types
-import Juno.Runtime.Log
+import Juno.Types
 import Juno.Util.Util
 
 getNewElectionTimeout :: Monad m => Raft m Int

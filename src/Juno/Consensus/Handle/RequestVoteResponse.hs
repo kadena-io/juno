@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.Pure.Handle.RequestVoteResponse
+module Juno.Consensus.Handle.RequestVoteResponse
     (handle)
 where
 
@@ -13,16 +13,16 @@ import Control.Monad.Writer.Strict
 import Data.Map as Map
 import Data.Set as Set
 
-import Juno.Consensus.Pure.Types
+import Juno.Consensus.Handle.Types
 import Juno.Runtime.Sender (sendAllAppendEntries)
 import Juno.Runtime.Timer (resetHeartbeatTimer, resetElectionTimerLeader,
                            resetElectionTimer)
 import Juno.Util.Util
-import Juno.Runtime.Log
-import qualified Juno.Runtime.Protocol.Types as JT
+import Juno.Types.Log
+import qualified Juno.Types as JT
 
 data RequestVoteResponseEnv = RequestVoteResponseEnv {
-      _role :: Role
+      _nodeRole :: Role
     , _term :: Term
     , _lastLogIndex :: LogIndex
     , _cYesVotes :: Set.Set RequestVoteResponse
@@ -41,7 +41,7 @@ handleRequestVoteResponse :: (MonadReader RequestVoteResponseEnv m, MonadWriter 
                              RequestVoteResponse -> m RequestVoteResponseOut
 handleRequestVoteResponse rvr@RequestVoteResponse{..} = do
   tell ["got a requestVoteResponse RPC for " ++ show _rvrTerm ++ ": " ++ show _voteGranted]
-  r <- view role
+  r <- view nodeRole
   ct <- view term
   curLog <- view lastLogIndex
   if r == Candidate && ct == _rvrTerm
@@ -82,7 +82,7 @@ handle m = do
   es <- use JT.logEntries
   (o,l) <- runReaderT (runWriterT (handleRequestVoteResponse m))
            (RequestVoteResponseEnv
-            (JT._role s)
+            (JT._nodeRole s)
             (JT._term s)
             (maxIndex es)
             (JT._cYesVotes s)

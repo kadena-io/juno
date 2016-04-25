@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Juno.Consensus.ByzRaft.Commit
+module Juno.Consensus.Commit
   (doCommit
   ,makeCommandResponse
   ,makeCommandResponse')
@@ -18,11 +18,9 @@ import qualified Data.Map as Map
 
 import Data.Foldable (toList)
 
-import Juno.Runtime.Types hiding (valid)
-import Juno.Runtime.Protocol.Types
+import Juno.Types hiding (valid)
 import Juno.Util.Util
 import Juno.Runtime.Sender (sendResults)
-import Juno.Runtime.Log
 
 -- THREAD: SERVER MAIN.
 doCommit :: Monad m => Raft m ()
@@ -41,7 +39,7 @@ applyLogEntries = do
   le <- use logEntries
   let leToApply = Seq.drop (fromIntegral $ la + 1) . takeEntries (ci + 1) $ le
   results <- mapM (applyCommand . _leCommand) leToApply
-  r <- use role
+  r <- use nodeRole
   lastApplied .= ci
   logMetric $ MetricAppliedIndex ci
   if not (null results)
