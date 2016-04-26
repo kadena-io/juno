@@ -2,33 +2,33 @@ clientTimeoutLimit: 50000
 publicKeys:
 - - host: '127.0.0.1'
     port: 10000
-  - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
+  - b44e70204aad891bce738db4f11dcd1a3d273dabe0e98a29eef0d28f5db61d48
 - - host: '127.0.0.1'
     port: 10001
-  - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
+  - 848c022bafb8dd726eebd729bf16c2060292103347ff04d45c8b50e7bb4f44d4
 - - host: '127.0.0.1'
     port: 10002
-  - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
+  - 4fe5969c3f7abd894721ce3275a4793eea823f5c7614e3c20b4d980bfec1cf98
 - - host: '127.0.0.1'
     port: 10003
-  - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
+  - 181dcbd823a1ea90a10c81581d76666867dc9ff3b5491868ff4bd5acb706f88a
 heartbeatTimeout: 1500000
 clientPublicKeys:
 - - host: '127.0.0.1'
     port: 10000
-  - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
+  - b44e70204aad891bce738db4f11dcd1a3d273dabe0e98a29eef0d28f5db61d48
 - - host: '127.0.0.1'
     port: 10001
-  - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
+  - 848c022bafb8dd726eebd729bf16c2060292103347ff04d45c8b50e7bb4f44d4
 - - host: '127.0.0.1'
     port: 10002
-  - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
+  - 4fe5969c3f7abd894721ce3275a4793eea823f5c7614e3c20b4d980bfec1cf98
 - - host: '127.0.0.1'
     port: 10003
-  - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
+  - 181dcbd823a1ea90a10c81581d76666867dc9ff3b5491868ff4bd5acb706f88a
 - - host: '127.0.0.1'
     port: 10004
-  - 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
+  - f3f70deccd8e30210cbddf1f116c06715eb9fce4689cdd707bcf4f24f9989d8a
 electionTimeoutRange:
 - 3000000
 - 6000000
@@ -39,10 +39,10 @@ otherNodes:
   port: 10001
 - host: '127.0.0.1'
   port: 10003
-myPublicKey: a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
+myPublicKey: 4fe5969c3f7abd894721ce3275a4793eea823f5c7614e3c20b4d980bfec1cf98
 nodeId:
   host: '127.0.0.1'
   port: 10002
 enableDebug: true
-myPrivateKey: 62e1ea85c45835c56391d5b7186a67af2dc218b3b841beb97c9b89bb6ba8fd71
-batchTimeDelta: 1 % 10
+myPrivateKey: 7065d704c0a8e1288bf77ec2d6b9bd3b15d82a4c411176e557e023b1f8c25b49
+batchTimeDelta: 1 % 100
