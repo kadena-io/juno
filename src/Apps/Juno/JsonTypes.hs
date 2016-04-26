@@ -6,9 +6,9 @@ module Apps.Juno.JsonTypes where
 
 import           Control.Monad (mzero)
 import           Data.Aeson as JSON
-import           Data.Text.Encoding (decodeUtf8)
 import           Data.Aeson.Types (Options(..),defaultOptions,parseMaybe)
 import qualified Data.Text as T
+import           Data.Text.Encoding as E
 import           Data.Text (Text)
 import           GHC.Generics
 import qualified Data.ByteString.Char8 as BSC
@@ -269,7 +269,8 @@ data CommandBatchRequest = CommandBatchRequest {
     } deriving (Show, Generic, Eq)
 
 instance ToJSON CommandBatchRequest where
-  toJSON (CommandBatchRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
+  toJSON (CommandBatchRequest payload' digest') = object ["payload" .= payload'
+                                                         , "digest" .= digest']
 instance FromJSON CommandBatchRequest where
   parseJSON (Object v) = CommandBatchRequest <$> v .: "payload"
                                              <*> v .: "digest"
@@ -292,3 +293,12 @@ mJsonBsToCommand bs = JSON.decode bs >>= \v ->
 
     mtransact (TransactBody code _) =
         BSC.pack $ T.unpack code
+
+commandToJSONBytes :: BSC.ByteString -> BLC.ByteString
+commandToJSONBytes cmd =
+    case BSC.words cmd of
+      (cmd':acct:amount:[]) | cmd' == "AdjustAccount" ->
+        JSON.encode $  AccountAdjustPayload (E.decodeUtf8 acct) (read . T.unpack . E.decodeUtf8 $ amount)
+      (cmd':acct:[])        | cmd' == "CreateAccount" ->
+        JSON.encode $  AccountPayload (E.decodeUtf8 acct)
+      _ -> JSON.encode $ TransactBody (E.decodeUtf8 cmd) ""
