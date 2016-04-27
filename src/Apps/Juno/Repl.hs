@@ -6,8 +6,9 @@ module Apps.Juno.Repl
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import Data.Char as C
-import Data.Either ()
+import Control.Exception
 import Data.Aeson as JSON
+import Data.Either ()
 import qualified Data.Text as T
 import qualified Network.Wreq as W
 import System.IO
@@ -54,7 +55,12 @@ runREPL = do
   cmd <- readPrompt
   case cmd of
     "" -> runREPL
-    _ -> processInput cmd >> runREPL
+    _ -> catch
+         (processInput cmd)
+         (\e -> do
+              let err = show (e :: SomeException)
+              putStrLn $ "Invalid Command: " ++ err
+         ) >> runREPL
   where
     processInput input = do
       cmd' <- return $ BSC.pack input
