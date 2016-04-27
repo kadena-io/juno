@@ -94,9 +94,9 @@ testWireRoundtrip = do
 -- NodeID's + Keys for Client (10002), Leader (10000) and Follower (10001)
 -- #######################################################################
 nodeIdLeader, nodeIdFollower, nodeIdClient :: NodeID
-nodeIdLeader = NodeID "localhost" 10000
-nodeIdFollower = NodeID "localhost" 10001
-nodeIdClient = NodeID "localhost" 10002
+nodeIdLeader = NodeID "localhost" 10000 "tcp://127.0.0.1:10000"
+nodeIdFollower = NodeID "localhost" 10001 "tcp://127.0.0.1:10001"
+nodeIdClient = NodeID "localhost" 10002 "tcp://127.0.0.1:10002"
 
 privKeyLeader, privKeyFollower, privKeyClient :: PrivateKey
 privKeyLeader = maybe (error "bad leader key") id $ importPrivate "\204m\223Uo|\211.\144\131\&5Xmlyd$\165T\148\&11P\142m\249\253$\216\232\220c"

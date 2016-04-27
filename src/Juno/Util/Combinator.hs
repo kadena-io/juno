@@ -7,7 +7,7 @@ module Juno.Util.Combinator
   ) where
 
 import Control.Lens
-import Control.Monad.RWS
+import Control.Monad.RWS.Strict
 
 -- like $, but the function is a lens from the reader environment with a
 -- pure function as its target

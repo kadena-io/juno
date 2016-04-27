@@ -25,16 +25,18 @@ import qualified Control.Concurrent.Lifted as CL
 -- main entry point wired up by Simple.hs
 -- getEntry (readChan) useResult (writeChan) replace by
 -- CommandMVarMap (MVar shared with App client)
-runRaftClient :: IO (RequestId, [CommandEntry])
+runRaftClient :: ReceiverEnv
+              -> IO (RequestId, [CommandEntry])
               -> CommandMVarMap
               -> Config
               -> RaftSpec (Raft IO)
               -> IO ()
-runRaftClient getEntries cmdStatusMap' rconf spec@RaftSpec{..} = do
+runRaftClient renv getEntries cmdStatusMap' rconf spec@RaftSpec{..} = do
   let csize = Set.size $ rconf ^. otherNodes
       qsize = getQuorumSize csize
   -- TODO: do we really need currentRequestId in state any longer, doing this to keep them in sync
   (CommandMap rid _) <- readMVar cmdStatusMap'
+  void $ runMessageReceiver renv -- THREAD: CLIENT MESSAGE RECEIVER
   runRWS_
     (raftClient (lift getEntries) cmdStatusMap')
     (RaftEnv rconf csize qsize spec)
@@ -49,7 +51,6 @@ raftClient getEntries cmdStatusMap' = do
   nodes <- view (cfg.otherNodes)
   when (Set.null nodes) $ error "The client has no nodes to send requests to."
   setCurrentLeader $ Just $ Set.findMin nodes
-  void $ CL.fork messageReceiver -- THREAD: CLIENT MESSAGE RECEIVER
   void $ CL.fork $ commandGetter getEntries cmdStatusMap' -- THREAD: CLIENT COMMAND REPL?
   pendingRequests .= Map.empty
   clientHandleEvents cmdStatusMap' -- forever read chan loop

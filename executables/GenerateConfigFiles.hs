@@ -17,7 +17,7 @@ import qualified Data.Map.Strict as Map
 import Juno.Types
 
 nodes :: [NodeID]
-nodes = iterate (\n@(NodeID _ p) -> n {_port = p + 1}) (NodeID "127.0.0.1" 10000)
+nodes = iterate (\n@(NodeID h p _) -> n {_port = p + 1, _fullAddr = "tcp://" ++ h ++ ":" ++ show (p+1)}) (NodeID "127.0.0.1" 10000 "tcp://127.0.0.1:10000")
 
 makeKeys :: CryptoRandomGen g => Int -> g -> [(PrivateKey,PublicKey)]
 makeKeys 0 _ = []

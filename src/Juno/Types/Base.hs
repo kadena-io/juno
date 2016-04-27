@@ -35,7 +35,7 @@ import Data.Aeson.Types (defaultOptions,Options(..))
 import GHC.Int (Int64)
 import GHC.Generics hiding (from)
 
-data NodeID = NodeID { _host :: !String, _port :: !Word64 }
+data NodeID = NodeID { _host :: !String, _port :: !Word64, _fullAddr :: !String }
   deriving (Eq,Ord,Read,Show,Generic)
 instance Serialize NodeID
 instance ToJSON NodeID where
@@ -73,10 +73,7 @@ instance Serialize Signature where
 instance Eq PublicKey where
   b == b' = exportPublic b == exportPublic b'
 instance Ord PublicKey where
-  b < b' = exportPublic b < exportPublic b'
   b <= b' = exportPublic b <= exportPublic b'
-  b > b' = exportPublic b > exportPublic b'
-  b >= b' = exportPublic b >= exportPublic b'
 instance ToJSON PublicKey where
   toJSON = toJSON . decodeUtf8 . B16.encode . exportPublic
 instance FromJSON PublicKey where
@@ -96,10 +93,7 @@ instance FromJSON (Map NodeID PublicKey) where
 instance Eq PrivateKey where
   b == b' = exportPrivate b == exportPrivate b'
 instance Ord PrivateKey where
-  b < b' = exportPrivate b < exportPrivate b'
   b <= b' = exportPrivate b <= exportPrivate b'
-  b > b' = exportPrivate b > exportPrivate b'
-  b >= b' = exportPrivate b >= exportPrivate b'
 instance ToJSON PrivateKey where
   toJSON = toJSON . decodeUtf8 . B16.encode . exportPrivate
 instance FromJSON PrivateKey where

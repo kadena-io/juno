@@ -63,6 +63,7 @@ library
                      , Juno.Types.Base
                      , Juno.Types.Command
                      , Juno.Types.Config
+                     , Juno.Types.Event
                      , Juno.Types.Log
                      , Juno.Types.Message
                      , Juno.Types.Message.Signed
@@ -74,7 +75,7 @@ library
                      , Juno.Types.Message.RVR
                      , Juno.Types.Message.REV
                      , Juno.Types.Metric
-                     , Juno.Types.State
+                     , Juno.Types.Spec
                      , Juno.Util.Combinator
                      , Juno.Util.Util
                      , Schwifty.Swift.M105.Types

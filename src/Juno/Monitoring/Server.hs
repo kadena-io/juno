@@ -61,7 +61,7 @@ startMonitoring config = do
     MetricHash bs ->
       Label.set hashLabel $ decodeUtf8 $ B64.encode bs
     -- Node
-    MetricNodeId node@(NodeID host port) -> do
+    MetricNodeId node@(NodeID host port _) -> do
       Label.set nodeIdLabel $ nodeDescription node
       Label.set hostLabel $ T.pack host
       Gauge.set portGauge $ fromIntegral port
@@ -81,4 +81,4 @@ startMonitoring config = do
 
   where
     nodeDescription :: NodeID -> T.Text
-    nodeDescription (NodeID host port) = T.pack $ host ++ ":" ++ show port
+    nodeDescription (NodeID host port _) = T.pack $ host ++ ":" ++ show port
