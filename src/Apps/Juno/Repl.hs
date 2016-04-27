@@ -81,7 +81,6 @@ runREPL = do
           Right _ -> do
              let cmdJsonBytes = T.pack . BLC.unpack $ JsonT.commandToJSONBytes cmd'
              let jsonBytes = cmdBatch2JSON (JsonT.CommandBatch [cmdJsonBytes])
-             print jsonBytes
              res <- submitCmdBatch jsonBytes
              showResult res
     batchToken :: String
