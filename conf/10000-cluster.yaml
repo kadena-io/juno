@@ -1,61 +1,61 @@
 clientTimeoutLimit: 50000
 publicKeys:
-- - host: '127.0.0.1'
+- - fullAddr: tcp://127.0.0.1:10000
+    host: '127.0.0.1'
     port: 10000
-    fullAddr: 'tcp://127.0.0.1:10000'
-  - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
-- - host: '127.0.0.1'
+  - c7103c12b9d4337e471fdae9afa43061688b616207c2c4118fbde53cfbc02ff0
+- - fullAddr: tcp://127.0.0.1:10001
+    host: '127.0.0.1'
     port: 10001
-    fullAddr: 'tcp://127.0.0.1:10001'
-  - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
-- - host: '127.0.0.1'
+  - 95dcbfc90a72f1f1307a39e93c83c55b438553326823205b2c0edcdf6908a44b
+- - fullAddr: tcp://127.0.0.1:10002
+    host: '127.0.0.1'
     port: 10002
-    fullAddr: 'tcp://127.0.0.1:10002'
-  - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
-- - host: '127.0.0.1'
+  - 11bea991f93dc08c61bda84875e2b8e2aab5843e4d5a07a1adf66dcd56223c5b
+- - fullAddr: tcp://127.0.0.1:10003
+    host: '127.0.0.1'
     port: 10003
-    fullAddr: 'tcp://127.0.0.1:10003'
-  - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
+  - 5f79312b1447bc768d0a06e4e3784239631932db07870033eee16980be9f5bbe
 heartbeatTimeout: 1500000
 clientPublicKeys:
-- - host: '127.0.0.1'
+- - fullAddr: tcp://127.0.0.1:10000
+    host: '127.0.0.1'
     port: 10000
-    fullAddr: 'tcp://127.0.0.1:10000'
-  - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
-- - host: '127.0.0.1'
+  - c7103c12b9d4337e471fdae9afa43061688b616207c2c4118fbde53cfbc02ff0
+- - fullAddr: tcp://127.0.0.1:10001
+    host: '127.0.0.1'
     port: 10001
-    fullAddr: 'tcp://127.0.0.1:10001'
-  - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
-- - host: '127.0.0.1'
+  - 95dcbfc90a72f1f1307a39e93c83c55b438553326823205b2c0edcdf6908a44b
+- - fullAddr: tcp://127.0.0.1:10002
+    host: '127.0.0.1'
     port: 10002
-    fullAddr: 'tcp://127.0.0.1:10002'
-  - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
-- - host: '127.0.0.1'
+  - 11bea991f93dc08c61bda84875e2b8e2aab5843e4d5a07a1adf66dcd56223c5b
+- - fullAddr: tcp://127.0.0.1:10003
+    host: '127.0.0.1'
     port: 10003
-    fullAddr: 'tcp://127.0.0.1:10003'
-  - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
-- - host: '127.0.0.1'
+  - 5f79312b1447bc768d0a06e4e3784239631932db07870033eee16980be9f5bbe
+- - fullAddr: tcp://127.0.0.1:10004
+    host: '127.0.0.1'
     port: 10004
-    fullAddr: 'tcp://127.0.0.1:10004'
-  - 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
+  - f69bef0eff88284b836a7d193c3749bffb922e8811c7261ec00a1627d95e0e26
 electionTimeoutRange:
 - 3000000
 - 6000000
 otherNodes:
-- host: '127.0.0.1'
+- fullAddr: tcp://127.0.0.1:10001
+  host: '127.0.0.1'
   port: 10001
-  fullAddr: 'tcp://127.0.0.1:10001'
-- host: '127.0.0.1'
+- fullAddr: tcp://127.0.0.1:10002
+  host: '127.0.0.1'
   port: 10002
-  fullAddr: 'tcp://127.0.0.1:10002'
-- host: '127.0.0.1'
+- fullAddr: tcp://127.0.0.1:10003
+  host: '127.0.0.1'
   port: 10003
-  fullAddr: 'tcp://127.0.0.1:10003'
-myPublicKey: adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
+myPublicKey: c7103c12b9d4337e471fdae9afa43061688b616207c2c4118fbde53cfbc02ff0
 nodeId:
+  fullAddr: tcp://127.0.0.1:10000
   host: '127.0.0.1'
   port: 10000
-  fullAddr: 'tcp://127.0.0.1:10000'
 enableDebug: true
-myPrivateKey: 2b12f846e0d23f022dd253b5d62925a9f8c09c63133eaacf17fa73b74aae7d79
-batchTimeDelta: 1 % 10
+myPrivateKey: 2338cd481a73c34ecff19d1641aa9348bcb79f22a7e9e0d94886bf2d0e2aef51
+batchTimeDelta: 1 % 100
