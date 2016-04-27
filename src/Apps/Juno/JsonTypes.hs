@@ -225,7 +225,7 @@ instance FromJSON LedgerQueryRequest where
 --   "hash": "string",
 --   "key": "string"
 -- }
-
+-- {"data":"","code":"transfer(000->100->101->102->103->003, 100%1)"}
 data TransactBody = TransactBody { _txCode :: Text, _txData :: Text } deriving (Show, Eq)
 instance ToJSON TransactBody where
     toJSON (TransactBody code txData) = object ["code" .= code, "data" .= txData]
@@ -302,3 +302,6 @@ commandToJSONBytes cmd =
       (cmd':acct:[])        | cmd' == "CreateAccount" ->
         JSON.encode $  AccountPayload (E.decodeUtf8 acct)
       _ -> JSON.encode $ TransactBody (E.decodeUtf8 cmd) ""
+
+commandTextToJSONText :: T.Text -> T.Text
+commandTextToJSONText cmd = T.pack . BLC.unpack $ commandToJSONBytes $ BSC.pack . T.unpack $ cmd

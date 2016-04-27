@@ -3,16 +3,14 @@ module Apps.Juno.Repl
  ( main
  ) where
 
-import Control.Concurrent.Lifted (threadDelay)
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BLC
+import Data.Char as C
 import Data.Either ()
 import Data.Aeson as JSON
 import qualified Data.Text as T
 import qualified Network.Wreq as W
 import System.IO
-
-import Juno.Types
 
 import Apps.Juno.Parser
 import qualified Apps.Juno.JsonTypes as JsonT
@@ -49,7 +47,7 @@ showResult res = putStrLn $ promptGreen ++ show res
 -- |
 -- ObserveAccounts
 -- CreateAccount Acct1
--- AdjustAccount Acct1 1.0
+-- AdjustAccount Acct1 100.0
 -- transfer(Acct1->Acct2, 1%1)
 runREPL :: IO ()
 runREPL = do
@@ -60,10 +58,17 @@ runREPL = do
   where
     processInput input = do
       cmd' <- return $ BSC.pack input
-      if take 11 input == "batch test:"
+      -- batch test: 500 transfer(Acct1->Acct2, 1 % 1)
+      -- batch test: 500 AdjustAccount Acct1 2.0
+      if take 11 input == batchToken
       then do
-        showResult $ show [CommandEntry cmd']
-        threadDelay 1000
+        let batchCmd = T.strip . T.pack $ drop 11 input
+        let sz = T.takeWhile C.isNumber batchCmd
+        let tx = T.drop (T.length sz) batchCmd
+        let txBatch = replicate (read . T.unpack $ sz) (JsonT.commandTextToJSONText tx)
+        let jsonBytes = cmdBatch2JSON $ JsonT.CommandBatch txBatch
+        res <- submitCmdBatch jsonBytes
+        showResult res
       else if take 4 input == "Poll"
       then do
         let cmds = (tail . words) input
@@ -79,6 +84,8 @@ runREPL = do
              print jsonBytes
              res <- submitCmdBatch jsonBytes
              showResult res
+    batchToken :: String
+    batchToken = "batch test:"
 
     cmdBatch2JSON :: JsonT.CommandBatch -> BLC.ByteString
     cmdBatch2JSON cmdBatch = JSON.encode $
