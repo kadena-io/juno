@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Juno.Types.State
+module Juno.Types.Spec
   ( Raft
   , RaftSpec(..)
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
@@ -34,17 +34,12 @@ import Data.Thyme.Time.Core ()
 import System.Random (Random)
 
 import Juno.Types.Base
-import Juno.Types.Config
-import Juno.Types.Message
 import Juno.Types.Command
-import Juno.Types.Metric
+import Juno.Types.Config
+import Juno.Types.Event
 import Juno.Types.Log
-
-data Event = ERPC RPC
-           | AERs AlotOfAERs
-           | ElectionTimeout String
-           | HeartbeatTimeout String
-  deriving (Show)
+import Juno.Types.Message
+import Juno.Types.Metric
 
 -- | A structure containing all the implementation details for running
 -- the raft protocol.
