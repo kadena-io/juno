@@ -37,8 +37,9 @@ applyLogEntries = do
   la <- use lastApplied
   ci <- use commitIndex
   le <- use logEntries
+  now <- join $ view (rs.getTimestamp)
   let leToApply = Seq.drop (fromIntegral $ la + 1) . takeEntries (ci + 1) $ le
-  results <- mapM (applyCommand . _leCommand) leToApply
+  results <- mapM (applyCommand now . _leCommand) leToApply
   r <- use nodeRole
   lastApplied .= ci
   logMetric $ MetricAppliedIndex ci
@@ -62,34 +63,41 @@ logApplyLatency (Command _ _ _ provenance) = case provenance of
       logMetric $ MetricApplyLatency $ fromIntegral $ interval arrived now
     Nothing -> return ()
 
-applyCommand :: Monad m => Command -> Raft m (NodeID, CommandResponse)
-applyCommand cmd@Command{..} = do
+applyCommand :: Monad m => UTCTime -> Command -> Raft m (NodeID, CommandResponse)
+applyCommand tEnd cmd@Command{..} = do
   apply <- view (rs.applyLogEntry)
   logApplyLatency cmd
   result <- apply _cmdEntry
-  updateCmdStatusMap cmd result -- shared with the API and to query state
+  updateCmdStatusMap cmd result tEnd -- shared with the API and to query state
   replayMap %= Map.insert (_cmdClientId, getCmdSigOrInvariantError "applyCommand" cmd) (Just result)
-  ((,) _cmdClientId) <$> makeCommandResponse cmd result
+  ((,) _cmdClientId) <$> makeCommandResponse tEnd cmd result
 
-updateCmdStatusMap :: Monad m => Command -> CommandResult -> Raft m ()
-updateCmdStatusMap cmd cmdResult = do
+updateCmdStatusMap :: Monad m => Command -> CommandResult -> UTCTime -> Raft m ()
+updateCmdStatusMap cmd cmdResult tEnd = do
   rid <- return $ _cmdRequestId cmd
   mvarMap <- view (rs.cmdStatusMap)
   updateMapFn <- view (rs.updateCmdMap)
-  void $ updateMapFn mvarMap rid (CmdApplied cmdResult)
+  lat <- return $ case _pTimeStamp $ _cmdProvenance cmd of
+    Nothing -> 1 -- don't want a div by zero error downstream and this is for demo purposes
+    Just (ReceivedAt tStart) -> interval tStart tEnd
+  void $ updateMapFn mvarMap rid (CmdApplied cmdResult lat)
 
-makeCommandResponse :: Monad m => Command -> CommandResult -> Raft m CommandResponse
-makeCommandResponse cmd result = do
+makeCommandResponse :: Monad m => UTCTime -> Command -> CommandResult -> Raft m CommandResponse
+makeCommandResponse tEnd cmd result = do
   nid <- view (cfg.nodeId)
   mlid <- use currentLeader
-  return $ makeCommandResponse' nid mlid cmd result
+  lat <- return $ case _pTimeStamp $ _cmdProvenance cmd of
+    Nothing -> 1 -- don't want a div by zero error downstream and this is for demo purposes
+    Just (ReceivedAt tStart) -> interval tStart tEnd
+  return $ makeCommandResponse' nid mlid cmd result lat
 
-makeCommandResponse' :: NodeID -> Maybe NodeID -> Command -> CommandResult -> CommandResponse
-makeCommandResponse' nid mlid Command{..} result = CommandResponse
+makeCommandResponse' :: NodeID -> Maybe NodeID -> Command -> CommandResult -> Int64 -> CommandResponse
+makeCommandResponse' nid mlid Command{..} result lat = CommandResponse
              result
              (maybe nid id mlid)
              nid
              _cmdRequestId
+             lat
              NewMsg
 
 logCommitChange :: Monad m => LogIndex -> LogIndex -> Raft m ()

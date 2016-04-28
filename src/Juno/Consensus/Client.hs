@@ -179,7 +179,7 @@ clientHandleCommandResponse cmdStatusMap' CommandResponse{..} = do
     setCurrentLeader $ Just _cmdrLeaderId
     pendingRequests %= Map.delete _cmdrRequestId
     -- cmdStatusMap shared with the client, client can poll this map to await applied result
-    liftIO (modifyMVar_ cmdStatusMap' (\(CommandMap rid m) -> return $ CommandMap rid (Map.insert _cmdrRequestId (CmdApplied _cmdrResult) m)))
+    liftIO (modifyMVar_ cmdStatusMap' (\(CommandMap rid m) -> return $ CommandMap rid (Map.insert _cmdrRequestId (CmdApplied _cmdrResult _cmdrLatency) m)))
     numTimeouts .= 0
     prcount <- fmap Map.size (use pendingRequests)
     -- if we still have pending requests, reset the timer

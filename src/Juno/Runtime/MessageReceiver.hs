@@ -19,12 +19,13 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Serialize as S
 import qualified Data.Set as Set
 
-import Juno.Types hiding (getMessages, getNewCommands, getNewEvidence, enqueue, debugPrint, nodeId)
+import Juno.Types hiding (getMessages, getNewCommands, getNewEvidence, enqueue, debugPrint, nodeId, getRvAndRVRs)
 
 data ReceiverEnv = ReceiverEnv
   { _getMessages    :: Int -> IO [(ReceivedAt, SignedRPC)]
   , _getNewCommands :: Int -> IO [(ReceivedAt, SignedRPC)]
   , _getNewEvidence :: Int -> IO [(ReceivedAt, SignedRPC)]
+  , _getRvAndRVRs :: IO (ReceivedAt, SignedRPC)
   , _keySet :: KeySet
   , _enqueue :: Event -> IO ()
   , _debugPrint :: String -> IO ()
@@ -46,9 +47,9 @@ messageReceiver = do
   debug <- view debugPrint
   -- KeySet <$> view (cfg.publicKeys) <*> view (cfg.clientPublicKeys)
   ks <- view keySet
+  _ <- liftIO $ CL.fork $ runReaderT rvAndRvrFastPath env
   liftIO $ forever $ do
     -- NB: This all happens on one thread because it runs in Raft and we're trying (too hard) to avoid running in IO
-
     -- Take a big gulp of AERs, the more we get the more we can skip
     (alotOfAers, invalidAers) <- toAlotOfAers <$> getAers 2000
     unless (alotOfAers == mempty) $ enqueueEvent $ AERs alotOfAers
@@ -65,6 +66,20 @@ messageReceiver = do
       enqueueEvent $ ERPC $ CMDB' cmds
       debug $ "AutoBatched " ++ show (length cmds') ++ " Commands"
 
+-- Generally these messages don't come in, but when they do we want them processed ASAP as we're on the clock.
+rvAndRvrFastPath :: ReaderT ReceiverEnv IO ()
+rvAndRvrFastPath = do
+  getRvAndRVRs' <- view getRvAndRVRs
+  enqueueEvent <- view enqueue
+  debug <- view debugPrint
+  ks <- view keySet
+  liftIO $ forever $ do
+    (ts, msg) <- getRvAndRVRs'
+    case signedRPCtoRPC (Just ts) ks msg of
+      Left err -> debug err
+      Right v -> do
+        debug $ "Received " ++ show (_digType $ _sigDigest msg)
+        enqueueEvent $ ERPC v
 
 toAlotOfAers :: [(ReceivedAt,SignedRPC)] -> (AlotOfAERs, [String])
 toAlotOfAers s = (alotOfAers, invalids)

@@ -39,7 +39,7 @@ seqIndex s i =
     else Nothing
 
 getQuorumSize :: Int -> Int
-getQuorumSize n = minimum [n - f | f <- [0..n], n >= 3*f + 1]
+getQuorumSize n = 1 + floor (fromIntegral n / 2 :: Float)
 
 debug :: Monad m => String -> Raft m ()
 debug s = do

@@ -146,7 +146,7 @@ cmdStatus2PollResult (RequestId rid) CmdSubmitted =
   PollResult{_pollStatus = "PENDING", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = ""}
 cmdStatus2PollResult (RequestId rid) CmdAccepted =
   PollResult{_pollStatus = "PENDING", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = ""}
-cmdStatus2PollResult (RequestId rid) (CmdApplied (CommandResult res)) =
+cmdStatus2PollResult (RequestId rid) (CmdApplied (CommandResult res) _) =
   PollResult{_pollStatus = "ACCEPTED", _pollCmdId = toText rid, _logidx = -1, _pollMessage = "", _pollResPayload = decodeUtf8 res}
 
 cmdStatusError :: PollResult
