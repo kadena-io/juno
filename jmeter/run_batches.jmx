@@ -34,7 +34,7 @@
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
                 <stringProp name="Argument.value">{&quot;payload&quot;:{&quot;cmds&quot;:&#xd;
 [&quot;{\&quot;account\&quot;:\&quot;WATER\&quot;}&quot;,&#xd;
-&quot;{\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&quot;{\&quot;amount\&quot;:100,\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&#xd;
+&quot;{\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&quot;{\&quot;amount\&quot;:{\&quot;numerator\&quot;: 100, \&quot;denominator\&quot;: 1} ,\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&#xd;
 &quot;{\&quot;amount\&quot;:1000,\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&#xd;
 &quot;{\&quot;amount\&quot;:100,\&quot;account\&quot;:\&quot;KALE\&quot;}&quot;,&#xd;
 &quot;{\&quot;amount\&quot;:200,\&quot;account\&quot;:\&quot;KALE\&quot;}&quot;,&#xd;

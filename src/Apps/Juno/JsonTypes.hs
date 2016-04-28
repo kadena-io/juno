@@ -1,19 +1,21 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
 module Apps.Juno.JsonTypes where
 
+import           Control.Applicative
 import           Control.Monad (mzero)
 import           Data.Aeson as JSON
 import           Data.Aeson.Types (Options(..),defaultOptions,parseMaybe)
 import qualified Data.Text as T
 import           Data.Text.Encoding as E
 import           Data.Text (Text)
-import           GHC.Generics
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BLC
-import           Control.Applicative
+import           GHC.Generics
 
 import           Juno.Types (CommandStatus(..),CommandResult(..),RequestId(..))
 
@@ -64,13 +66,14 @@ commandResponseFailure :: Text -> Text -> CommandResponse
 commandResponseFailure cid msg = CommandResponse "Failure" cid msg
 
 -- | AccountAdjust adding/substracting money from and existing account
--- { "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }
+-- { "payload": { "account": "TSLA", "amount": 100%1 }, "digest": { "hash": "myhash", "key": "string" } }
 data AccountAdjustPayload = AccountAdjustPayload {
       _adjustAccount :: Text
-    , _adjustAmount :: Double } deriving (Eq, Generic, Show)
+    , _adjustAmount  :: Rational } deriving (Eq, Generic, Show)
 
 instance ToJSON AccountAdjustPayload where
-    toJSON (AccountAdjustPayload account amount) = object ["account" .= account, "amount" .= amount]
+    toJSON (AccountAdjustPayload account amount) = object ["account" .= account
+                                                          , "amount" .= amount]
 instance FromJSON AccountAdjustPayload where
     parseJSON (Object v) = AccountAdjustPayload <$>
                              v .: "account" <*>
@@ -83,7 +86,8 @@ data AccountAdjustRequest = AccountAdjustRequest {
     } deriving (Eq, Generic, Show)
 
 instance ToJSON AccountAdjustRequest where
-    toJSON (AccountAdjustRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
+    toJSON (AccountAdjustRequest payload' digest') = object ["payload" .= payload'
+                                                            , "digest" .= digest']
 instance FromJSON AccountAdjustRequest where
     parseJSON (Object v) = AccountAdjustRequest <$>
                              v .: "payload" <*>
@@ -286,22 +290,10 @@ mJsonBsToCommand bs = JSON.decode bs >>= \v ->
     tryParse v = parseMaybe parseJSON v
 
     mAdjustAccount (AccountAdjustPayload acct amt) =
-        BSC.pack $ "AdjustAccount " ++  T.unpack acct ++ " " ++ show (toRational amt)
+        BSC.pack $ "AdjustAccount " ++  T.unpack acct ++ " " ++ show amt
 
     mAdjustCreateAcct (AccountPayload acct) =
         BSC.pack $ "CreateAccount " ++  T.unpack acct
 
     mtransact (TransactBody code _) =
         BSC.pack $ T.unpack code
-
-commandToJSONBytes :: BSC.ByteString -> BLC.ByteString
-commandToJSONBytes cmd =
-    case BSC.words cmd of
-      (cmd':acct:amount:[]) | cmd' == "AdjustAccount" ->
-        JSON.encode $  AccountAdjustPayload (E.decodeUtf8 acct) (read . T.unpack . E.decodeUtf8 $ amount)
-      (cmd':acct:[])        | cmd' == "CreateAccount" ->
-        JSON.encode $  AccountPayload (E.decodeUtf8 acct)
-      _ -> JSON.encode $ TransactBody (E.decodeUtf8 cmd) ""
-
-commandTextToJSONText :: T.Text -> T.Text
-commandTextToJSONText cmd = T.pack . BLC.unpack $ commandToJSONBytes $ BSC.pack . T.unpack $ cmd

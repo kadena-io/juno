@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Apps.Juno.Repl
  ( main
  ) where
@@ -31,16 +32,8 @@ readPrompt = flushStr prompt >> getLine
 apiEndpoint :: Int -> String
 apiEndpoint port = "http://localhost:" ++ show port ++ "/"
 
-submitCmdBatch :: BLC.ByteString -> IO (W.Response BLC.ByteString)
-submitCmdBatch cmdBatch = W.post (cmdBathURL 8001) cmdBatch
- where
-   cmdBathURL p = apiEndpoint p ++ "api/juno/v1/cmd/batch"
-
--- { "payload": {"cmdids": ["rid_1","rid_2"]},"digest": { "hash": "string", "key": "string" } }
-submitPollRequestId :: BLC.ByteString -> IO (W.Response BLC.ByteString)
-submitPollRequestId pollReq = W.post (pollURL 8001) pollReq
- where
-   pollURL p = apiEndpoint p ++ "api/juno/v1/poll"
+submitRequest :: BLC.ByteString -> String -> IO (W.Response BLC.ByteString)
+submitRequest reqBody relativePath = W.post (apiEndpoint 8001 ++ relativePath) reqBody
 
 showResult :: Show a => a -> IO ()
 showResult res = putStrLn $ promptGreen ++ show res
@@ -52,54 +45,80 @@ showResult res = putStrLn $ promptGreen ++ show res
 -- transfer(Acct1->Acct2, 1%1)
 runREPL :: IO ()
 runREPL = do
-  cmd <- readPrompt
-  case cmd of
+  input <- readPrompt
+  case input of
     "" -> runREPL
     _ -> catch
-         (processInput cmd)
-         (\e -> do
-              let err = show (e :: SomeException)
-              putStrLn $ "Invalid Command: " ++ err
-         ) >> runREPL
+         (processInput input)
+         (\(e :: SomeException) -> putStrLn $ "Invalid Command: " ++ show e) >> runREPL
   where
-    processInput input = do
-      cmd' <- return $ BSC.pack input
-      -- batch test: 500 transfer(Acct1->Acct2, 1 % 1)
-      -- batch test: 500 AdjustAccount Acct1 2.0
-      if take 11 input == batchToken
-      then do
-        let batchCmd = T.strip . T.pack $ drop 11 input
-        let sz = T.takeWhile C.isNumber batchCmd
-        let tx = T.drop (T.length sz) batchCmd
-        let txBatch = replicate (read . T.unpack $ sz) (JsonT.commandTextToJSONText tx)
-        let jsonBytes = cmdBatch2JSON $ JsonT.CommandBatch txBatch
-        res <- submitCmdBatch jsonBytes
-        showResult res
-      else if take 4 input == "Poll"
-      then do
-        let cmds = (tail . words) input
-        let pollRequestsJson = rids2PollJSON $ fmap T.pack cmds
-        res <- submitPollRequestId pollRequestsJson
-        showResult res
-      else
-        case readHopper cmd' of
-          Left err -> putStrLn input >> putStrLn err >> runREPL
-          Right _ -> do
-             let cmdJsonBytes = T.pack . BLC.unpack $ JsonT.commandToJSONBytes cmd'
-             let jsonBytes = cmdBatch2JSON (JsonT.CommandBatch [cmdJsonBytes])
-             res <- submitCmdBatch jsonBytes
-             showResult res
+
+    processInput :: String -> IO()
+    processInput input =
+      case requestInfo input of
+        Right (body, relPath) -> do
+            resp <- submitRequest body relPath
+            showResult resp
+        Left err -> showResult err
+
+    requestInfo :: String -> Either String (BLC.ByteString, String)
+    requestInfo input
+       -- batch test: 500 transfer(Acct1->Acct2, 1 % 1)
+       -- batch test: 500 AdjustAccount Acct1 2.0
+      | isBatchTestCmd input = do
+          let szAndCmd = T.strip . T.pack $ drop 11 input
+          let ctText = T.takeWhile C.isNumber szAndCmd -- num of cmds to include in the batch
+          let cmd = T.drop (T.length ctText) szAndCmd  -- cmd to batch
+          let ct = read . T.unpack $ ctText
+          case replCmd2json (T.unpack cmd) of
+            Left err -> Left err
+            Right cmdJson ->
+              let cmds = replicate ct cmdJson
+              in Right (batchReqJson $ JsonT.CommandBatch cmds, "api/juno/v1/cmd/batch")
+
+      --  Poll rid1 rid2 rid3
+      | isPollCmd input = do
+          let rids = (tail . words) input -- drop "Poll" and get [rids] (tail)
+          Right (pollRidsJson $ fmap T.pack rids, "api/juno/v1/poll")
+
+      -- Single command, i.e. CreateAccount Acct1, AdjustAccount Acct1 10%1, or raw Program.
+      -- REPL command -> json representation and submitted to API as a batch of one elem.
+      | otherwise =
+          case replCmd2json input of
+            Left err -> Left err
+            Right cmdJson ->
+              Right (batchReqJson (JsonT.CommandBatch [cmdJson]), "api/juno/v1/cmd/batch")
+
+    toText = T.pack . BLC.unpack
+
+    replCmd2json input =
+      case readHopper (BSC.pack input) of
+        Left err -> Left $ input ++ " " ++ err
+        Right cmd -> Right $ toText $ commandToJson cmd input
+
+    commandToJson :: HopperLiteAdminCommand -> String -> BLC.ByteString
+    commandToJson (CreateAccount acct) _ = JSON.encode $ JsonT.AccountPayload (T.strip acct)
+    commandToJson (AdjustAccount acct amount) _ =
+      JSON.encode $ JsonT.AccountAdjustPayload acct amount
+    commandToJson _ input = JSON.encode $ JsonT.TransactBody (T.pack input) ""
+
     batchToken :: String
     batchToken = "batch test:"
 
-    cmdBatch2JSON :: JsonT.CommandBatch -> BLC.ByteString
-    cmdBatch2JSON cmdBatch = JSON.encode $
+    isBatchTestCmd :: String -> Bool
+    isBatchTestCmd input = take 11 input == batchToken
+
+    isPollCmd :: String -> Bool
+    isPollCmd input = take 4 input == "Poll"
+
+    batchReqJson :: JsonT.CommandBatch -> BLC.ByteString
+    batchReqJson cmdBatch = JSON.encode $
                               JsonT.CommandBatchRequest
                                 cmdBatch
                                 (JsonT.Digest "hashy" "mykey")
 
-    rids2PollJSON :: [T.Text] -> BLC.ByteString
-    rids2PollJSON rids = JSON.encode $
+    pollRidsJson :: [T.Text] -> BLC.ByteString
+    pollRidsJson rids = JSON.encode $
                           JsonT.PollPayloadRequest
                            (JsonT.PollPayload rids)
                            (JsonT.Digest "hashy" "mykey")
