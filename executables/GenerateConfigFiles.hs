@@ -36,8 +36,11 @@ main = do
   putStrLn "Number of client nodes?"
   hFlush stdout
   cn <- fmap readMaybe getLine
-  case (mn,cn) of
-    (Just n,Just c)-> do
+  putStrLn "Enable logging for Followers (True/False)?"
+  hFlush stdout
+  debugFollower <- fmap readMaybe getLine
+  case (mn,cn,debugFollower) of
+    (Just n,Just c,Just df)-> do
       g <- newGenIO :: IO SystemRandom
       keyMaps' <- return $! keyMaps $ makeKeys (n+c) g
       clientIds <- return $ take c $ drop n nodes
@@ -45,14 +48,14 @@ main = do
       let isNotAClient nid _ = not $ Set.member nid (Set.fromList clientIds)
       clusterKeyMaps <- return $ (Map.filterWithKey isNotAClient *** Map.filterWithKey isNotAClient) keyMaps'
       clientKeyMaps <- return $ (Map.filterWithKey isAClient *** Map.filterWithKey isAClient) keyMaps'
-      clusterConfs <- return (createClusterConfig clusterKeyMaps (snd clientKeyMaps) <$> take n nodes)
-      clientConfs <- return (createClientConfig (snd clusterKeyMaps) clientKeyMaps <$> clientIds)
+      clusterConfs <- return (createClusterConfig df clusterKeyMaps (snd clientKeyMaps) <$> take n nodes)
+      clientConfs <- return (createClientConfig df (snd clusterKeyMaps) clientKeyMaps <$> clientIds)
       mapM_ (\c' -> Y.encodeFile ("conf" </> show (_port $ _nodeId c') ++ "-cluster.yaml") c') clusterConfs
       mapM_ (\c' -> Y.encodeFile ("conf" </> show (_port $ _nodeId c') ++ "-client.yaml") c') clientConfs
     _ -> putStrLn "Failed to read either input into a number, please try again"
 
-createClusterConfig :: (Map NodeID PrivateKey, Map NodeID PublicKey) -> Map NodeID PublicKey -> NodeID -> Config
-createClusterConfig (privMap, pubMap) clientPubMap nid = Config
+createClusterConfig :: Bool -> (Map NodeID PrivateKey, Map NodeID PublicKey) -> Map NodeID PublicKey -> NodeID -> Config
+createClusterConfig debugFollower (privMap, pubMap) clientPubMap nid = Config
   { _otherNodes           = Set.delete nid $ Map.keysSet pubMap
   , _nodeId               = nid
   , _publicKeys           = pubMap
@@ -64,10 +67,11 @@ createClusterConfig (privMap, pubMap) clientPubMap nid = Config
   , _batchTimeDelta       = fromSeconds' (1%100) -- default to 10ms
   , _enableDebug          = True
   , _clientTimeoutLimit   = 50000
+  , _dontDebugFollower    = not debugFollower
   }
 
-createClientConfig :: Map NodeID PublicKey -> (Map NodeID PrivateKey, Map NodeID PublicKey) -> NodeID -> Config
-createClientConfig clusterPubMap (privMap, pubMap) nid = Config
+createClientConfig :: Bool -> Map NodeID PublicKey -> (Map NodeID PrivateKey, Map NodeID PublicKey) -> NodeID -> Config
+createClientConfig debugFollower clusterPubMap (privMap, pubMap) nid = Config
   { _otherNodes           = Map.keysSet clusterPubMap
   , _nodeId               = nid
   , _publicKeys           = clusterPubMap
@@ -79,4 +83,5 @@ createClientConfig clusterPubMap (privMap, pubMap) nid = Config
   , _batchTimeDelta       = fromSeconds' (1%100) -- default to 10ms
   , _enableDebug          = False
   , _clientTimeoutLimit   = 50000
+  , _dontDebugFollower    = not debugFollower
   }

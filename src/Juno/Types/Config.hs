@@ -5,7 +5,7 @@
 module Juno.Types.Config
   ( Config(..), otherNodes, nodeId, electionTimeoutRange, heartbeatTimeout
   , enableDebug, publicKeys, clientPublicKeys, myPrivateKey, clientTimeoutLimit
-  , myPublicKey, batchTimeDelta
+  , myPublicKey, batchTimeDelta, dontDebugFollower
   , KeySet(..), ksClient, ksCluster
   ) where
 
@@ -35,6 +35,7 @@ data Config = Config
   , _batchTimeDelta       :: !NominalDiffTime
   , _enableDebug          :: !Bool
   , _clientTimeoutLimit   :: !Int
+  , _dontDebugFollower    :: !Bool
   }
   deriving (Show, Generic)
 makeLenses ''Config
