@@ -162,6 +162,7 @@ cmdrRPC = CommandResponse
   , _cmdrLeaderId   = nodeIdLeader
   , _cmdrNodeId     = nodeIdLeader
   , _cmdrRequestId  = RequestId 1
+  , _cmdrLatency    = 1
   , _cmdrProvenance = NewMsg
   }
 
