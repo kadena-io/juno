@@ -43,11 +43,12 @@ import qualified Data.Yaml as Y
 import System.Random
 
 data Options = Options
-  { optConfigFile :: FilePath
+  {  optConfigFile :: FilePath
+   , optApiPort :: Int
   } deriving Show
 
 defaultOptions :: Options
-defaultOptions = Options { optConfigFile = "" }
+defaultOptions = Options { optConfigFile = "", optApiPort = 8000 }
 
 options :: [OptDescr (Options -> Options)]
 options =
@@ -55,6 +56,10 @@ options =
            ["config"]
            (ReqArg (\fp opts -> opts { optConfigFile = fp }) "CONF_FILE")
            "Configuration File"
+  , Option ['p']
+           ["apiPort"]
+           (ReqArg (\p opts -> opts { optApiPort = read p }) "API_PORT")
+           "Api Port"
   ]
 
 getConfig :: IO Config
@@ -66,7 +71,9 @@ getConfig = do
       conf <- Y.decodeFileEither $ optConfigFile opts
       case conf of
         Left err -> putStrLn (Y.prettyPrintParseException err) >> exitFailure
-        Right conf' -> return conf'
+        Right conf' -> do
+          let apiPort' = optApiPort opts
+          return $ apiPort .~ apiPort' $ conf'
     (_,_,errs)     -> mapM_ putStrLn errs >> exitFailure
 
 showDebug' :: String -> IO ()
@@ -210,36 +217,12 @@ sendMsg outboxWrite n s = do
 
 updateCmdMapFn :: MonadIO m => MVar CommandMap -> RequestId -> CommandStatus -> m ()
 updateCmdMapFn cmdMapMvar rid cmdStatus =
-    liftIO $ (modifyMVar_ cmdMapMvar
+    liftIO (modifyMVar_ cmdMapMvar
      (\(CommandMap nextRid map') ->
           return $ CommandMap nextRid (Map.insert rid cmdStatus map')
      )
     )
 
---runServer :: (CommandEntry -> IO CommandResult) -> IO ()
---runServer applyFn = do
---  rconf <- getConfig
---  me <- return $ nodeIDtoAddr $ rconf ^. nodeId
---  (inboxWrite, inboxRead) <- NoBlock.newChan
---  inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead
---  (cmdInboxWrite, cmdInboxRead) <- NoBlock.newChan
---  cmdInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 cmdInboxRead
---  (aerInboxWrite, aerInboxRead) <- NoBlock.newChan
---  aerInboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 aerInboxRead
---  (outboxWrite, outboxRead) <- newChan
---  -- the 50 provides the back pressure on the msg stream.
---  -- When the writer blocks, the messages will build up in the inboxRead, which is unbounded
---  (eventWrite, eventRead) <- Bounded.newChan 20
---  let debugFn = if (rconf ^. enableDebug) then showDebug else noDebug
---  pubMetric <- startMonitoring rconf
---  runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me []
---  -- STUBs mocking
---  (_, stubGetApiCommands) <- newChan
---  let raftSpec = simpleRaftSpec inboxRead' cmdInboxRead' aerInboxRead'
---                 outboxWrite eventRead eventWrite (liftIO . applyFn) (liftIO2 debugFn)
---                 (liftIO . pubMetric) updateCmdMapFn cmdStatusMap' stubGetApiCommands
---  runRaftServer rconf raftSpec
---
 runClient :: (CommandEntry -> IO CommandResult) -> IO (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
 runClient applyFn getEntries cmdStatusMap' = do
   rconf <- getConfig
@@ -273,11 +256,10 @@ runJuno :: (CommandEntry -> IO CommandResult) -> InChan (RequestId, [CommandEntr
 runJuno applyFn toCommands getApiCommands sharedCmdStatusMap = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
-  (NodeID _ p _) <- return $ rconf ^. nodeId
-
   -- Start The Api Server, communicates with the Juno protocol via sharedCmdStatusMap
   -- API interface will run on 800{nodeNum} for now, where the nodeNum for 10003 is 3
-  void $ CL.fork $ runApiServer toCommands sharedCmdStatusMap $ setAPIPort $ (fromInteger . toInteger) p
+  let myApiPort = rconf ^. apiPort -- passed in on startup (default 8000): `--apiPort 8001`
+  void $ CL.fork $ runApiServer toCommands sharedCmdStatusMap myApiPort
 
   (inboxWrite, inboxRead) <- NoBlock.newChan
   inboxRead' <- newMVar =<< return . head =<< NoBlock.streamChan 1 inboxRead -- all (!aer !cmds)
@@ -300,12 +282,6 @@ runJuno applyFn toCommands getApiCommands sharedCmdStatusMap = do
                  sharedCmdStatusMap getApiCommands
   let receiverEnv = simpleReceiverEnv inboxRead' cmdInboxRead' aerInboxRead' rvAndRvrRead rconf eventWrite
   runRaftServer receiverEnv rconf raftSpec
- where
-   -- this is a punt so that the APIs can all run
-   -- on the same machine, i.e. 10001 -> 8001, 10002 -> 8002, etc.
-   -- protocol port start with 1000{nodeNum} api 800{nodeNum}
-   setAPIPort :: Int -> Int
-   setAPIPort protoPort = protoPort - 2000
 
 -- | lift a two-arg action into MonadIO
 liftIO2 :: MonadIO m => (a -> b -> IO c) -> a -> b -> m c

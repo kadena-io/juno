@@ -40,10 +40,10 @@ runApiServer toCommands sharedCmdStatusMap port = do
 -- TODO removed from App/client
 snapApiServer :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> Int -> IO ()
 snapApiServer toCommands' cmdStatusMap' port = httpServe (serverConf port) $
-    applyCORS (defaultOptions) $ methods [GET, POST]
+    applyCORS defaultOptions $ methods [GET, POST]
     (ifTop (writeBS "use /hopper for commands") <|>
      route [ ("/", runReaderT apiRoutes (ApiEnv toCommands' cmdStatusMap'))] -- api/juno/v1
     )
 
 serverConf :: MonadSnap m => Int -> Config m a
-serverConf port = setErrorLog (ConfigFileLog "log/error.log") $ setAccessLog (ConfigFileLog "log/access.log") $ setPort port $ defaultConfig
+serverConf port = setErrorLog (ConfigFileLog "log/error.log") $ setAccessLog (ConfigFileLog "log/access.log") $ setPort port defaultConfig
