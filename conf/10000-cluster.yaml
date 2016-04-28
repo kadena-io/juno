@@ -3,42 +3,74 @@ publicKeys:
 - - fullAddr: tcp://127.0.0.1:10000
     host: '127.0.0.1'
     port: 10000
-  - 7b986ee932637fa8bf8b3019542ce0d02a7d4e0527a49babddf047223ceaea6f
+  - ccc278425d5b3cefdcc735bf893670d0a87db9bc20d66e03d90bc72ad5305615
 - - fullAddr: tcp://127.0.0.1:10001
     host: '127.0.0.1'
     port: 10001
-  - 6eb7099f7ee0fee32dc1f28248fedd672e7e9474824d117d232b37c262a1b8f5
+  - 55238f976de60878f9e99c5b9b666f3181d1524c41104b5d63cf4b20ee92bb7d
 - - fullAddr: tcp://127.0.0.1:10002
     host: '127.0.0.1'
     port: 10002
-  - ff05b8b7e01cc9608f95249756201b52872b0b44fa1fc8bac1d57c3a2c956c93
+  - b060496db58fb09f6997eda7d3b2b33ae7a2f230394eb2dbc250aac0635eb95b
 - - fullAddr: tcp://127.0.0.1:10003
     host: '127.0.0.1'
     port: 10003
-  - 6815e9ddb80bea983104250271ca16b108abf41deef417709744fcf2bbbb4f16
+  - f2a328bcfa09db3893e00ed757a722a38246c7da5be1ab3310eb7a8430645fa4
+- - fullAddr: tcp://127.0.0.1:10004
+    host: '127.0.0.1'
+    port: 10004
+  - 437adeef74ab839bd1ca555570d212ed3761cc1f1a5ebbfca64b483865dee487
+- - fullAddr: tcp://127.0.0.1:10005
+    host: '127.0.0.1'
+    port: 10005
+  - 6630b930a84c069933e68836d345fbc4544fd2e689521f48e244a5e1df90481a
+- - fullAddr: tcp://127.0.0.1:10006
+    host: '127.0.0.1'
+    port: 10006
+  - 5b2a843a940105add6553cdc738a5a0f27988491e5803bc2e0d07794c50e2949
+- - fullAddr: tcp://127.0.0.1:10007
+    host: '127.0.0.1'
+    port: 10007
+  - ee7e3cdf778bf904df2339266e7f37526e88aa7617be914e6b01d8fff84950f0
 heartbeatTimeout: 1500000
 dontDebugFollower: false
 clientPublicKeys:
 - - fullAddr: tcp://127.0.0.1:10000
     host: '127.0.0.1'
     port: 10000
-  - 7b986ee932637fa8bf8b3019542ce0d02a7d4e0527a49babddf047223ceaea6f
+  - ccc278425d5b3cefdcc735bf893670d0a87db9bc20d66e03d90bc72ad5305615
 - - fullAddr: tcp://127.0.0.1:10001
     host: '127.0.0.1'
     port: 10001
-  - 6eb7099f7ee0fee32dc1f28248fedd672e7e9474824d117d232b37c262a1b8f5
+  - 55238f976de60878f9e99c5b9b666f3181d1524c41104b5d63cf4b20ee92bb7d
 - - fullAddr: tcp://127.0.0.1:10002
     host: '127.0.0.1'
     port: 10002
-  - ff05b8b7e01cc9608f95249756201b52872b0b44fa1fc8bac1d57c3a2c956c93
+  - b060496db58fb09f6997eda7d3b2b33ae7a2f230394eb2dbc250aac0635eb95b
 - - fullAddr: tcp://127.0.0.1:10003
     host: '127.0.0.1'
     port: 10003
-  - 6815e9ddb80bea983104250271ca16b108abf41deef417709744fcf2bbbb4f16
+  - f2a328bcfa09db3893e00ed757a722a38246c7da5be1ab3310eb7a8430645fa4
 - - fullAddr: tcp://127.0.0.1:10004
     host: '127.0.0.1'
     port: 10004
-  - 75f9274d4e3e6ac63381240b7248d662ab50c2fd5cef44dc7671505f6365742b
+  - 437adeef74ab839bd1ca555570d212ed3761cc1f1a5ebbfca64b483865dee487
+- - fullAddr: tcp://127.0.0.1:10005
+    host: '127.0.0.1'
+    port: 10005
+  - 6630b930a84c069933e68836d345fbc4544fd2e689521f48e244a5e1df90481a
+- - fullAddr: tcp://127.0.0.1:10006
+    host: '127.0.0.1'
+    port: 10006
+  - 5b2a843a940105add6553cdc738a5a0f27988491e5803bc2e0d07794c50e2949
+- - fullAddr: tcp://127.0.0.1:10007
+    host: '127.0.0.1'
+    port: 10007
+  - ee7e3cdf778bf904df2339266e7f37526e88aa7617be914e6b01d8fff84950f0
+- - fullAddr: tcp://127.0.0.1:10008
+    host: '127.0.0.1'
+    port: 10008
+  - b654baa2916cf81d55f98f92becc9a882b80d863c7ae19030399f2010a4f32d7
 electionTimeoutRange:
 - 3000000
 - 6000000
@@ -52,11 +84,23 @@ otherNodes:
 - fullAddr: tcp://127.0.0.1:10003
   host: '127.0.0.1'
   port: 10003
-myPublicKey: 7b986ee932637fa8bf8b3019542ce0d02a7d4e0527a49babddf047223ceaea6f
+- fullAddr: tcp://127.0.0.1:10004
+  host: '127.0.0.1'
+  port: 10004
+- fullAddr: tcp://127.0.0.1:10005
+  host: '127.0.0.1'
+  port: 10005
+- fullAddr: tcp://127.0.0.1:10006
+  host: '127.0.0.1'
+  port: 10006
+- fullAddr: tcp://127.0.0.1:10007
+  host: '127.0.0.1'
+  port: 10007
+myPublicKey: ccc278425d5b3cefdcc735bf893670d0a87db9bc20d66e03d90bc72ad5305615
 nodeId:
   fullAddr: tcp://127.0.0.1:10000
   host: '127.0.0.1'
   port: 10000
 enableDebug: true
-myPrivateKey: 6293811d6139bf38f1288f5dbafdbd7ce9806c0807e7652cb387094741d8c192
+myPrivateKey: a7795c04ae074a1df0e61a1edba17214aa84c0bb6b9e50d1aca2e15d387f727a
 batchTimeDelta: 1 % 100

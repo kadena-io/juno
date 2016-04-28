@@ -84,23 +84,23 @@ otherNodes:
 - fullAddr: tcp://127.0.0.1:10002
   host: '127.0.0.1'
   port: 10002
+- fullAddr: tcp://127.0.0.1:10003
+  host: '127.0.0.1'
+  port: 10003
 - fullAddr: tcp://127.0.0.1:10004
   host: '127.0.0.1'
   port: 10004
 - fullAddr: tcp://127.0.0.1:10005
   host: '127.0.0.1'
   port: 10005
-- fullAddr: tcp://127.0.0.1:10006
-  host: '127.0.0.1'
-  port: 10006
 - fullAddr: tcp://127.0.0.1:10007
   host: '127.0.0.1'
   port: 10007
-myPublicKey: f2a328bcfa09db3893e00ed757a722a38246c7da5be1ab3310eb7a8430645fa4
+myPublicKey: 5b2a843a940105add6553cdc738a5a0f27988491e5803bc2e0d07794c50e2949
 nodeId:
-  fullAddr: tcp://127.0.0.1:10003
+  fullAddr: tcp://127.0.0.1:10006
   host: '127.0.0.1'
-  port: 10003
+  port: 10006
 enableDebug: true
-myPrivateKey: 7a981a2bd144e670fd5daaef4912e72852ee61df11ed62a5ffd3d5ee35a38346
+myPrivateKey: 7e2b2cbab75c44e45969e8beb570c1428ee205b5f46ff2f08ad7e64551b88a11
 batchTimeDelta: 1 % 100
