@@ -42,7 +42,7 @@ testJsonAdjustAccount = do
      `shouldBe`
        Just AccountAdjustRequest {
                _adjustAccountPayload = AccountAdjustPayload
-               { _adjustAccount = "TSLA", _adjustAmount = 100%1}
+               { _adjustAccount = "TSLA", _adjustAmount = JRational (100 % 1) }
              , _adjustAccountDigest = Digest {_hash = "hashy", _key = "mykey"}
              }
 
@@ -106,17 +106,21 @@ createAccountByteString = BL.pack "{\"digest\":{\"hash\":\"hashy\",\"key\":\"myk
 -- | Adjust account helpers
 
 adjustPayloadDecode :: Bool
-adjustPayloadDecode = (decode $ BL.pack "{\"amount\":100,\"account\":\"TSLA\"}" :: Maybe AccountAdjustPayload) == Just AccountAdjustPayload {_adjustAccount = "TSLA", _adjustAmount = 100.0}
+adjustPayloadDecode = (decode $ BL.pack "{\"amount\":\"100%1\",\"account\":\"TSLA\"}" :: Maybe AccountAdjustPayload) == Just AccountAdjustPayload { _adjustAccount = "TSLA"
+                                                 , _adjustAmount = JRational {jratio = 100 % 1}
+                                                 }
 
 adjustPayloadEncode :: Bool
-adjustPayloadEncode = encode (AccountAdjustPayload "TSLA" 100) == "{\"amount\":100,\"account\":\"TSLA\"}"
+adjustPayloadEncode = encode (AccountAdjustPayload "TSLA" (JRational (100 % 1))) == "{\"amount\":100,\"account\":\"TSLA\"}"
 
 adjustRequestPayloadBS :: BL.ByteString
-adjustRequestPayloadBS =  BL.pack "{\"payload\":{\"amount\":{\"denominator\":1,\"numerator\":100},\"account\":\"TSLA\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}"
+adjustRequestPayloadBS =  BL.pack "{\"payload\":{\"amount\":\"100%1\",\"account\":\"TSLA\"},\"digest\":{\"hash\":\"hashy\",\"key\":\"mykey\"}}"
 
 encodeAdjustRequest :: BL.ByteString
 encodeAdjustRequest = encode $
-                       AccountAdjustRequest (AccountAdjustPayload (T.pack "TSLA") 100)
+                       AccountAdjustRequest (AccountAdjustPayload (T.pack "TSLA")
+                                                                  (JRational (100%1))
+                                            )
                                            (Digest (T.pack "hashy") (T.pack "mykey"))
 
 decodeAdjustRequest :: Maybe AccountAdjustRequest

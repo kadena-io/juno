@@ -10,14 +10,44 @@ import           Control.Applicative
 import           Control.Monad (mzero)
 import           Data.Aeson as JSON
 import           Data.Aeson.Types (Options(..),defaultOptions,parseMaybe)
+import           Data.Char (isSpace)
+import           Data.Ratio
 import qualified Data.Text as T
 import           Data.Text.Encoding as E
 import           Data.Text (Text)
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BLC
 import           GHC.Generics
+import           Text.Read (readMaybe)
 
 import           Juno.Types (CommandStatus(..),CommandResult(..),RequestId(..))
+
+newtype JRational = JRational { jratio :: Ratio Integer } deriving (Eq, Generic, Show)
+
+-- Typeclass for Rational to encode and decode to and from JRational -> (10%1)
+-- instead of the Aeson Rational Typeclass {"numerator":n, "denominator":d}
+--
+-- JSON.decode $ BLC.pack "\"10%1\"" :: Maybe JRational
+instance FromJSON JRational where
+
+  parseJSON = JSON.withText "Rational n%d" $ \obj -> do
+    nums <- mapM parseNum $ numStrs obj
+    parseRational nums
+   where
+    numStrs s = T.unpack <$> T.splitOn "%" s
+    parseNum str = case readMaybe str of
+          Nothing -> fail $ "found notanum: " ++ str
+          Just num -> return num
+    parseRational nums =
+      case nums of
+        [x, y] -> return $ JRational (x % y)
+        _ -> fail "found the wrong number of args to a rational! Should be in form n%d."
+
+instance ToJSON JRational where
+  toJSON (JRational r) = String $ (T.pack . removeSpaces . show) r
+   where
+      removeSpaces str = filter (not . isSpace) str
+  {-# INLINE toJSON #-}
 
 removeUnderscore :: String -> String
 removeUnderscore = drop 1
@@ -69,7 +99,7 @@ commandResponseFailure cid msg = CommandResponse "Failure" cid msg
 -- { "payload": { "account": "TSLA", "amount": 100%1 }, "digest": { "hash": "myhash", "key": "string" } }
 data AccountAdjustPayload = AccountAdjustPayload {
       _adjustAccount :: Text
-    , _adjustAmount  :: Rational } deriving (Eq, Generic, Show)
+    , _adjustAmount  :: JRational } deriving (Eq, Generic, Show)
 
 instance ToJSON AccountAdjustPayload where
     toJSON (AccountAdjustPayload account amount) = object ["account" .= account
@@ -290,7 +320,8 @@ mJsonBsToCommand bs = JSON.decode bs >>= \v ->
     tryParse v = parseMaybe parseJSON v
 
     mAdjustAccount (AccountAdjustPayload acct amt) =
-        BSC.pack $ "AdjustAccount " ++  T.unpack acct ++ " " ++ show amt
+        let JRational r = amt
+        in BSC.pack $ "AdjustAccount " ++  T.unpack acct ++ " " ++ show r
 
     mAdjustCreateAcct (AccountPayload acct) =
         BSC.pack $ "CreateAccount " ++  T.unpack acct

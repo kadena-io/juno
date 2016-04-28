@@ -105,7 +105,7 @@ createAccountReqHandler bs =
 adjustAccoutReqHandler :: BLC.ByteString -> Either BLC.ByteString [CommandEntry]
 adjustAccoutReqHandler bs =
     case JSON.decode bs of
-        Just (AccountAdjustRequest (AccountAdjustPayload acct amt) _) ->
+        Just (AccountAdjustRequest (AccountAdjustPayload acct (JRational amt)) _) ->
             Right [CommandEntry $ adjustAccountBS acct amt]
         Nothing ->
             Left $ JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."

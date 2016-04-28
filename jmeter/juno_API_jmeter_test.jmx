@@ -129,7 +129,7 @@
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{ &quot;payload&quot;: { &quot;account&quot;: &quot;TSLA&quot;, &quot;amount&quot;: {&quot;numerator&quot;: 100, &quot;denominator&quot;: 1} }, &quot;digest&quot;: { &quot;hash&quot;: &quot;myhash&quot;, &quot;key&quot;: &quot;string&quot; } }</stringProp>
+                <stringProp name="Argument.value">{ &quot;payload&quot;: { &quot;account&quot;: &quot;TSLA&quot;, &quot;amount&quot;: &quot;100%1&quot; }, &quot;digest&quot;: { &quot;hash&quot;: &quot;myhash&quot;, &quot;key&quot;: &quot;string&quot; } }</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>
@@ -166,7 +166,7 @@
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{ &quot;payload&quot;: { &quot;account&quot;: &quot;TSLA&quot;, &quot;amount&quot;: {&quot;numerator&quot;: 50, &quot;denominator&quot;: 1} }, &quot;digest&quot;: { &quot;hash&quot;: &quot;myhash&quot;, &quot;key&quot;: &quot;string&quot; } }</stringProp>
+                <stringProp name="Argument.value">{ &quot;payload&quot;: { &quot;account&quot;: &quot;TSLA&quot;, &quot;amount&quot;: &quot;-50%1&quot;} , &quot;digest&quot;: { &quot;hash&quot;: &quot;myhash&quot;, &quot;key&quot;: &quot;string&quot; } }</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>

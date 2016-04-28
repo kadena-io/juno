@@ -99,7 +99,7 @@ runREPL = do
     commandToJson :: HopperLiteAdminCommand -> String -> BLC.ByteString
     commandToJson (CreateAccount acct) _ = JSON.encode $ JsonT.AccountPayload (T.strip acct)
     commandToJson (AdjustAccount acct amount) _ =
-      JSON.encode $ JsonT.AccountAdjustPayload acct amount
+      JSON.encode $ JsonT.AccountAdjustPayload acct (JsonT.JRational amount)
     commandToJson _ input = JSON.encode $ JsonT.TransactBody (T.pack input) ""
 
     batchToken :: String
