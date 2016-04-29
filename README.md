@@ -1,11 +1,23 @@
 [![Build Status](https://travis-ci.org/buckie/juno.svg?branch=develop)](https://travis-ci.org/buckie/juno)
 
-#### TL;DR
+### TL;DR
 
-Ok, here's a quick demo.
+#### Major New Features Since Last Update (Feb 2016 - April 2016)
 
-<p align="center"><img src="/demo.gif" alt="Demo Gif"/></p>
+* [Massive Speed Improvements](#performance): Juno can now come to full consensus of ~2k individual commands per second;
+    if the client bathes the messages this number jumps up to ~4k/sec. See the new Demo gif for details.
+    (NB: we're not cheating to get to this number -- full Public-Private key crypto is taking place on every single message and command
+     + each message is a true individual transaction requiring quorum consensus to be reached before application)
+* Massively Parallel:
+    Juno now scales near optimally as core count increases. We expect our performance numbers to *increase* as we test on better hardware.
+* Better Crypto:
+    Juno now uses `ed25519-donna`
+
+#### Quick Demo (Last update: April 2016)
+
+<p align="center"><img src="readme-assets/demo.gif" alt="Demo Gif"/></p>
 [What is going on in the demo](#what-is-going-on-in-the-demo)
+
 ***
 
 <h1 align="center">Juno</h1>
@@ -22,7 +34,7 @@ This has large implications for the possible solution space but specifically rem
 Instead Juno uses a [Raft][Raft] protocol variant called [Tangaroa][Tangaroa Paper] which is "BFT-hardened" enough to cover the majority of possible Byzantine Faults that we believe an enterprise system should be robust against.
 Juno began as a fork of [Tangaroa's Haskell implementation][Tangaroa Repo].
 Through the use of a "BFT-hardened" Raft, Juno can achieve vastly lower latency than traditional Blockchain-based approaches -- one based mostly on network latency.
-Running the demo locally, one can expect latencies of ~20ms and throughput in excess of 1000 transactions a second.
+Running the demo locally, one can expect latencies of ~5ms and throughput in excess of 2000 transactions a second.
 
 For the subset of applications that Juno targets (private networks, intra/inter-organization workflows, known participants) similar Blockchain-based approaches generally attempt to decrease latency (caused by mining) by decreasing the difficulty of mining itself.
 We believe turning down the difficulty is somewhere between an unfortunate to a dangerous compromise as those systems generally also allow forked chains.
@@ -151,38 +163,98 @@ For the latter, the Node should transmit it is leaving the consensus group, ente
 
 ### What is going on in the demo
 
+The previous demo sought to show the fundamentals of Juno working as expected.
+The current demo now instead seeks to show the various upgrades we've made, specifically performance ones.
+
 The demo starts with `./demo/start.sh` which causes a four server-node cluster (right side) and a Client node (left side) to be started.
 The four server nodes hold an election shortly after starting, decide on a Leader and become ready to accept commands from the Client.
-The Client then:
 
-1. creates three accounts (`wjm`, `stu` and `bank`)
-2. credits `wjm` with $100
-3. transfers $10 from `wjm` to `stu` directly
+The rest of the demo can be split into three sections:
 
-Each of these commands are sent to the Leader which replicates them to the Followers.
+#### 1. Prelude
+
+Here, we create two accounts, `Acct1` and `Acct2`, which will be used for the remainder of the demo.
+The subsequent demo sections use scripted demo-commands that have hard coded names so accounts `Acct1` and `Acct2` must exist.
+All of the scripted demo-commands transfer a single dollar from `Acct1` to `Acct2` multiple times, but each in a different way.
+
+As such, we next credits `Acct1` with $100000 and run `ObserveAccounts` to check the current balances of the two accounts (e.g. `Acct1: 100000, Acct2: 0`).
+Finally, we demonstrate what a single dollar transfer looks like at the account balance level by transferring $1 from `Acct1` to `Acct2` and rechecking the current balances via `ObserveAccounts`.
+
+As always, each of these commands are sent to the Leader which replicates them to the Followers.
 Once the command has been replicated to a majority of nodes, the command is applied by the Leader and a response to the Client is issued.
 Followers also apply the final transfer command around this time.
 
-After all this is completed, it's time to test resiliency of the network. As such, the Leader is terminated.
-Eventually a Follower calls for an election and is chosen as the new Leader.
-The Client now transfers $10 from `stu` to `wjm` via the intermediary `bank`.
+#### 2. Client Batching
+
+The first scripted demo-command we show is `batch test:N` which demonstrates Juno's throughput when clients are able to bundle individual commands into a single message.
+Again, each command is treated as a distinct entry in the log.
+Client Batching is no more than the Client sending the Leader a list of Commands to the Leader.
+If one of these Commands fails, it does not impact the others.
+
+`batch test:N` will create a list of individual single dollar transfer commands (i.e. `transfer(Acct1->Acct2, 1%1)`) of length `N`.
+In the demo, we show first a batch test of 1000 and then a batch test of 5000.
+Performance numbers are included for these commands and they are a measurement of how long it took the Leader fully process each the entire list of commands.
+This includes the time it took to do the following for each command in the list:
+
+* (Leader) receive the list of commands
+* (Leader then Followers) verify the signature of the Command
+* (Leader then Followers) replicate the Command to the Followers
+* (Leader) collect replication evidence from the Followers
+* (Leader) increase its CommitIndex
+* (Leader) apply every command in the batch
+* (Leader) create the Command Response RPC.
+
+Depending on the hardware, `batch test:8000` can yield a throughput in excess of 7k/sec.
+
+#### 3. Leader Batching
+
+The optimal batching strategy is for the Client to hand batches of Commands to the the Leader.
+However, this is only applicable in a few use cases.
+For most use cases the Client isn't capable of doing this and instead the Leader must also be able to batch inbound Commands.
+
+To this end, we creates the second scripted demo-command `many test:N`.
+`many test:N` is similar to `batch test:N` in so much as it replicates a single dollar transfer (i.e. `transfer(Acct1->Acct2, 1%1)`) `N` times.
+However, instead of sending `N` commands as a single list of commands to the leader (as `batch test:N` did) `many test:N` fires off each command as an individual message to the Leader as fast as it can.
+This creates a large backlog of new commands in the Leader's message pipeline that it then attempts to batch.
+
+As the Leader has no way of knowing how many Commands are inbound and thus cannot batch as optimally.
+We've completely a first pass at implementing this system, but it still is 2x slower than the best-case of Client batching.
+
+The explanation of the performance numbers found in the previous section holds for the numbers printed along with this command as well.
+
+## Performance and Crypto
+
+<p align="center"><img src="readme-assets/ThroughputVsClusterSize.png" alt="Performance vs Cluster Size"/></p>
+
+Above is a graph of Throughput (Commands per second) vs Cluster Size.
+These are very early numbers as they measured via a cluster running locally on a MBP.
+Overall though, we are quite happy with the trend lines and expect performance to improve in subsequent iterations.
+
+Fully crypto takes place for each and every command and cluster message. Here is a sample crypto workflow for the command `ObserveAccounts`:
+
+1. The Client creates a Command RPC (CMD) that holds the `ObserveAccounts` Command
+2. The Client signs the CMD with its Private Key and sends the Signed CMD to the Leader.
+3. The Leader verifies the Signed CMD's signature against the Client's Public Key and, if valid, replicates the CMD to its Log.
+4. The Leader creates an AppendEntries RPC (AE), signs the AE with its Private Key and distributes the Signed AE to each of its Followers.
+     AE's can hold 0 or more Log Entries, each holding a individual CMD.
+     As such, the original CMD is re-transmitted to the Followers via the AE.
+5. Each Follower first verifies the signature on the Signed AE against the Leader's public key.
+     If that signature is valid then each Follower then validates every Log Entry's CMD's signature against the Public Key of the originating Client.
+     If all of those signatures are valid
+       then the Follower replicates the LogEntry (and thus the CMD)
+       , creates an Append Entries Response RPC (AER) for the AE, signs the AER with its Private Key, and distributes the AER to every node.
+6. Finally, every node independently processes the other node's AER's, validating each against their Public Key.
 
 ## What's Coming up Next
 
 This version of Juno represents an early iteration that the authors were given permission to Open Source.
-Our internal development branch is much further along but is not yet ready for prime time -- due to time constraints, we needed to open source in February.
-
-Currently it addresses:
-
-* legibility of the consensus level state machine via a pure refactor
-* the issues in the Tangaroa protocol spec
-* additional test rigging
+Though we are continuing to work on it, it still needs much more work before it is ready for a production deployment.
+I would recommend against forking off of it/iterating on it in its current state given the plans we have the issues with the current version.
 
 We hope to also have:
 
 * persistence via SQLite
 * integrated Client command HTTP servers
-* system monitoring integration
 * signed snapshots
 * additional Node states: standby/read replicas/non-voting nodes, read-only due to unrecoverable issue
 * key rotation commands
