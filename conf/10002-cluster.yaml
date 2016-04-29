@@ -3,41 +3,42 @@ publicKeys:
 - - fullAddr: tcp://127.0.0.1:10000
     host: '127.0.0.1'
     port: 10000
-  - c7103c12b9d4337e471fdae9afa43061688b616207c2c4118fbde53cfbc02ff0
+  - 7b986ee932637fa8bf8b3019542ce0d02a7d4e0527a49babddf047223ceaea6f
 - - fullAddr: tcp://127.0.0.1:10001
     host: '127.0.0.1'
     port: 10001
-  - 95dcbfc90a72f1f1307a39e93c83c55b438553326823205b2c0edcdf6908a44b
+  - 6eb7099f7ee0fee32dc1f28248fedd672e7e9474824d117d232b37c262a1b8f5
 - - fullAddr: tcp://127.0.0.1:10002
     host: '127.0.0.1'
     port: 10002
-  - 11bea991f93dc08c61bda84875e2b8e2aab5843e4d5a07a1adf66dcd56223c5b
+  - ff05b8b7e01cc9608f95249756201b52872b0b44fa1fc8bac1d57c3a2c956c93
 - - fullAddr: tcp://127.0.0.1:10003
     host: '127.0.0.1'
     port: 10003
-  - 5f79312b1447bc768d0a06e4e3784239631932db07870033eee16980be9f5bbe
+  - 6815e9ddb80bea983104250271ca16b108abf41deef417709744fcf2bbbb4f16
 heartbeatTimeout: 1500000
+dontDebugFollower: false
 clientPublicKeys:
 - - fullAddr: tcp://127.0.0.1:10000
     host: '127.0.0.1'
     port: 10000
-  - c7103c12b9d4337e471fdae9afa43061688b616207c2c4118fbde53cfbc02ff0
+  - 7b986ee932637fa8bf8b3019542ce0d02a7d4e0527a49babddf047223ceaea6f
 - - fullAddr: tcp://127.0.0.1:10001
     host: '127.0.0.1'
     port: 10001
-  - 95dcbfc90a72f1f1307a39e93c83c55b438553326823205b2c0edcdf6908a44b
+  - 6eb7099f7ee0fee32dc1f28248fedd672e7e9474824d117d232b37c262a1b8f5
 - - fullAddr: tcp://127.0.0.1:10002
     host: '127.0.0.1'
     port: 10002
-  - 11bea991f93dc08c61bda84875e2b8e2aab5843e4d5a07a1adf66dcd56223c5b
+  - ff05b8b7e01cc9608f95249756201b52872b0b44fa1fc8bac1d57c3a2c956c93
 - - fullAddr: tcp://127.0.0.1:10003
     host: '127.0.0.1'
     port: 10003
-  - 5f79312b1447bc768d0a06e4e3784239631932db07870033eee16980be9f5bbe
+  - 6815e9ddb80bea983104250271ca16b108abf41deef417709744fcf2bbbb4f16
 - - fullAddr: tcp://127.0.0.1:10004
     host: '127.0.0.1'
     port: 10004
-  - f69bef0eff88284b836a7d193c3749bffb922e8811c7261ec00a1627d95e0e26
+  - 75f9274d4e3e6ac63381240b7248d662ab50c2fd5cef44dc7671505f6365742b
 electionTimeoutRange:
 - 3000000
 - 6000000
@@ -51,11 +52,11 @@ otherNodes:
 - fullAddr: tcp://127.0.0.1:10003
   host: '127.0.0.1'
   port: 10003
-myPublicKey: 11bea991f93dc08c61bda84875e2b8e2aab5843e4d5a07a1adf66dcd56223c5b
+myPublicKey: ff05b8b7e01cc9608f95249756201b52872b0b44fa1fc8bac1d57c3a2c956c93
 nodeId:
   fullAddr: tcp://127.0.0.1:10002
   host: '127.0.0.1'
   port: 10002
 enableDebug: true
-myPrivateKey: 9c181e1b7c061ca1d25191e49292bc53f636d0ae7fdb3869a7a192a2e431f210
+myPrivateKey: 7f2c3d31d2dead7635861fea92897717b5ec0191694e8372e6507b9e7059bed7
 batchTimeDelta: 1 % 100

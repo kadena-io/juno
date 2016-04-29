@@ -16,6 +16,7 @@ import Data.Serialize (Serialize)
 import Data.Thyme.Clock
 import Data.Thyme.Time.Core (unUTCTime, toMicroseconds)
 import GHC.Generics hiding (from)
+import GHC.Int (Int64)
 
 import Juno.Types.Base
 
@@ -51,5 +52,5 @@ newtype CommandResult = CommandResult { unCommandResult :: ByteString }
 
 data CommandStatus = CmdSubmitted -- client sets when sending command
                    | CmdAccepted  -- Raft client has recieved command and submitted
-                   | CmdApplied { result :: CommandResult }  -- We have a result
+                   | CmdApplied { result :: CommandResult, cmdaLatencty :: Int64 }  -- We have a result
                    deriving (Show)

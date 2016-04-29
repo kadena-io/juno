@@ -6,7 +6,7 @@ module Juno.Types.Spec
   , RaftSpec(..)
   , readLogEntry, writeLogEntry, readTermNumber, writeTermNumber
   , readVotedFor, writeVotedFor, applyLogEntry, sendMessage
-  , sendMessages, getMessage, getMessages, getNewCommands, getNewEvidence
+  , sendMessages, getMessage, getMessages, getNewCommands, getNewEvidence, getRvAndRVRs
   , debugPrint, publishMetric, getTimestamp, random
   , enqueue, enqueueMultiple, dequeue, enqueueLater, killEnqueued
   -- for API <-> Juno communication
@@ -88,6 +88,9 @@ data RaftSpec m = RaftSpec
 
     -- ^ Function to get the next N SignedRPCs of type AER
   , _getNewEvidence   :: Int -> m [(ReceivedAt, SignedRPC)]
+
+    -- ^ Function to get the next RV or RVR
+  , _getRvAndRVRs     :: m (ReceivedAt, SignedRPC)
 
     -- ^ Function to log a debug message (no newline).
   , _debugPrint       :: NodeID -> String -> m ()

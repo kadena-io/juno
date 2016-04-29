@@ -4,7 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Juno.Types.Message.CMDR
-  ( CommandResponse(..), cmdrResult, cmdrLeaderId, cmdrNodeId, cmdrRequestId, cmdrProvenance
+  ( CommandResponse(..), cmdrResult, cmdrLeaderId, cmdrNodeId, cmdrRequestId, cmdrLatency, cmdrProvenance
   ) where
 
 import Control.Lens
@@ -12,6 +12,7 @@ import Data.Serialize (Serialize)
 import qualified Data.Serialize as S
 import Data.Thyme.Time.Core ()
 import GHC.Generics
+import GHC.Int (Int64)
 
 import Juno.Types.Base
 import Juno.Types.Command
@@ -22,18 +23,19 @@ data CommandResponse = CommandResponse
   , _cmdrLeaderId   :: !NodeID
   , _cmdrNodeId     :: !NodeID
   , _cmdrRequestId  :: !RequestId
+  , _cmdrLatency    :: !Int64
   , _cmdrProvenance :: !Provenance
   }
   deriving (Show, Eq, Generic)
 makeLenses ''CommandResponse
 
-data CMDRWire = CMDRWire (CommandResult, NodeID, NodeID, RequestId)
+data CMDRWire = CMDRWire (CommandResult, NodeID, NodeID, RequestId, Int64)
   deriving (Show, Generic)
 instance Serialize CMDRWire
 
 instance WireFormat CommandResponse where
   toWire nid pubKey privKey CommandResponse{..} = case _cmdrProvenance of
-    NewMsg -> let bdy = S.encode $ CMDRWire (_cmdrResult,_cmdrLeaderId,_cmdrNodeId,_cmdrRequestId)
+    NewMsg -> let bdy = S.encode $ CMDRWire (_cmdrResult,_cmdrLeaderId,_cmdrNodeId,_cmdrRequestId,_cmdrLatency)
                   sig = sign bdy privKey pubKey
                   dig = Digest nid sig pubKey CMDR
               in SignedRPC dig bdy
@@ -44,6 +46,6 @@ instance WireFormat CommandResponse where
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with CMDRWire instance"
       else case S.decode bdy of
         Left !err -> Left $! "Failure to decode CMDRWire: " ++ err
-        Right (CMDRWire !(r,lid,nid,rid)) -> Right $! CommandResponse r lid nid rid $ ReceivedMsg dig bdy ts
+        Right (CMDRWire !(r,lid,nid,rid,lat)) -> Right $! CommandResponse r lid nid rid lat $ ReceivedMsg dig bdy ts
   {-# INLINE toWire #-}
   {-# INLINE fromWire #-}

@@ -39,18 +39,18 @@ seqIndex s i =
     else Nothing
 
 getQuorumSize :: Int -> Int
-getQuorumSize n = minimum [n - f | f <- [0..n], n >= 3*f + 1]
+getQuorumSize n = 1 + floor (fromIntegral n / 2 :: Float)
 
 debug :: Monad m => String -> Raft m ()
 debug s = do
   dbg <- view (rs.debugPrint)
   nid <- view (cfg.nodeId)
   role' <- use nodeRole
-  let prettyRole = case role' of
-        Leader -> "\ESC[0;34m[LEADER]\ESC[0m"
-        Follower -> "\ESC[0;32m[FOLLOWER]\ESC[0m"
-        Candidate -> "\ESC[1;33m[CANDIDATE]\ESC[0m"
-  dbg nid $ prettyRole ++ ": " ++ s
+  dontDebugFollower' <- view (cfg.dontDebugFollower)
+  case role' of
+    Leader -> dbg nid $ "\ESC[0;34m[LEADER]\ESC[0m: " ++ s
+    Follower -> when (not dontDebugFollower') $ dbg nid $ "\ESC[0;32m[FOLLOWER]\ESC[0m: " ++ s
+    Candidate -> dbg nid $ "\ESC[1;33m[CANDIDATE]\ESC[0m: " ++ s
 
 randomRIO :: (Monad m, R.Random a) => (a,a) -> Raft m a
 randomRIO rng = view (rs.random) >>= \f -> f rng -- R.randomRIO

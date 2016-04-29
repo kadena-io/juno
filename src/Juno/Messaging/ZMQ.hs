@@ -71,11 +71,12 @@ recipList (Rolodex r) (ROne addr) = return $! _unListenOn <$> [r Map.! addr]
 runMsgServer :: NoBlock.InChan (ReceivedAt, SignedRPC)
              -> NoBlock.InChan (ReceivedAt, SignedRPC)
              -> NoBlock.InChan (ReceivedAt, SignedRPC)
+             -> InChan (ReceivedAt, SignedRPC)
              -> OutChan (OutBoundMsg String ByteString)
              -> Addr String
              -> [Addr String]
              -> IO ()
-runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me addrList = void $ do
+runMsgServer inboxWrite cmdInboxWrite aerInboxWrite rvAndRvrWrite outboxRead me addrList = void $ do
     void $ forkIO $ runZMQ $ do
       sock <- socket Pull
       _ <- bind sock $ _unAddr me
@@ -88,6 +89,8 @@ runMsgServer inboxWrite cmdInboxWrite aerInboxWrite outboxRead me addrList = voi
             liftIO $ putStrLn $ "Failed to deserialize to SignedRPC [Error]: " ++ err
             liftIO yield
           Right s@(SignedRPC dig _)
+            | _digType dig == RV || _digType dig == RVR ->
+              liftIO $ writeChan rvAndRvrWrite (ReceivedAt ts, s) >> yield
             | _digType dig == CMD || _digType dig == CMDB ->
               liftIO $ NoBlock.writeChan cmdInboxWrite (ReceivedAt ts, s) >> yield
             | _digType dig == AER ->

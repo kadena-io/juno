@@ -14,6 +14,7 @@ import Data.Either ()
 import qualified Data.Map as Map
 import Text.Read (readMaybe)
 import System.IO
+import GHC.Int (Int64)
 
 import Juno.Spec.Simple
 import Juno.Types
@@ -33,15 +34,24 @@ readPrompt :: IO String
 readPrompt = flushStr prompt >> getLine
 
 -- should we poll here till we get a result?
-showResult :: CommandMVarMap -> RequestId -> IO ()
-showResult cmdStatusMap' rId =
+showResult :: CommandMVarMap -> RequestId -> Maybe Int64 -> IO ()
+showResult cmdStatusMap' rId Nothing =
   threadDelay 1000 >> do
     (CommandMap _ m) <- readMVar cmdStatusMap'
     case Map.lookup rId m of
       Nothing -> print $ "RequestId [" ++ show rId ++ "] not found."
-      Just (CmdApplied (CommandResult x)) -> putStrLn $ promptGreen ++ BSC.unpack x
+      Just (CmdApplied (CommandResult x) _) -> putStrLn $ promptGreen ++ BSC.unpack x
       Just _ -> -- not applied yet, loop and wait
-        showResult cmdStatusMap' rId
+        showResult cmdStatusMap' rId Nothing
+showResult cmdStatusMap' rId pgm@(Just cnt) =
+  threadDelay 1000 >> do
+    (CommandMap _ m) <- readMVar cmdStatusMap'
+    case Map.lookup rId m of
+      Nothing -> print $ "RequestId [" ++ show rId ++ "] not found."
+      Just (CmdApplied (CommandResult _x) lat) -> do
+        putStrLn $ intervalOfNumerous cnt lat
+      Just _ -> -- not applied yet, loop and wait
+        showResult cmdStatusMap' rId pgm
 
 --  -> OutChan CommandResult
 runREPL :: InChan (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
@@ -52,11 +62,15 @@ runREPL toCommands' cmdStatusMap' = do
     _ -> do
       cmd' <- return $ BSC.pack cmd
       if take 11 cmd == "batch test:"
-      then do
-        rId <- liftIO $ setNextCmdRequestId cmdStatusMap'
-        writeChan toCommands' (rId, [CommandEntry cmd'])
-        threadDelay 1000
-        runREPL toCommands' cmdStatusMap'
+      then case readMaybe $ drop 11 cmd of
+        Just n -> do
+          rId <- liftIO $ setNextCmdRequestId cmdStatusMap'
+          writeChan toCommands' (rId, [CommandEntry cmd'])
+          --- this is the tracer round for timing purposes
+          putStrLn $ "Sending " ++ show n ++ " 'transfer(Acct1->Acct2, 1%1)' transactions batched"
+          showResult cmdStatusMap' (rId + RequestId n) (Just n)
+          runREPL toCommands' cmdStatusMap'
+        Nothing -> runREPL toCommands' cmdStatusMap'
       else if take 10 cmd == "many test:"
       then
         case readMaybe $ drop 10 cmd of
@@ -64,7 +78,9 @@ runREPL toCommands' cmdStatusMap' = do
             cmds <- replicateM n
                       (do rid <- setNextCmdRequestId cmdStatusMap'; return (rid, [CommandEntry "transfer(Acct1->Acct2, 1%1)"]))
             writeList2Chan toCommands' cmds
-            threadDelay 1000
+            --- this is the tracer round for timing purposes
+            putStrLn $ "Sending " ++ show n ++ " 'transfer(Acct1->Acct2, 1%1)' transactions individually"
+            showResult cmdStatusMap' (fst $ last cmds) (Just $ fromIntegral n)
             runREPL toCommands' cmdStatusMap'
           Nothing -> runREPL toCommands' cmdStatusMap'
       else
@@ -73,8 +89,14 @@ runREPL toCommands' cmdStatusMap' = do
           Right _ -> do
             rId <- liftIO $ setNextCmdRequestId cmdStatusMap'
             writeChan toCommands' (rId, [CommandEntry cmd'])
-            showResult cmdStatusMap' rId
+            showResult cmdStatusMap' rId Nothing
             runREPL toCommands' cmdStatusMap'
+
+intervalOfNumerous :: Int64 -> Int64 -> String
+intervalOfNumerous cnt mics = let
+  interval = fromIntegral mics / 1000000
+  perSec = ceiling (fromIntegral cnt / interval)
+  in "Completed in " ++ show (interval :: Double) ++ "sec (" ++ show (perSec::Integer) ++ " per sec)"
 
 -- | Runs a 'Raft nt String String mt'.
 -- Simple fixes nt to 'HostPort' and mt to 'String'.

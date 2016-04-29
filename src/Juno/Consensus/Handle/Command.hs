@@ -60,7 +60,7 @@ handleCommand cmd@Command{..} = do
   case (Map.lookup (_cmdClientId, cmdSig) replays, r, mlid) of
     (Just (Just result), _, _) -> do
       cmdr <- return $ makeCommandResponse' nid mlid cmd result
-      return . SendCommandResponse _cmdClientId . CMDR' $ cmdr
+      return . SendCommandResponse _cmdClientId . CMDR' $ cmdr 1
       -- we have already committed this request, so send the result to the client
     (Just Nothing, _, _) ->
       -- we have already seen this request, but have not yet committed it

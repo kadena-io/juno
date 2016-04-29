@@ -276,7 +276,7 @@ waitForCommand cmdMap rId =
     (CommandMap _ m) <- readMVar cmdMap
     case Map.lookup rId m of
       Nothing -> return $ BSC.pack $ "RequestId [" ++ show rId ++ "] not found."
-      Just (CmdApplied (CommandResult bs)) ->
+      Just (CmdApplied (CommandResult bs) _lat) ->
         return bs
       Just _ -> -- not applied yet, loop and wait
         waitForCommand cmdMap rId
