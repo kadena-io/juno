@@ -5,8 +5,8 @@
 #### Major New Features Since Last Update (Feb 2016 - April 2016)
 
 * [Massive Speed Improvements](#performance-and-crypto): Juno can now come to full consensus of ~2k individual commands per second;
-    if the client bathes the messages this number jumps up to ~4k/sec. See the new Demo gif for details.
-    (NB: we're not cheating to get to this number -- full Public-Private key crypto is taking place on every single message and command
+    if the client batches the messages this number jumps up to ~4k/sec. See the new Demo gif for details.
+    NB: we're not cheating to get to this number (e.g. turning down mining difficulty, fudging crypto); full Public-Private key crypto is taking place on every single message and command
      + each message is a true individual transaction requiring quorum consensus to be reached before application)
 * Massively Parallel:
     Juno now scales near optimally as core count increases. We expect our performance numbers to *increase* as we test on better hardware.
