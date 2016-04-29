@@ -26,6 +26,7 @@ library
                      , Apps.Juno.ApiHandlers
                      , Apps.Juno.Ledger
                      , Apps.Juno.Parser
+                     , Apps.Juno.Repl
                      , Juno.Consensus.Api
                      , Juno.Consensus.Handle
                      , Juno.Consensus.Server
@@ -132,6 +133,7 @@ library
                      , unordered-containers
                      , vector >= 0.11.0.0
                      , vector-space >= 0.10.2 && < 0.11
+                     , wreq
                      , yaml
                      , zeromq4-haskell >= 0.6.3
                      , zlib
@@ -167,6 +169,15 @@ executable junoserver
 
 executable junoclient
   main-is:             JunoClient.hs
+  build-depends:       base < 5
+                     , juno
+  hs-source-dirs:      executables
+  ghc-options:         -Wall -threaded -rtsopts
+  ghc-prof-options:    -fprof-auto -fprof-auto-calls
+  default-language:    Haskell2010
+
+executable junorepl
+  main-is:             JunoRepl.hs
   build-depends:       base < 5
                      , juno
   hs-source-dirs:      executables

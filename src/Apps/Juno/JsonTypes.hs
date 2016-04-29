@@ -1,21 +1,53 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
 module Apps.Juno.JsonTypes where
 
+import           Control.Applicative
 import           Control.Monad (mzero)
 import           Data.Aeson as JSON
-import           Data.Text.Encoding (decodeUtf8)
 import           Data.Aeson.Types (Options(..),defaultOptions,parseMaybe)
+import           Data.Char (isSpace)
+import           Data.Ratio
 import qualified Data.Text as T
+import           Data.Text.Encoding as E
 import           Data.Text (Text)
-import           GHC.Generics
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BLC
-import           Control.Applicative
+import           GHC.Generics
+import           Text.Read (readMaybe)
 
 import           Juno.Types (CommandStatus(..),CommandResult(..),RequestId(..))
+
+newtype JRational = JRational { jratio :: Ratio Integer } deriving (Eq, Generic, Show)
+
+-- Typeclass for Rational to encode and decode to and from JRational -> (10%1)
+-- instead of the Aeson Rational Typeclass {"numerator":n, "denominator":d}
+--
+-- JSON.decode $ BLC.pack "\"10%1\"" :: Maybe JRational
+instance FromJSON JRational where
+
+  parseJSON = JSON.withText "Rational n%d" $ \obj -> do
+    nums <- mapM parseNum $ numStrs obj
+    parseRational nums
+   where
+    numStrs s = T.unpack <$> T.splitOn "%" s
+    parseNum str = case readMaybe str of
+          Nothing -> fail $ "found notanum: " ++ str
+          Just num -> return num
+    parseRational nums =
+      case nums of
+        [x, y] -> return $ JRational (x % y)
+        _ -> fail "found the wrong number of args to a rational! Should be in form n%d."
+
+instance ToJSON JRational where
+  toJSON (JRational r) = String $ (T.pack . removeSpaces . show) r
+   where
+      removeSpaces str = filter (not . isSpace) str
+  {-# INLINE toJSON #-}
 
 removeUnderscore :: String -> String
 removeUnderscore = drop 1
@@ -64,13 +96,14 @@ commandResponseFailure :: Text -> Text -> CommandResponse
 commandResponseFailure cid msg = CommandResponse "Failure" cid msg
 
 -- | AccountAdjust adding/substracting money from and existing account
--- { "payload": { "account": "TSLA", "amount": 100.0 }, "digest": { "hash": "myhash", "key": "string" } }
+-- { "payload": { "account": "TSLA", "amount": 100%1 }, "digest": { "hash": "myhash", "key": "string" } }
 data AccountAdjustPayload = AccountAdjustPayload {
       _adjustAccount :: Text
-    , _adjustAmount :: Double } deriving (Eq, Generic, Show)
+    , _adjustAmount  :: JRational } deriving (Eq, Generic, Show)
 
 instance ToJSON AccountAdjustPayload where
-    toJSON (AccountAdjustPayload account amount) = object ["account" .= account, "amount" .= amount]
+    toJSON (AccountAdjustPayload account amount) = object ["account" .= account
+                                                          , "amount" .= amount]
 instance FromJSON AccountAdjustPayload where
     parseJSON (Object v) = AccountAdjustPayload <$>
                              v .: "account" <*>
@@ -83,7 +116,8 @@ data AccountAdjustRequest = AccountAdjustRequest {
     } deriving (Eq, Generic, Show)
 
 instance ToJSON AccountAdjustRequest where
-    toJSON (AccountAdjustRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
+    toJSON (AccountAdjustRequest payload' digest') = object ["payload" .= payload'
+                                                            , "digest" .= digest']
 instance FromJSON AccountAdjustRequest where
     parseJSON (Object v) = AccountAdjustRequest <$>
                              v .: "payload" <*>
@@ -225,7 +259,7 @@ instance FromJSON LedgerQueryRequest where
 --   "hash": "string",
 --   "key": "string"
 -- }
-
+-- {"data":"","code":"transfer(000->100->101->102->103->003, 100%1)"}
 data TransactBody = TransactBody { _txCode :: Text, _txData :: Text } deriving (Show, Eq)
 instance ToJSON TransactBody where
     toJSON (TransactBody code txData) = object ["code" .= code, "data" .= txData]
@@ -269,7 +303,8 @@ data CommandBatchRequest = CommandBatchRequest {
     } deriving (Show, Generic, Eq)
 
 instance ToJSON CommandBatchRequest where
-  toJSON (CommandBatchRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
+  toJSON (CommandBatchRequest payload' digest') = object ["payload" .= payload'
+                                                         , "digest" .= digest']
 instance FromJSON CommandBatchRequest where
   parseJSON (Object v) = CommandBatchRequest <$> v .: "payload"
                                              <*> v .: "digest"
@@ -285,7 +320,8 @@ mJsonBsToCommand bs = JSON.decode bs >>= \v ->
     tryParse v = parseMaybe parseJSON v
 
     mAdjustAccount (AccountAdjustPayload acct amt) =
-        BSC.pack $ "AdjustAccount " ++  T.unpack acct ++ " " ++ show (toRational amt)
+        let JRational r = amt
+        in BSC.pack $ "AdjustAccount " ++  T.unpack acct ++ " " ++ show r
 
     mAdjustCreateAcct (AccountPayload acct) =
         BSC.pack $ "CreateAccount " ++  T.unpack acct

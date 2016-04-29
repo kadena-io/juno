@@ -58,3 +58,6 @@ sumsumarry.json
 .DS_Store
 /monitor/npm-debug.log
 demoui/node_modules
+
+# Test files
+jmeter.log
