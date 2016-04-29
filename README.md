@@ -4,7 +4,7 @@
 
 #### Major New Features Since Last Update (Feb 2016 - April 2016)
 
-* [Massive Speed Improvements](#performance): Juno can now come to full consensus of ~2k individual commands per second;
+* [Massive Speed Improvements](#performance-and-crypto): Juno can now come to full consensus of ~2k individual commands per second;
     if the client bathes the messages this number jumps up to ~4k/sec. See the new Demo gif for details.
     (NB: we're not cheating to get to this number -- full Public-Private key crypto is taking place on every single message and command
      + each message is a true individual transaction requiring quorum consensus to be reached before application)
@@ -13,7 +13,7 @@
 * Better Crypto:
     Juno now uses `ed25519-donna`
 
-#### Quick Demo (Last update: April 2016)
+#### Quick Demo (Updated: April 2016)
 
 <p align="center"><img src="readme-assets/demo.gif" alt="Demo Gif"/></p>
 [What is going on in the demo](#what-is-going-on-in-the-demo)
@@ -163,15 +163,15 @@ For the latter, the Node should transmit it is leaving the consensus group, ente
 
 ### What is going on in the demo
 
-The previous demo sought to show the fundamentals of Juno working as expected.
-The current demo now instead seeks to show the various upgrades we've made, specifically performance ones.
+The previous demo's purpose was to show the fundamentals of Juno working as expected.
+The current demo's purpose is to show the various upgrades we've made, specifically the performance ones.
 
 The demo starts with `./demo/start.sh` which causes a four server-node cluster (right side) and a Client node (left side) to be started.
 The four server nodes hold an election shortly after starting, decide on a Leader and become ready to accept commands from the Client.
 
 The rest of the demo can be split into three sections:
 
-#### 1. Prelude
+#### 1. Prelude (New: April 2016)
 
 Here, we create two accounts, `Acct1` and `Acct2`, which will be used for the remainder of the demo.
 The subsequent demo sections use scripted demo-commands that have hard coded names so accounts `Acct1` and `Acct2` must exist.
@@ -184,7 +184,7 @@ As always, each of these commands are sent to the Leader which replicates them t
 Once the command has been replicated to a majority of nodes, the command is applied by the Leader and a response to the Client is issued.
 Followers also apply the final transfer command around this time.
 
-#### 2. Client Batching
+#### 2. Client Batching (New: April 2016)
 
 The first scripted demo-command we show is `batch test:N` which demonstrates Juno's throughput when clients are able to bundle individual commands into a single message.
 Again, each command is treated as a distinct entry in the log.
@@ -206,7 +206,7 @@ This includes the time it took to do the following for each command in the list:
 
 Depending on the hardware, `batch test:8000` can yield a throughput in excess of 7k/sec.
 
-#### 3. Leader Batching
+#### 3. Leader Batching (New: April 2016)
 
 The optimal batching strategy is for the Client to hand batches of Commands to the the Leader.
 However, this is only applicable in a few use cases.
@@ -222,7 +222,7 @@ We've completely a first pass at implementing this system, but it still is 2x sl
 
 The explanation of the performance numbers found in the previous section holds for the numbers printed along with this command as well.
 
-## Performance and Crypto
+## Performance and Crypto (New: April 2016)
 
 <p align="center"><img src="readme-assets/ThroughputVsClusterSize.png" alt="Performance vs Cluster Size"/></p>
 
@@ -245,7 +245,7 @@ Fully crypto takes place for each and every command and cluster message. Here is
        , creates an Append Entries Response RPC (AER) for the AE, signs the AER with its Private Key, and distributes the AER to every node.
 6. Finally, every node independently processes the other node's AER's, validating each against their Public Key.
 
-## What's Coming up Next
+## What's Coming up Next (Updated: April 2016)
 
 This version of Juno represents an early iteration that the authors were given permission to Open Source.
 Though we are continuing to work on it, it still needs much more work before it is ready for a production deployment.
