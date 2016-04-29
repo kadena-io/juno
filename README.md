@@ -1,53 +1,62 @@
 [![Build Status](https://travis-ci.org/buckie/juno.svg?branch=develop)](https://travis-ci.org/buckie/juno)
 
-#### TL;DR
-
-Ok, here's a quick demo.
-
-<p align="center"><img src="/demo.gif" alt="Demo Gif"/></p>
-[What is going on in the demo](#what-is-going-on-in-the-demo)
-***
 
 <h1 align="center">Juno</h1>
 <h6 align="center">Byzantine Fault Tolerant Raft With Smart Contracts</h6>
 
-### Introduction
+#### New Features in 0.0.0.2 Release (2016 April 29)
 
-Juno is a working prototype that represents an alternative design to current Blockchain-based Smart Contract systems.
+* **[Performance Improvements](#performance-and-crypto-new-april-2016)**: Juno can achieve consensus for **2000 commits/second**; with client/gateway batching performance jumps to to **~4000/sec**. See demo gif for details.
 
-Overall Blockchain-based approached to Smart Contract systems have a lot of potential for both public and private applications.
-For many private (i.e. enterprise) applications, however, a core capability of Blockchain needs to be explicitly disabled -- that of anonymous participation.
-This has large implications for the possible solution space but specifically removes the need mining (Proof of Work), Proof of Stake, etc... to provide consensus and Byzantine Fault Tolerance (BFT).
+* **Massively Parallel:**
+    Juno scales near-optimally with core count.
 
-Instead Juno uses a [Raft][Raft] protocol variant called [Tangaroa][Tangaroa Paper] which is "BFT-hardened" enough to cover the majority of possible Byzantine Faults that we believe an enterprise system should be robust against.
-Juno began as a fork of [Tangaroa's Haskell implementation][Tangaroa Repo].
-Through the use of a "BFT-hardened" Raft, Juno can achieve vastly lower latency than traditional Blockchain-based approaches -- one based mostly on network latency.
-Running the demo locally, one can expect latencies of ~20ms and throughput in excess of 1000 transactions a second.
+* **Upgraded Crypto:**
+    Juno now uses the state-of-the art [ed25519-donna](https://github.com/floodyberry/ed25519-donna/) library for lightning-fast crypto.
 
-For the subset of applications that Juno targets (private networks, intra/inter-organization workflows, known participants) similar Blockchain-based approaches generally attempt to decrease latency (caused by mining) by decreasing the difficulty of mining itself.
-We believe turning down the difficulty is somewhere between an unfortunate to a dangerous compromise as those systems generally also allow forked chains.
-As such, decreasing the difficulty can lead to manipulation of chain.
-Some approaches decrease mining difficulty and use some method of Leader Election, Round Robin, etc. to mitigate the danger posed by such a compromise.
-We believe this defeats the point of mining.
+* **Major State Machine Refactor** modeling each RPC of the Raft state machine into distinct monads
 
-NB: This is v0.1 release of Juno, our last stable version. Our internal version extends the Tangaroa protocol to fix various edge cases and attack vectors that we've identified.
-Hopefully we will be able to publish the protocol's extension and open source this version in coming months, once it becomes stable and release is approved.
+#### Demo (Updated for v0.0.0.2)
+
+<p align="center"><img src="readme-assets/demo.gif" alt="Demo Gif"/></p>
+
+[*What is going on in the demo*](#what-is-going-on-in-the-demo)
+
+#### Throughput Performance
+
+<p align="center"><img src="readme-assets/ThroughputVsClusterSize.png" alt="Performance vs Cluster Size"/></p>
+
+| Cluster Size | Client Batching (Command/Sec) | Leader Batching (Command/Sec) |
+|:------------:|:------------------------------:|:-------------------------------:|
+|  4 | 7729 | 5398 |
+|  8 | 3698 | 2823 |
+| 12 | 2147 | 3100 |
+| 16 | 1646 | 2442 |
+| 20 | 1179 | 2444 |
+
+See [Performance and Crypto](#performance-and-crypto-new-april-2016) for full description.
+
+***
+
+
+## Introduction
+
+Juno is a BFT Consensus-based Distributed Cryptoledger providing an alternative to current Blockchain-based Smart-Contract systems.
+
+Blockchain-based approaches to Smart Contract systems are a mismatch for many enterprise applications, as they are purpose-built for *anonymous participation*, necessitating computationally-intensive solutions fault-tolerance and consensus (ie mining, proof-of-stake). Enterprise applications generally have no need to support anonymous actors, so the utility of using consensus algorithms like Paxos or Raft is clear. However no clear solution exists that can provide the Byzantine fault-tolerant (BFT) features of a blockchain on a consensus platform.
+
+Enter Juno, "hardening" the [Raft][Raft] consensus protocol with BFT features. Juno started as a fork of the [Tangaroa][Tangaroa Paper] project, which sought to enhance Raft with BFT features like crypto-signatures of all messages, incremental hashing, and independent commit-proof verification.
+
+With its "BFT-hardened" Raft, Juno achieves vastly greater throughput than traditional Blockchain-based approaches. Our demo shows latencies in the 5ms range (compared with seconds or minutes in Blockchain solutions) and throughput upward of 2000 transactions a second.
 
 ## First Principles
 
-For many internal enterprise applications the notion of anonymous participation is anathema.
-This is a fundamental feature of Bitcoin and its derivative technologies. It demands the need for Proof of Work, etc. in Blockchain technologies.
-As such, removal of this feature implies that mining may be possible to remove entirely.
-Mining, however, also provides Blockchain technologies with a means of coming to a distributed consensus about the state of the world.
-Specifically, how to get a collective of servers to agree about what entries come before other entries in the global ledger of transactions.
-Therein lies our first principle:
+For many internal enterprise applications the notion of anonymous participation is anathema; yet this is a fundamental feature of Bitcoin and derivative technologies, requiring Proof-of-Work mining. This provides Blockchain solutions with the means of coming to a distributed consensus about the state of the world: how to get a quorum of servers to agree about *ordering* (what entries come before other entries in the global ledger of transactions) as well as verification of the contents of those entries:
 
-* #1 A means for a distributed cluster to agree on order of some sort of message.
+* #1 A means for a distributed cluster to agree on a uniform ordering of messages.
 
-Blockchain-based Smart Contract systems use the distributed ledger as substrate for storing & ordering commands to run.
-One can think of the Smart Contract system as a REPL and the Blockchain substrate as a means for ordering input commands to the REPL.
-Put another way, the Smart Contract layer is a replicated state machine and the Blockchain layer orders what happens when.
-This identifies our second principle:
+Blockchain-based Smart-Contract systems use the distributed ledger as substrate for storing & ordering commands to run.
+Thus, the Smart-Contract layer is a replicated state machine and the Blockchain layer orders what inputs are fed into the RSM:
 
 * #2 A means to step a state machine in a distributed and deterministic way.
 
@@ -86,8 +95,7 @@ Raft is a Paxos variant designed for understandability.
 Simply put, it provides a method for a cluster of servers to elect a Leader as well as a method for replacing the Leader if it goes down.
 Once a Leader is selected, it orders messages that it receives & distributes the messages to Followers for replication and application to a state machine.
 
-When we speak of consensus, this is what we mean -- a way for parts of a system to agree on the state of the world.
-By using Raft, as opposed to an [EPaxos] like system, the messages' meaning may be opaque to the consensus layer.
+When we speak of consensus, we mean a way for parts of a system to agree on the state of the world. By using Raft, as opposed to an EPaxos-like system, the messages' meaning are opaque to the consensus layer.
 
 ### #2 Replicated State Machine
 
@@ -151,49 +159,99 @@ For the latter, the Node should transmit it is leaving the consensus group, ente
 
 ### What is going on in the demo
 
-The demo starts with `./demo/start.sh` which causes a four server-node cluster (right side) and a Client node (left side) to be started.
+The demo starts by issuing `./demo/start.sh` to launch windows in a `tmux` session. This launches a four-server-node cluster on the right side, and a window for starting the client node.
+
 The four server nodes hold an election shortly after starting, decide on a Leader and become ready to accept commands from the Client.
-The Client then:
 
-1. creates three accounts (`wjm`, `stu` and `bank`)
-2. credits `wjm` with $100
-3. transfers $10 from `wjm` to `stu` directly
+The rest of the demo can be split into three sections:
 
-Each of these commands are sent to the Leader which replicates them to the Followers.
+#### 1. Setup
+
+Here, we create two accounts, `Acct1` and `Acct2`, which will be used for the remainder of the demo.
+The subsequent demo sections use scripted demo-commands that have hard coded names so accounts `Acct1` and `Acct2` must exist.
+All of the scripted demo-commands transfer a single dollar from `Acct1` to `Acct2` multiple times, but each in a different way.
+
+As such, we next credits `Acct1` with $100000 and run `ObserveAccounts` to check the current balances of the two accounts (e.g. `Acct1: 100000, Acct2: 0`).
+Finally, we demonstrate what a single dollar transfer looks like at the account balance level by transferring $1 from `Acct1` to `Acct2` and rechecking the current balances via `ObserveAccounts`.
+
+As always, each of these commands are sent to the Leader which replicates them to the Followers.
 Once the command has been replicated to a majority of nodes, the command is applied by the Leader and a response to the Client is issued.
 Followers also apply the final transfer command around this time.
 
-After all this is completed, it's time to test resiliency of the network. As such, the Leader is terminated.
-Eventually a Follower calls for an election and is chosen as the new Leader.
-The Client now transfers $10 from `stu` to `wjm` via the intermediary `bank`.
+#### 2. Client/Gateway Batching
 
-## What's Coming up Next
+In scenarios where a gateway or middleware piece is submitting commands into the ledger, the opportunity exists to batch these commands before submission, which can acheive stellar performance.
 
-This version of Juno represents an early iteration that the authors were given permission to Open Source.
-Our internal development branch is much further along but is not yet ready for prime time -- due to time constraints, we needed to open source in February.
+In the demo, the `batch test:N` simulates this use case. Note that while the commands are batched, the transactions are still distict log entries with independent verification and execution; thus if one transaction fails the others are not impacted.
 
-Currently it addresses:
+`batch test:N` creates a batch of `N` individual single dollar transfer commands (i.e. `transfer(Acct1->Acct2, 1%1)`).
+The demo shows a batch test of 1000 and then 5000; the output shows the performance measurements for these commands, which is how long it took to achieve the following:
 
-* legibility of the consensus level state machine via a pure refactor
-* the issues in the Tangaroa protocol spec
-* additional test rigging
+* (Leader) receive the list of commands
+* (Leader then Followers) verify the signature of the Command
+* (Leader then Followers) replicate the Command to the Followers
+* (Leader) collect replication evidence from the Followers
+* (Leader) increase its CommitIndex
+* (Leader) apply every command in the batch
+* (Leader) create the Command Response RPC.
 
-We hope to also have:
+Depending on the hardware, `batch test:8000` can yield a throughput in excess of 7k/sec.
 
-* persistence via SQLite
-* integrated Client command HTTP servers
-* system monitoring integration
-* signed snapshots
-* additional Node states: standby/read replicas/non-voting nodes, read-only due to unrecoverable issue
-* key rotation commands
+#### 3. Leader/Adaptive Batching
 
-Please be patient, much more is coming.
+When the cluster receives messages one-by-one, Juno employs an adaptive batching strategy to maximize performance. This is demonstrated in the demo by issuing `many test:N`.
+
+`many test:N` also replicates a single dollar transfer (i.e. `transfer(Acct1->Acct2, 1%1)`) `N` times, but dispatches each command to the cluster as an individual message.
+The cluster leader can then detect increasing numbers of messages accumulating in the inbound queue, and create large batches to submit to consensus.
+
+While the performance of this adaptive batching is excellent, we still see a 2x improvement with client-side/gateway batching.
+
+The explanation of the performance numbers found in the previous section holds for the numbers printed along with this command as well.
+
+## Performance and Crypto (New: April 2016)
+
+<p align="center"><img src="readme-assets/ThroughputVsClusterSize.png" alt="Performance vs Cluster Size"/></p>
+
+Above is a graph of Throughput (Commands per second) vs Cluster Size.
+These are very early numbers as they measured via a cluster running locally on a MBP.
+Overall though, we are quite happy with the trend lines and expect performance to improve in subsequent iterations.
+
+| Cluster Size | `many test:1000` (Command/Sec) | `batch test:1000` (Command/Sec) |
+|:------------:|:------------------------------:|:-------------------------------:|
+|  4 | 7729 | 5398 |
+|  8 | 3698 | 2823 |
+| 12 | 2147 | 3100 |
+| 16 | 1646 | 2442 |
+| 20 | 1179 | 2444 |
+
+Full crypto takes place for each and every command and cluster message. Here is a sample crypto workflow for the command `ObserveAccounts`:
+
+1. The Client creates a Command RPC (CMD) that holds the `ObserveAccounts` Command
+2. The Client signs the CMD with its Private Key and sends the Signed CMD to the Leader.
+3. The Leader verifies the Signed CMD's signature against the Client's Public Key and, if valid, replicates the CMD to its Log.
+4. The Leader creates an AppendEntries RPC (AE), signs the AE with its Private Key and distributes the Signed AE to each of its Followers.
+     AE's can hold 0 or more Log Entries, each holding a individual CMD.
+     As such, the original CMD is re-transmitted to the Followers via the AE.
+5. Each Follower first verifies the signature on the Signed AE against the Leader's public key.
+     If that signature is valid then each Follower then validates every Log Entry's CMD's signature against the Public Key of the originating Client.
+     If all of those signatures are valid
+       then the Follower replicates the LogEntry (and thus the CMD)
+       , creates an Append Entries Response RPC (AER) for the AE, signs the AER with its Private Key, and distributes the AER to every node.
+6. Finally, every node independently processes the other node's AER's, validating each against their Public Key.
+7. When enough evidence has been collected, each node increases its commit index (independently).
+
+## Roadmap
+
+Juno is still very much in a prototype phase: the demo runs without any persistence, for instance, meaning a full restart of all nodes erases all history. Our focus is on consensus performance currently so there is still much work to do! Such as:
+
+* Persistence (log and RSM)
+* RSM signed snapshots
+* New operational Node states: standby/read replicas/non-voting nodes
+* Key Rotation 
 
 ### Thanks & References
 
-A huge thanks to Tangaroa's authors for creating and open sourcing their work.
-Though this release has been refactored a bit, it is largely an untouched fork of Tangaroa -- @chrisnc and @hongxia got so very much right.
-I feel justified in changing the name to Juno only because I know what the general shape of the next version will look like, a near total refactor.
+Juno is indebted to the ground-breaking work and open-source code by the Tangaroa authors for which we are deeply grateful. We have touched pretty much every line of code so this is no longer a simple Tangaroa fork -- but the original design is still in there, reflecting all the things @chrisnc and @hongxia got so very much right.
 
 A (less huge but still large) thanks to [Verdi Raft] as well. Their demo was the inspiration for one posted above -- very clever.
 
