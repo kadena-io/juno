@@ -1,5 +1,5 @@
 name:                juno
-version:             0.0.0.1
+version:             0.0.0.2
 synopsis:            Bynzantine Fault Tolerant Raft
 description:         An implementation of a Byzantine Fault Tolerant Raft protocol.
 homepage:            https://github.com/buckie/juno
