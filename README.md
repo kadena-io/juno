@@ -9,14 +9,30 @@
     NB: we're not cheating to get to this number (e.g. turning down mining difficulty, fudging crypto); full Public-Private key crypto is taking place on every single message and command
      + each message is a true individual transaction requiring quorum consensus to be reached before application)
 * Massively Parallel:
-    Juno now scales near optimally as core count increases. We expect our performance numbers to *increase* as we test on better hardware.
+    Juno now scales near optimally as core count increases.
+    We expect our performance numbers to *increase* as we move to non-local cluster testing despite network latency (now ~50microseconds) increasing.
 * Better Crypto:
-    Juno now uses `ed25519-donna`
+    Juno now uses [ed25519-donna](https://github.com/floodyberry/ed25519-donna/)
+* Major State Machine Refactor
 
 #### Quick Demo (Updated: April 2016)
 
 <p align="center"><img src="readme-assets/demo.gif" alt="Demo Gif"/></p>
 [What is going on in the demo](#what-is-going-on-in-the-demo)
+
+#### Throughput Performance
+
+<p align="center"><img src="readme-assets/ThroughputVsClusterSize.png" alt="Performance vs Cluster Size"/></p>
+
+| Cluster Size | `many test:1000` (Command/Sec) | `batch test:1000` (Command/Sec) |
+|:------------:|:------------------------------:|:-------------------------------:|
+|  4 | 7729 | 5398 |
+|  8 | 3698 | 2823 |
+| 12 | 2147 | 3100 |
+| 16 | 1646 | 2442 |
+| 20 | 1179 | 2444 |
+
+See the [Performance and Crypto] section for full description.
 
 ***
 
@@ -230,7 +246,15 @@ Above is a graph of Throughput (Commands per second) vs Cluster Size.
 These are very early numbers as they measured via a cluster running locally on a MBP.
 Overall though, we are quite happy with the trend lines and expect performance to improve in subsequent iterations.
 
-Fully crypto takes place for each and every command and cluster message. Here is a sample crypto workflow for the command `ObserveAccounts`:
+| Cluster Size | `many test:1000` (Command/Sec) | `batch test:1000` (Command/Sec) |
+|:------------:|:------------------------------:|:-------------------------------:|
+|  4 | 7729 | 5398 |
+|  8 | 3698 | 2823 |
+| 12 | 2147 | 3100 |
+| 16 | 1646 | 2442 |
+| 20 | 1179 | 2444 |
+
+Full crypto takes place for each and every command and cluster message. Here is a sample crypto workflow for the command `ObserveAccounts`:
 
 1. The Client creates a Command RPC (CMD) that holds the `ObserveAccounts` Command
 2. The Client signs the CMD with its Private Key and sends the Signed CMD to the Leader.
@@ -244,6 +268,7 @@ Fully crypto takes place for each and every command and cluster message. Here is
        then the Follower replicates the LogEntry (and thus the CMD)
        , creates an Append Entries Response RPC (AER) for the AE, signs the AER with its Private Key, and distributes the AER to every node.
 6. Finally, every node independently processes the other node's AER's, validating each against their Public Key.
+7. When enough evidence has been collected, each node increases its commit index (independently).
 
 ## What's Coming up Next (Updated: April 2016)
 
