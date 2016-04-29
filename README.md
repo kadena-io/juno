@@ -6,8 +6,6 @@
 
 * [Massive Speed Improvements](#performance-and-crypto-new-april-2016): Juno can now come to full consensus of ~2k individual commands per second;
     if the client batches the messages this number jumps up to ~4k/sec. See the new Demo gif for details.
-    NB: we're not cheating to get to this number (e.g. turning down mining difficulty, fudging crypto); full Public-Private key crypto is taking place on every single message and command
-     + each message is a true individual transaction requiring quorum consensus to be reached before application)
 * Massively Parallel:
     Juno now scales near optimally as core count increases.
     We expect our performance numbers to *increase* as we move to non-local cluster testing despite network latency (now ~50microseconds) increasing.
