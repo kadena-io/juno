@@ -249,12 +249,11 @@ Fully crypto takes place for each and every command and cluster message. Here is
 
 This version of Juno represents an early iteration that the authors were given permission to Open Source.
 Though we are continuing to work on it, it still needs much more work before it is ready for a production deployment.
-I would recommend against forking off of it/iterating on it in its current state given the plans we have the issues with the current version.
+I would recommend against forking off of it/iterating on it in its current state given the plans we have and the issues with the current version.
 
 We hope to also have:
 
 * persistence via SQLite
-* integrated Client command HTTP servers
 * signed snapshots
 * additional Node states: standby/read replicas/non-voting nodes, read-only due to unrecoverable issue
 * key rotation commands
