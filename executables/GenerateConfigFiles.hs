@@ -68,6 +68,7 @@ createClusterConfig debugFollower (privMap, pubMap) clientPubMap nid = Config
   , _enableDebug          = True
   , _clientTimeoutLimit   = 50000
   , _dontDebugFollower    = not debugFollower
+  , _apiPort              = 8000
   }
 
 createClientConfig :: Bool -> Map NodeID PublicKey -> (Map NodeID PrivateKey, Map NodeID PublicKey) -> NodeID -> Config
@@ -84,4 +85,5 @@ createClientConfig debugFollower clusterPubMap (privMap, pubMap) nid = Config
   , _enableDebug          = False
   , _clientTimeoutLimit   = 50000
   , _dontDebugFollower    = not debugFollower
+  , _apiPort              = 8000
   }
