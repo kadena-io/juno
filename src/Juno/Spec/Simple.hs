@@ -97,7 +97,7 @@ simpleRaftSpec :: MonadIO m
                -> InChan (OutBoundMsg String ByteString)
                -> Bounded.OutChan Event
                -> Bounded.InChan Event
-               -> ((CommandEntry, RequestId) -> m CommandResult)
+               -> (Command -> m CommandResult)
                -> (NodeID -> String -> m ())
                -> (Metric -> m ())
                -> (MVar CommandMap -> RequestId -> CommandStatus -> m ())
@@ -223,7 +223,7 @@ updateCmdMapFn cmdMapMvar rid cmdStatus =
      )
     )
 
-runClient :: ((CommandEntry, RequestId) -> IO CommandResult) -> IO (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
+runClient :: (Command -> IO CommandResult) -> IO (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
 runClient applyFn getEntries cmdStatusMap' = do
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
@@ -251,7 +251,7 @@ runClient applyFn getEntries cmdStatusMap' = do
 --   shared state between API and protocol: sharedCmdStatusMap
 --   comminication channel btw API and protocol:
 --   [API write/place command -> toCommands] [getApiCommands -> juno read/poll command]
-runJuno :: ((CommandEntry, RequestId) -> IO CommandResult) -> InChan (RequestId, [CommandEntry])
+runJuno :: (Command -> IO CommandResult) -> InChan (RequestId, [CommandEntry])
         -> OutChan (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
 runJuno applyFn toCommands getApiCommands sharedCmdStatusMap = do
   rconf <- getConfig
