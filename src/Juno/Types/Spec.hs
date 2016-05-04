@@ -69,7 +69,7 @@ data RaftSpec m = RaftSpec
   , _writeVotedFor    :: Maybe NodeID -> m ()
 
     -- ^ Function to apply a log entry to the state machine.
-  , _applyLogEntry    :: CommandEntry -> m CommandResult
+  , _applyLogEntry    :: (CommandEntry, RequestId) -> m CommandResult
 
     -- ^ Function to send a message to a node.
   , _sendMessage      :: NodeID -> ByteString -> m ()

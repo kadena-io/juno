@@ -35,8 +35,7 @@ import Apps.Juno.Parser
 import Juno.Types hiding (CommandBatch)
 import Schwifty.Swift.M105.Types
 import Schwifty.Swift.M105.Parser
-
-import Apps.Juno.ApiDemoHandler (transactDemoReqHandler)
+import Apps.Juno.ApiDemoHandler (transferDemoReqHandler)
 
 data ApiEnv = ApiEnv {
       _aiToCommands :: InChan (RequestId, [CommandEntry]),
@@ -57,7 +56,7 @@ apiRoutes = route [
              ,("api/swift-submit", swiftSubmission)
              ,("api/ledger-query", ledgerQuery)
               -- demo endpoints
-             ,("api/juno/v1/transact/demo", apiWrapper transactDemoReqHandler)
+             ,("api/juno/v1/transfer", apiWrapper transferDemoReqHandler)
              ]
 
 apiWrapper :: (BLC.ByteString -> Either BLC.ByteString [CommandEntry]) -> ReaderT ApiEnv Snap ()
@@ -84,11 +83,6 @@ adjustAccount = apiWrapper adjustAccoutReqHandler
 -- accept hopercommands transfer(000->100->101->102->103->003, 100%1)
 transactAPI :: ReaderT ApiEnv Snap ()
 transactAPI = apiWrapper transactReqHandler
-
--- juno/jmeter/juno_API_jmeter_test.jmx
--- accept hopercommands transfer(000->100->101->102->103->003, 100%1)
-transactDemoAPI :: ReaderT ApiEnv Snap ()
-transactDemoAPI = apiWrapper transactReqHandler
 
 ledgerQueryAPI :: ReaderT ApiEnv Snap ()
 ledgerQueryAPI = apiWrapper ledgerQueryReqHandler

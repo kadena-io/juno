@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Apps.Juno.ApiDemoHandler (transactDemoReqHandler) where
+module Apps.Juno.ApiDemoHandler (transferDemoReqHandler) where
 
 import Control.Monad.Reader
 import qualified Data.ByteString.Lazy.Char8 as BLC
@@ -11,27 +11,27 @@ import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Aeson as JSON
 import           GHC.Generics
 import           Data.Aeson as JSON
--- import           Data.Aeson.Types (Options(..),defaultOptions,parseMaybe)
-
+import Apps.Juno.Parser (programCodeDelimiter)
 import Apps.Juno.JsonTypes
 import Juno.Types hiding (CommandBatch)
 
-transactDemoReqHandler :: BLC.ByteString -> Either BLC.ByteString [CommandEntry]
-transactDemoReqHandler bs =
+
+transferDemoReqHandler :: BLC.ByteString -> Either BLC.ByteString [CommandEntry]
+transferDemoReqHandler bs =
     case JSON.decode bs of
       Just (TransactDemoRequest
             (TransferJson to' from' amount' _) -- ignoring currency for now USD
-            (TransferDataJson _)
+            (TransferDataJson progData)
            ) -> do
           let txCode = toTx to' from' amount'
-          -- TODO: Store the body swift.
-          Right [CommandEntry $ BSC.pack txCode]
+          Right [CommandEntry $ BSC.pack $ progData ++ programCodeDelimiter ++ txCode]
       Nothing ->
-          Left $ JSON.encode $ commandResponseFailure "" "Malformed input, could not decode input JSON."
+          Left $ JSON.encode $ commandResponseFailure ""
+                   "Malformed input, could not decode input JSON."
   where
     toTx to' from' amount = "transfer(" ++ to' ++ "->" ++ from' ++ "," ++ show (toRational amount) ++ ")"
 
--- demo API transact
+-- demo API transfer
 --{"payload":
 --  {"transfer":
 --   {"acctFrom":"000"

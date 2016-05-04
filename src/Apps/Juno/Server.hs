@@ -16,6 +16,6 @@ main = do
   -- shared on a node basis between API interface and protocol
   sharedCmdStatusMap <- initCommandMap
   let -- applyFn :: et -> IO rt
-      applyFn :: CommandEntry -> IO CommandResult
+      applyFn :: (CommandEntry, RequestId) -> IO CommandResult
       applyFn = runCommand stateVariable
   runJuno applyFn toCommands fromCommands sharedCmdStatusMap

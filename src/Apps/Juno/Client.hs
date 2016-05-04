@@ -110,7 +110,7 @@ main = do
       getEntries :: IO (RequestId, [CommandEntry])
       getEntries = readChan fromCommands
       -- applyFn :: et -> IO rt
-      applyFn :: CommandEntry -> IO CommandResult
+      applyFn :: (CommandEntry, RequestId) -> IO CommandResult
       applyFn _x = return $ CommandResult "Failure"
   void $ CL.fork $ runClient applyFn getEntries cmdStatusMap'
   threadDelay 100000
