@@ -31,29 +31,31 @@ transferDemoReqHandler bs =
   where
     toTx to' from' amount = "transfer(" ++ to' ++ "->" ++ from' ++ "," ++ show (toRational amount) ++ ")"
 
--- demo API transfer
---{"payload":
---  {"transfer":
---   {"acctFrom":"000"
---   ,"acctTo":"001"
---   ,"amount":1192.00
---   ,"currency":"USD"
---   }
---   ,"data":
---   {"mtmessage":
---    "{1:F01CHASUS33AXXX0000456150}{2:O1032031160113CHASJPJTAXXX89653582351601132031N}{4:\r
---      \n:20:2016012800266559\r\n:23B:CRED\r\n:32A:160129USD24192,00\r\n:33B:USD24192,00\r
---      \n:50K:/6718000111\r\nSTANDARD LIFE INVESTMENTS LIMITED\r\n1 GEORGE STREET, \r
---      \nEDINBURGH SC EH2 2LL\r\nUNITED KINGDOM\r\n:52A:CHASGB2L\r\n:54A:CHASUS33\r\n:57A:CHASJPJT\r
---      \n:59:/6610024417\r\nTAKAO MARANA \r\nMARUNOUCHI,CHIYODAKU,\r\nTOKYO JAPAN \r
---      \n:70:/RFB/6064028LBA790001\r\n:71A:OUR\r\n-}\r\n\r\n"}
---   }
---}
---
-data TransferJson = TransferJson { acctFromTrans :: String
-                                 , acctToTrans :: String
-                                 , amountTrans :: Double
-                                 , currencyTrans :: String
+{-
+ demo API transfer
+{"payload":
+  {"transfer":
+   {"acctFrom":"000"
+   ,"acctTo":"001"
+   ,"amount":1192.00
+   ,"currency":"USD"
+   }
+   ,"data":
+   {"mtmessage":
+    "{1:F01CHASUS33AXXX0000456150}{2:O1032031160113CHASJPJTAXXX89653582351601132031N}{4:\r
+      \n:20:2016012800266559\r\n:23B:CRED\r\n:32A:160129USD24192,00\r\n:33B:USD24192,00\r
+      \n:50K:/6718000111\r\nSTANDARD LIFE INVESTMENTS LIMITED\r\n1 GEORGE STREET, \r
+      \nEDINBURGH SC EH2 2LL\r\nUNITED KINGDOM\r\n:52A:CHASGB2L\r\n:54A:CHASUS33\r\n:57A:CHASJPJT\r
+      \n:59:/6610024417\r\nTAKAO MARANA \r\nMARUNOUCHI,CHIYODAKU,\r\nTOKYO JAPAN \r
+      \n:70:/RFB/6064028LBA790001\r\n:71A:OUR\r\n}\r\n\r\n"}
+   }
+}
+-}
+
+data TransferJson = TransferJson { _tAcctFrom :: String
+                                 , _tAcctTo :: String
+                                 , _tAmount :: Double
+                                 , _Tcurrency :: String
                                  } deriving (Show, Eq)
 
 instance ToJSON TransferJson where
@@ -98,11 +100,16 @@ instance FromJSON TransactDemoRequest where
                                                <*> ((v .: "payload") >>= (.: "data"))
     parseJSON _ = mzero
 
-goodTrans = JSON.encode $ TransferJson "000" "001" 24192.10 "USD"
-goodBody = JSON.encode $ TransferDataJson  "hi"
+_goodTrans :: BLC.ByteString
+_goodTrans = JSON.encode $ TransferJson "000" "001" 24192.10 "USD"
 
-goodRequest = JSON.encode $ TransactDemoRequest
+_goodBody :: BLC.ByteString
+_goodBody = JSON.encode $ TransferDataJson "hi"
+
+_goodRequest :: BLC.ByteString
+_goodRequest = JSON.encode $ TransactDemoRequest
               (TransferJson "000" "001" 1192.00 "USD")
               (TransferDataJson "test blob")
 
-decodeTransDemoReq = JSON.decode $ goodRequest :: Maybe TransactDemoRequest
+_decodeTransDemoReq :: Maybe TransactDemoRequest
+_decodeTransDemoReq = JSON.decode $ _goodRequest :: Maybe TransactDemoRequest

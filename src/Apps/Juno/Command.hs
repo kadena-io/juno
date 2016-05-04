@@ -46,21 +46,21 @@ setBalances bals ps = ps { DEval._persistentBalances = bals }
 runCommand :: JunoEnv -> (CommandEntry, RequestId) -> IO CommandResult
 runCommand env (cmd', rid) = do
   mvar <- return $ getStateMVar env
-  (ps, ss, store) <- MV.takeMVar mvar -- persistent s, swift, prog input store
+  orgState@(ps, ss, store) <- MV.takeMVar mvar -- persistent s, swift, prog input store
   let bals = balances ps
   case readHopper $ unCommandEntry cmd' of
     Left err -> do
-      MV.putMVar mvar (ps, ss, store)
+      MV.putMVar mvar orgState
       return $ CommandResult $ BSC.pack err
     Right cmd -> fmap CommandResult $ handle
         (\e -> do
-            MV.putMVar mvar (ps, ss, store)
+            MV.putMVar mvar orgState
             return $ BSC.pack $ show (e :: SomeException)) $
         case cmd of
             CreateAccount acct ->
                 if Map.member acct bals
                 then do
-                    MV.putMVar mvar (ps, ss, store)
+                    MV.putMVar mvar orgState
                     return "Account Already Exists"
                 else do
                     MV.putMVar mvar $! (setBalances (Map.insert acct 0 bals) ps, ss, store)
@@ -72,35 +72,34 @@ runCommand env (cmd', rid) = do
                     MV.putMVar mvar $! (setBalances (Map.adjust (+ amount) acct bals) ps, ss, store)
                     return $ BSC.pack $ "Adjusted Account " ++ show acct ++ " by " ++ show amount
                 else do
-                    MV.putMVar mvar (ps, ss, store)
+                    MV.putMVar mvar orgState
                     return $ BSC.pack $ "Error: Account " ++ show acct ++ " does not exist!"
 
             ObserveAccount acct -> do
-                MV.putMVar mvar (ps, ss, store)
+                MV.putMVar mvar orgState
                 return $ BSC.pack $ show $ Map.lookup acct bals
 
             ObserveAccounts -> do
-                MV.putMVar mvar (ps, ss, store)
+                MV.putMVar mvar orgState
                 return $ BSC.pack $ prettyLedger bals
 
             CommandInputQuery rid' -> do
-                 MV.putMVar mvar (ps, ss, store)
+                 MV.putMVar mvar orgState
                  return $ BSC.pack $ show $ Map.lookup rid' store
 
             Program input term -> do
                 case DTerm.evaluableHopliteTerm term of
                     Nothing -> do
-                      MV.putMVar mvar (ps, ss, store)
+                      MV.putMVar mvar orgState
                       return $  BSC.pack $ "Invalid Command or Program" ++ (show term)
                     Just (DTerm.PolyF evaluableTerm) ->
                         case DEval.runExpr 10000 ps evaluableTerm of
                             Left err -> do
-                                MV.putMVar mvar (ps, ss, store)
+                                MV.putMVar mvar orgState
                                 return $ BSC.pack $ "Execution issue " ++ show err
                             Right (DEval.InterpreterOutput (DEval.InterpreterDiff _balsDiff ops)
                                                         nextPs) -> do
-                                store' <- return $ Map.insert rid input store
-                                MV.putMVar mvar (nextPs, ss, store')
+                                MV.putMVar mvar (nextPs, ss, Map.insert rid input store)
                                 return $ BSC.pack $ "Success"
                                         ++ "\n## Transaction Log ##\n" ++ unlines (prettyOpLog . snd <$> ops)
                                         ++ "\n## Previous Ledger ## " ++ prettyLedger bals
@@ -114,7 +113,7 @@ runCommand env (cmd', rid) = do
                     Just (DTerm.PolyF evaluableTerm) ->
                         case DEval.runExpr 10000 ps evaluableTerm of
                             Left err -> do
-                                MV.putMVar mvar (ps, ss, store)
+                                MV.putMVar mvar orgState
                                 return $ BLC.toStrict $ encode $
                                     object [ "status" .= ("Failure" :: T.Text)
                                            , "reason" .= show err]
@@ -130,7 +129,7 @@ runCommand env (cmd', rid) = do
                                            ]
 
             LedgerQueryCmd v -> do
-              MV.putMVar mvar (ps, ss, store)
+              MV.putMVar mvar orgState
               res <- return $ runQuery v (ps ^. DEval.persistentTxes, ss)
               return $ BLC.toStrict $ encodePretty res
 
