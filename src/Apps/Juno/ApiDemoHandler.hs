@@ -67,12 +67,11 @@ instance ToJSON TransferJson where
              ]
 
 instance FromJSON TransferJson where
-  parseJSON (Object v) = TransferJson <$> v .: "acctFrom"
-                                      <*> v .: "acctTo"
-                                      <*> v .: "amount"
-                                      <*> v .: "currency"
-
-  parseJSON _ = mzero
+  parseJSON = withObject "Transfer" $ \obj ->
+                TransferJson <$> obj .:"acctFrom"
+                             <*> obj .: "acctTo"
+                             <*> obj .: "amount"
+                             <*> obj .: "currency"
 
 data TransferDataJson = TransferDataJson String deriving (Show, Eq)
 
@@ -96,9 +95,10 @@ instance ToJSON TransactDemoRequest where
                ]
 
 instance FromJSON TransactDemoRequest where
-    parseJSON (Object v) = TransactDemoRequest <$> ((v .: "payload") >>= (.: "transfer"))
-                                               <*> ((v .: "payload") >>= (.: "data"))
-    parseJSON _ = mzero
+
+  parseJSON = withObject "TransactDemoRequest" $ \obj ->
+                TransactDemoRequest <$> ((obj .: "payload") >>= (.: "transfer"))
+                                    <*> ((obj .: "payload") >>= (.: "data"))
 
 _goodTrans :: BLC.ByteString
 _goodTrans = JSON.encode $ TransferJson "000" "001" 24192.10 "USD"
