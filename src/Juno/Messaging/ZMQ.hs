@@ -57,8 +57,6 @@ addNewAddrs (Rolodex !r) (x:xs) = do
         then return $! Rolodex r
         else do
           s <- socket Push
---          _ <- setConflate True s -- the client will drop outbound msgs if this is set,
-                                    -- once Client no longer uses ZMQ this can be uncommented
           _ <- connect s $ _unAddr x
           return $! Rolodex $! Map.insert x (ListenOn s) r
   r' `seq` addNewAddrs r' xs

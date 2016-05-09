@@ -99,14 +99,7 @@ updateCommitProofMap aerNew m = Map.alter go nid m
     go = \case
       Nothing   -> Just aerNew
       Just aerOld -> if _aerIndex aerNew > _aerIndex aerOld
-                     then -- NB: we don't check the hash here for a couple reasons.
-                          --   - The LogEntry for the index may not exist, but the AER may be valid in the
-                          --     future when new entries are added
-                          --   - The node may be giving bad hashes always, in which case we really don't care
-                          --     as every node can only give evidence once per doCommit cycle
-                          --   - It's more efficient to check later as we may get many AER's from that node
-                          --     in a given batch cycle
-                       Just aerNew
+                     then Just aerNew
                      else Just aerOld
 
 handle :: Monad m => AppendEntriesResponse -> JT.Raft m ()

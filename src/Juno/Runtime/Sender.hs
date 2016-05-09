@@ -43,12 +43,8 @@ createAppendEntries' target lNextIndex' es ct nid vts yesVotes =
     (pli,plt) = logInfoForNextIndex mni es
     vts' = if Set.member target vts then Set.empty else yesVotes
   in
-    -- If we send too big of an AppendEntries we can lock their system...
     AE' $ AppendEntries ct nid pli plt (getEntriesAfter pli es) vts' NewMsg
 
--- TODO: There seems to be needless construction then destruction of the non-wire message types
---       Not sure if that could impact performance or if it will be unrolled/magic-ified
--- no state update, uses state
 sendAppendEntries :: Monad m => NodeID -> Raft m ()
 sendAppendEntries target = do
   lNextIndex' <- use lNextIndex
@@ -61,7 +57,6 @@ sendAppendEntries target = do
   resetLastBatchUpdate
   debug $ "sendAppendEntries: " ++ show ct
 
--- no state update
 sendAllAppendEntries :: Monad m => Raft m ()
 sendAllAppendEntries = do
   lNextIndex' <- use lNextIndex
@@ -89,7 +84,6 @@ createAppendEntriesResponse success convinced = do
     AER' aer -> return aer
     _ -> error "deep invariant error"
 
--- no state update but uses state
 sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
 sendAppendEntriesResponse target success convinced = do
   ct <- use term
@@ -99,7 +93,6 @@ sendAppendEntriesResponse target success convinced = do
               (maxIndex es) (lastLogHash es)
   debug $ "Sent AppendEntriesResponse: " ++ show ct
 
--- no state update but uses state
 sendAllAppendEntriesResponse :: Monad m => Raft m ()
 sendAllAppendEntriesResponse = do
   ct <- use term
@@ -114,12 +107,9 @@ createRequestVoteResponse term' logIndex' myNodeId' target vote = do
   tell ["Created RequestVoteResponse: " ++ show term']
   return $ RequestVoteResponse term' logIndex' myNodeId' vote target NewMsg
 
--- no state update
 sendResults :: Monad m => [(NodeID, CommandResponse)] -> Raft m ()
 sendResults results = sendRPCs $ second CMDR' <$> results
 
-
--- TODO: figure out if there is a needless performance hit here (looking up these constants every time?)
 sendRPC :: Monad m => NodeID -> RPC -> Raft m ()
 sendRPC target rpc = do
   send <- view (rs.sendMessage)

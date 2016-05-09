@@ -35,12 +35,6 @@ issueBatch = do
       curTime <- join $ view (rs.getTimestamp)
       (ts, h) <- use lLastBatchUpdate
       when (curTime .-. ts >= batchTimeDelta') $ do
-        -- If enough time has elapsed, then figure out if anything new has happened
-
-        -- the main point here is to batch up a bunch of work, specifically:
-        --   - dealing with AER's and their responses
-        --   - auto-batching commands into a single AE
-        --   - delaying the execution of evidence checking
         doCommit
         latestLogHash <- (fmap _leHash.lastEntry) <$> use logEntries
         if latestLogHash /= h || isNothing latestLogHash

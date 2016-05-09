@@ -76,12 +76,6 @@ handleRequestVote RequestVote{..} = do
       return $ VoteForRPCSender m
 
     _ | (_rvLastLogTerm, _rvLastLogIndex) >= (llt, lli) -> do
-      -- we have no recorded vote, or this request is for a higher term
-      -- (we don't externalize votes without updating our own term, so we
-      -- haven't voted in the higher term before)
-      -- lazily vote for the candidate if its log is at least as
-      -- up to date as ours, use the Ord instance of (Term, Index) to prefer
-      -- higher terms, and then higher last indices for equal terms
       lv <- view lazyVote
       case lv of
         Just (t, _, _) | t >= _rvTerm -> do

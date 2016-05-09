@@ -29,15 +29,11 @@ data CommandMap = CommandMap
 
 type CommandMVarMap = MVar CommandMap
 
--- If we initialize the request ID from zero every time, then when you restart the client the rid resets too.
--- We've hit bugs by doing this before. The hack we use is to initialize it to UTC Time
 initCommandMap :: IO CommandMVarMap
 initCommandMap = do
   UTCTime _ time <- unUTCTime <$> getCurrentTime
   newMVar $ CommandMap (RequestId $ toMicroseconds time) Map.empty
 
--- move to utils, this is the only CommandStatus that should inc the requestId
--- NB: this only works when we have a single client, but punting on solving this for now is a good idea.
 setNextCmdRequestId :: CommandMVarMap -> IO RequestId
 setNextCmdRequestId cmdStatusMap = do
   (CommandMap nextId m) <- takeMVar cmdStatusMap

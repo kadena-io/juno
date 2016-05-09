@@ -28,10 +28,6 @@ doCommit = do
   commitUpdate <- updateCommitIndex
   when commitUpdate applyLogEntries
 
--- apply the un-applied log entries up through commitIndex
--- and send results to the client if you are the leader
--- TODO: have this done on a separate thread via event passing
--- THREAD: SERVER MAIN. updates state
 applyLogEntries :: Monad m => Raft m ()
 applyLogEntries = do
   la <- use lastApplied
@@ -116,9 +112,6 @@ logCommitChange before after
       lastCommitTime ?= now
   | otherwise = return ()
 
--- checks to see what the largest N where a quorum of nodes
--- has sent us proof of a commit up to that index
--- THREAD: SERVER MAIN. updates state
 updateCommitIndex :: Monad m => Raft m Bool
 updateCommitIndex = do
   ci <- use commitIndex
@@ -126,11 +119,8 @@ updateCommitIndex = do
   qsize <- view quorumSize
   es <- use logEntries
 
-  -- get the bound for things we can deal with
-  -- TODO: look into the overloading of LogIndex w.r.t. Seq Length/entry location
   let maxLogIndex = maxIndex es
 
-  -- this gets us all of the evidence we have, in order of largest LogIndex to smallest
   let evidence = reverse $ sortOn _aerIndex $ Map.elems proof
 
   case checkCommitProof qsize es maxLogIndex evidence of
@@ -152,15 +142,11 @@ updateCommitIndex = do
 checkCommitProof :: Int -> Log LogEntry -> LogIndex -> [AppendEntriesResponse] -> Either Int LogIndex
 checkCommitProof qsize les maxLogIdx evidence = go 0 evidence
   where
-    go n [] = Left n -- no update
+    go n [] = Left n
     go n (ev:evs) = if _aerIndex ev > maxLogIdx
-                    -- we can't do the lookup as we haven't replicated the entry yet, so pass till next time
                     then go n evs
                     else if Just (_aerHash ev) == (_leHash <$> lookupEntry (_aerIndex ev) les)
-                         -- hashes check out, if we have enough evidence then we can commit
                          then if (n+1) >= qsize
                               then Right $ _aerIndex ev
-                              -- keep checking the evidence
                               else go (n+1) evs
-                         -- hash check failed, can't count this one...
                          else go n evs

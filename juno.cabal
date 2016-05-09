@@ -186,37 +186,6 @@ executable junorepl
   ghc-prof-options:    -fprof-auto -fprof-auto-calls
   default-language:    Haskell2010
 
-executable simplepartest
-  main-is:             SimpleSeqVsParVsAsync.hs
-  build-depends:       async
-                     , base < 5
-                     , bytestring
-                     , criterion
-                     , deepseq >= 1.4.1.1
-                     , ed25519-donna
-                     , parallel
-  hs-source-dirs:      criterion
-  ghc-options:         -Wall -threaded -eventlog -rtsopts -O2 +RTS -N4 -RTS
-  ghc-prof-options:    -fprof-auto -fprof-auto-calls
-  default-language:    Haskell2010
-
-executable serialization
-  main-is:             Serialization.hs
-  build-depends:       async
-                     , base < 5
-                     , bytestring
-                     , cereal
-                     , containers
-                     , criterion
-                     , deepseq >= 1.4.1.1
-                     , ed25519-donna
-                     , juno
-                     , parallel
-  hs-source-dirs:      criterion
-  ghc-options:         -Wall -threaded -rtsopts -O2
-  ghc-prof-options:    -fprof-auto -fprof-auto-calls
-  default-language:    Haskell2010
-
 test-suite hspec
   other-modules:       ParserSpec
                      , WireFormatSpec

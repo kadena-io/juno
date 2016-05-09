@@ -51,10 +51,6 @@ handleRequestVoteResponse rvr@RequestVoteResponse{..} = do
     else
         return $ DeletePotentialVote _rvrNodeId
   else if ct > _rvrTerm && _rvrCurLogIndex > curLog && r == Candidate
-       -- We are a runaway candidate is a bad state and need to revert to our last know good state
-       -- A Candidate which reverts to it's last good state (specifically the Term of its last LogEntry)
-       -- is not distinguishable from an out of date follower and an out of date follower is already
-       -- handled by raft. Thus this operation is safe.
        then do
             tell ["Log is too out of date to ever become leader, revert to last good state: "
                   ++ show (ct,curLog) ++ " vs " ++ show (_rvrTerm, _rvrCurLogIndex)]
@@ -115,8 +111,6 @@ revertToLastQuorumState :: Monad m => JT.Raft m ()
 revertToLastQuorumState = do
   es <- use JT.logEntries
   setRole Follower
-  -- We don't persist this info and don't want to trust the RVR send's
-  -- word so we set it to nothing an await an AE from some Leader of a higher term, then validate the votes
   setCurrentLeader Nothing
   JT.ignoreLeader .= False
   setTerm (lastLogTerm es)

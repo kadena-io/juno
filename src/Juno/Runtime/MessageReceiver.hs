@@ -49,14 +49,10 @@ messageReceiver = do
   ks <- view keySet
   _ <- liftIO $ CL.fork $ runReaderT rvAndRvrFastPath env
   liftIO $ forever $ do
-    -- NB: This all happens on one thread because it runs in Raft and we're trying (too hard) to avoid running in IO
-    -- Take a big gulp of AERs, the more we get the more we can skip
     (alotOfAers, invalidAers) <- toAlotOfAers <$> getAers 2000
     unless (alotOfAers == mempty) $ enqueueEvent $ AERs alotOfAers
     mapM_ debug invalidAers
-    -- sip from the general message stream, this should be relatively underpopulated except during an election but can contain HUGE AEs
     gm 50 >>= \s -> runReaderT (sequentialVerify ks s) env
-    -- now take a massive gulp of commands
     verifiedCmds <- parallelVerify ks <$> getCmds 5000
     (invalidCmds, validCmds) <- return $ partitionEithers verifiedCmds
     mapM_ debug invalidCmds
@@ -66,7 +62,6 @@ messageReceiver = do
       enqueueEvent $ ERPC $ CMDB' cmds
       debug $ "AutoBatched " ++ show (length cmds') ++ " Commands"
 
--- Generally these messages don't come in, but when they do we want them processed ASAP as we're on the clock.
 rvAndRvrFastPath :: ReaderT ReceiverEnv IO ()
 rvAndRvrFastPath = do
   getRvAndRVRs' <- view getRvAndRVRs
@@ -97,7 +92,6 @@ sequentialVerify ks msgs = do
   debug <- view debugPrint
   unless (null validNoAes) $ mapM_ (liftIO . enqueueEvent . ERPC) validNoAes
   unless (null invalid) $ mapM_ (liftIO . debug) invalid
-  -- AE's have the potential to be BIG so we need to take care not to do them in parallel by accident
   unless (null aes) $ mapM_ (\(ts,msg) -> case signedRPCtoRPC (Just ts) ks msg of
             Left err -> liftIO $ debug err
             Right v -> liftIO $ enqueueEvent $ ERPC v) aes
