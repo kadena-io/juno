@@ -23,6 +23,7 @@ library
                      , Apps.Juno.Command
                      , Apps.Juno.Client
                      , Apps.Juno.JsonTypes
+                     , Apps.Juno.ApiDemoHandler
                      , Apps.Juno.ApiHandlers
                      , Apps.Juno.Ledger
                      , Apps.Juno.Parser

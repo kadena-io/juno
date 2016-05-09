@@ -35,6 +35,7 @@ import Apps.Juno.Parser
 import Juno.Types hiding (CommandBatch)
 import Schwifty.Swift.M105.Types
 import Schwifty.Swift.M105.Parser
+import Apps.Juno.ApiDemoHandler (transferDemoReqHandler)
 
 data ApiEnv = ApiEnv {
       _aiToCommands :: InChan (RequestId, [CommandEntry]),
@@ -54,6 +55,8 @@ apiRoutes = route [
              ,("swift", swiftHandler)
              ,("api/swift-submit", swiftSubmission)
              ,("api/ledger-query", ledgerQuery)
+              -- demo endpoints
+             ,("api/juno/v1/transfer", apiWrapper transferDemoReqHandler)
              ]
 
 apiWrapper :: (BLC.ByteString -> Either BLC.ByteString [CommandEntry]) -> ReaderT ApiEnv Snap ()

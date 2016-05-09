@@ -67,7 +67,7 @@ applyCommand :: Monad m => UTCTime -> Command -> Raft m (NodeID, CommandResponse
 applyCommand tEnd cmd@Command{..} = do
   apply <- view (rs.applyLogEntry)
   logApplyLatency cmd
-  result <- apply _cmdEntry
+  result <- apply cmd
   updateCmdStatusMap cmd result tEnd -- shared with the API and to query state
   replayMap %= Map.insert (_cmdClientId, getCmdSigOrInvariantError "applyCommand" cmd) (Just result)
   ((,) _cmdClientId) <$> makeCommandResponse tEnd cmd result

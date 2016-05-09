@@ -140,7 +140,8 @@ data PollPayloadRequest = PollPayloadRequest {
   } deriving (Eq, Generic, Show)
 
 instance ToJSON PollPayloadRequest where
-  toJSON (PollPayloadRequest payload' digest') = object ["payload" .= payload', "digest" .= digest']
+  toJSON (PollPayloadRequest payload' digest') = object ["payload" .= payload'
+                                                        , "digest" .= digest']
 instance FromJSON PollPayloadRequest where
   parseJSON (Object v) = PollPayloadRequest <$> v .: "payload"
                                             <*> v .: "digest"
@@ -328,3 +329,6 @@ mJsonBsToCommand bs = JSON.decode bs >>= \v ->
 
     mtransact (TransactBody code _) =
         BSC.pack $ T.unpack code
+
+
+--
