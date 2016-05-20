@@ -221,15 +221,11 @@ lookupPrimAccountBalance :: (Ord ty,Show ty) => Text -> InterpStack s ty b (Mayb
 lookupPrimAccountBalance acctNam = do
       InterpreterOverlay _nextOpId localizedMap <- get
       case Map.lookup acctNam localizedMap of
-          Just v | v >= 0 -> return $ Just v
-                 | otherwise -> throwInterpError $
-                                PrimFailure "critical data invariant failure in underlying snapshot or localized map"
+          Just v -> return $ Just v
           Nothing -> do
               snapshotMap :: (Map.Map Text Rational ) <- ask
               case Map.lookup acctNam snapshotMap of
-                Just a | a >= 0 -> return $ Just a
-                       | otherwise -> throwInterpError $
-                                      PrimFailure "critical data invariant in base snapshot of account balance data "
+                Just a -> return $ Just a
                 Nothing -> return Nothing
 
 -- this may abort if target account doesn't exist
@@ -238,11 +234,9 @@ updatePrimAccountBalanceByAdding nm amt = do
       currentBalance <- lookupPrimAccountBalance nm
       case currentBalance of
           Nothing -> throwInterpError $ PrimFailure "account doesn't exist "
-          Just current | current + amt < 0 -> throwInterpError $
-                                              PrimFailure "cant debit an account more than its current balance"
-                       | otherwise -> do
-                            InterpreterOverlay nextOpId localizedMap <- get
-                            put $ InterpreterOverlay nextOpId $ (Map.insert nm $! (current + amt)) localizedMap
+          Just current -> do
+            InterpreterOverlay nextOpId localizedMap <- get
+            put $ InterpreterOverlay nextOpId $ (Map.insert nm $! (current + amt)) localizedMap
 
 
 applyPrim :: (Ord ty,Show ty) => ExpContext ty Ref -> PrimOpId -> [Ref]
@@ -280,8 +274,7 @@ applyPrimDemo (PrimopId "transfer") [fromRef,toRef,posRatRef,fakeCryptoSigRef] =
           sourceBalanceM <- lookupPrimAccountBalance fromNm
           targetBalanceM <- lookupPrimAccountBalance toNm
           case (sourceBalanceM,targetBalanceM) of
-              (Just srcB,Just _targetB) ->
-                  if srcB >= amt then
+              (Just _srcB ,Just _targetB) ->
                     do
                       updatePrimAccountBalanceByAdding fromNm (-amt)
                       updatePrimAccountBalanceByAdding toNm amt
@@ -291,7 +284,6 @@ applyPrimDemo (PrimopId "transfer") [fromRef,toRef,posRatRef,fakeCryptoSigRef] =
                       val <- return $ VLitF $ LText $ pack "success"
                       ref <- lift $ heapAllocate val -- this shoudld be unit, but whatever
                       return (val,ref)
-                    else throwInterpError $ PrimFailure "source balance is less than amount to be transfered"
               _bad -> throwInterpError $ PrimFailure $ "invalid account(s)" ++ show (fromNm, toNm)
 
     b -> error $ "deep invariant failure : bad args to transfer primop, the arguments were" ++ show b

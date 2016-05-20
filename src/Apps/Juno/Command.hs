@@ -1,9 +1,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 module Apps.Juno.Command where
 
 import Data.Either ()
+import qualified Data.Attoparsec.ByteString.Char8 as Atto
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -14,6 +16,7 @@ import qualified Juno.Hoplite.Eval as DEval
 import qualified Control.Concurrent.MVar as MV
 import Control.Exception (SomeException, handle)
 import Control.Lens hiding ((.=))
+import Data.Ratio
 
 import Data.Aeson (encode, object, (.=))
 import Data.Aeson.Encode.Pretty (encodePretty)
@@ -93,8 +96,8 @@ runCommand env Command{_cmdEntry = cmd'@_, _cmdRequestId = rid@_} = do
                     Nothing -> do
                       MV.putMVar mvar orgState
                       return $  BSC.pack $ "Invalid Command or Program" ++ (show term)
-                    Just (DTerm.PolyF evaluableTerm) ->
-                        case DEval.runExpr 10000 ps evaluableTerm of
+                    Just (DTerm.PolyF evaluableTerm) -> let ps' = createNonExistentAccts ps cmd' in
+                        case DEval.runExpr 10000 ps' evaluableTerm of
                             Left err -> do
                                 MV.putMVar mvar orgState
                                 return $ BSC.pack $ "Execution issue " ++ show err
@@ -111,8 +114,8 @@ runCommand env Command{_cmdEntry = cmd'@_, _cmdRequestId = rid@_} = do
                     Nothing -> do
                       MV.putMVar mvar (ps, ss, store)
                       return "Invalid SwiftPayment Command"
-                    Just (DTerm.PolyF evaluableTerm) ->
-                        case DEval.runExpr 10000 ps evaluableTerm of
+                    Just (DTerm.PolyF evaluableTerm) -> let ps' = createNonExistentAccts ps cmd' in
+                        case DEval.runExpr 10000 ps' evaluableTerm of
                             Left err -> do
                                 MV.putMVar mvar orgState
                                 return $ BLC.toStrict $ encode $
@@ -120,7 +123,7 @@ runCommand env Command{_cmdEntry = cmd'@_, _cmdRequestId = rid@_} = do
                                            , "reason" .= show err]
                             Right (DEval.InterpreterOutput (DEval.InterpreterDiff _balsDiff _ops)
                                                         nextPs) -> do
-                                nextSs <- return $ Map.insert (ps ^. DEval.persistentNextTxId) s ss
+                                nextSs <- return $ Map.insert (ps' ^. DEval.persistentNextTxId) s ss
                                 MV.putMVar mvar (nextPs, nextSs, store)
                                 (DEval.TransactionId tid) <- return $ (ps ^. DEval.persistentNextTxId)
                                 return $ BLC.toStrict $ encode $
@@ -133,6 +136,11 @@ runCommand env Command{_cmdEntry = cmd'@_, _cmdRequestId = rid@_} = do
               MV.putMVar mvar orgState
               res <- return $ runQuery v (ps ^. DEval.persistentTxes, ss)
               return $ BLC.toStrict $ encodePretty res
+
+createNonExistentAccts :: DEval.PersistentState -> CommandEntry -> DEval.PersistentState
+createNonExistentAccts ps (CommandEntry m) = case Atto.parseOnly getAccountsFromTransferCommand m of
+  Left _ -> ps
+  Right accts -> setBalances (Map.union (balances ps) $ Map.fromList $ (,0%1) <$> accts) ps
 
 prettyOpLog :: DEval.Cmd -> String
 prettyOpLog (DEval.Cmd from' to' amt' sig') = "Transfer " ++ show (fromRational amt' :: Double) ++ " from " ++ T.unpack from' ++ " to " ++ T.unpack to' ++ " with signature: " ++ T.unpack sig'

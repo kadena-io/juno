@@ -7,6 +7,7 @@ module Apps.Juno.Parser (
   ,SwiftBlob(..)
   ,readHopper
   ,programCodeDelimiter
+  ,getAccountsFromTransferCommand
   ) where
 
 import Control.Monad
@@ -98,6 +99,12 @@ transmaticAndData = do
 
 programCodeDelimiter :: String
 programCodeDelimiter = "##CODE"
+
+getAccountsFromTransferCommand :: (Monad m, TokenParsing m) => m [Text]
+getAccountsFromTransferCommand = do
+  _ <- optional $ manyTill anyChar (string programCodeDelimiter)
+  (accts,_) <- transfer
+  return accts
 
 readHopper :: BSC.ByteString -> Either String HopperLiteAdminCommand
 readHopper m = case Atto.parseOnly hopperliteParser m of
