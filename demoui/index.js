@@ -11,8 +11,6 @@ import Detail from './detail';
 import SwiftDetails from './swift-detail.js';
 
 
-const junoUrl = '//localhost:8000/api';
-
 const londonNostro = '101',
       tokyoNostro = '102',
       londonBranch = '100',
@@ -36,13 +34,16 @@ const acctInfo = {
   [tokyoBranch]: { name: 'Tokyo', type: 'Branch' }
 };
 
+const initPane = "add-payments";
+
 
 class App extends React.Component {
   constructor(props) {
     super();
 
     this.state = {
-      currentPane: "add-payments"
+      currentPane: initPane,
+      junoUrl: '/api'
     };
 
   }
@@ -72,7 +73,7 @@ class App extends React.Component {
     e.preventDefault();
     if (this.state.swiftText == null || this.state.swiftText == "") { return; }
     this.setState({ submitResponse: { status: "Sending ..." }});
-    fetch(`${junoUrl}/swift-submit`, {
+    fetch(`${this.state.junoUrl}/swift-submit`, {
       method: 'POST',
       mode: 'cors',
       headers: { 'Content-Type': 'text/plain' },
@@ -85,7 +86,7 @@ class App extends React.Component {
   }
 
   fetchTx(transId,branch) {
-    fetch(`${junoUrl}/ledger-query?tx=${transId}`, {
+    fetch(`${this.state.junoUrl}/ledger-query?tx=${transId}`, {
       method: 'get',
       mode: 'cors'
     }).then(response => response.json())
@@ -99,7 +100,7 @@ class App extends React.Component {
   }
 
   fetchNostro() {
-    fetch(`${junoUrl}/ledger-query?account=${londonNostro}`, {
+    fetch(`${this.state.junoUrl}/ledger-query?account=${londonNostro}`, {
       method: 'get',
       mode: 'cors'
     }).then(response => response.json())
@@ -110,7 +111,7 @@ class App extends React.Component {
   }
 
   fetchBranch(branch) {
-    fetch(`${junoUrl}/ledger-query?account=${branch}`, {
+    fetch(`${this.state.junoUrl}/ledger-query?account=${branch}`, {
       method: 'get',
       mode: 'cors'
     }).then(response => response.json())
@@ -124,12 +125,26 @@ class App extends React.Component {
 
   }
 
+handleJunoUrlChange(e) {
+  this.setState({junoUrl: e.target.value});
+}
+
+handleJunoUrlSubmit(e) {
+  e.preventDefault();
+  const s = {currentPane: this.state.currentPane,
+             junoUrl: this.state.junoUrl}
+  this.resetState(s);
+
+}
+
   render() {
     return (
         <div className="app">
-        <HeaderNav {...this.state} />
+        <HeaderNav handleJunoUrlChange={e=>this.handleJunoUrlChange(e)}
+           handleJunoUrlSubmit={this.handleJunoUrlSubmit}
+           {...this.state} />
         <Sidebar handleChangePane={(pane)=>this.handleChangePane(pane)} {...this.state} />
-        <Detail junoUrl={junoUrl} acctInfo={acctInfo}
+        <Detail acctInfo={acctInfo}
       handleSwiftText={e=>this.handleSwiftText(e)}
       handleSwiftSubmit={e=>this.handleSwiftSubmit(e)}
                 fetchTx={(t,a)=>this.fetchTx(t,a)}

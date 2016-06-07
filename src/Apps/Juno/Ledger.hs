@@ -62,10 +62,11 @@ data LedgerQuery = BySwiftId Integer
 data QueryResult = QueryResult {
    swifts :: Map String SwiftAPI
   ,trans :: [Transaction]
+  ,inputs :: Map String Text
   } deriving (Show, Eq, Generic, ToJSON)
 
 -- these are here solely for convenience
-type HopperLog = ([(TransactionId, [OrderedOp])], Map TransactionId SWIFT)
+type HopperLog = ([(TransactionId, [OrderedOp])], Map TransactionId SWIFT,Map TransactionId Text)
 type TransLog = [(TransactionId, [OrderedOp])]
 --type SwiftLog = Map TransactionId SWIFT
 
@@ -75,21 +76,23 @@ runQuery l hl = convertQuery $ execQuery l hl
 execQuery :: LedgerQuery -> HopperLog -> HopperLog
 execQuery (BySwiftId i) lss = filterById (fromInteger i) lss
 execQuery (ByAcctName r i) lss = filterByAcct r i lss
-execQuery (And []) _ = ([],Map.empty) -- if there's nothing to query, return nothing... techincally an error
+execQuery (And []) _ = ([],Map.empty,mempty) -- if there's nothing to query, return nothing... techincally an error
 execQuery (And [x]) lss = execQuery x lss
 execQuery (And (x:xs)) lss = execQuery (And xs) (execQuery x lss)
 
 filterById :: Natural -> HopperLog -> HopperLog
-filterById i (l, ss) = (l', ss')
+filterById i (l, ss, ts) = (l', ss', ts')
   where
     l' = filter (\(TransactionId i', _) -> i' == i) l
     ss' = Map.filterWithKey (\k _ -> k == TransactionId i) ss
+    ts' = Map.filterWithKey (\k _ -> k == TransactionId i) ts
 
 filterByAcct :: AcctRole -> Text -> HopperLog -> HopperLog
-filterByAcct r a (l, ss) = (l', ss')
+filterByAcct r a (l, ss, ts) = (l', ss', ts')
   where
     l' = filter (acctInvolved r a . snd) l
     ss' = Map.filterWithKey (\k _ -> Set.member k (associatedSwiftIds l')) ss
+    ts' = Map.filterWithKey (\k _ -> Set.member k (associatedSwiftIds l')) ts
 
 acctInTrans :: AcctRole -> Text -> OrderedOp -> Bool
 acctInTrans Sender a (_, Cmd to' _ _ _) = to' == a
@@ -103,10 +106,12 @@ associatedSwiftIds :: TransLog -> Set TransactionId
 associatedSwiftIds = Set.fromList . fmap fst
 
 convertQuery :: HopperLog -> QueryResult
-convertQuery (l, ss) = QueryResult ss' l'
+convertQuery (l, ss, ts) = QueryResult ss' l' ts'
   where
     ss' = Map.map convertSWIFT $ Map.mapKeys (\(TransactionId i) -> show i) ss
     l' = convertTrans l
+    ts' = Map.mapKeys (\(TransactionId i) -> show i) ts
+
 
 convertSWIFT :: SWIFT -> SwiftAPI
 convertSWIFT m = SwiftAPI

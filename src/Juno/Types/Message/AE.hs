@@ -7,6 +7,7 @@ module Juno.Types.Message.AE
   ( AppendEntries(..), aeTerm, leaderId, prevLogIndex, prevLogTerm, aeEntries, aeQuorumVotes, aeProvenance
   ) where
 
+import Codec.Compression.LZ4
 import Control.Parallel.Strategies
 import Control.Lens
 import Data.Sequence (Seq)
@@ -40,7 +41,7 @@ instance Serialize AEWire
 
 instance WireFormat AppendEntries where
   toWire nid pubKey privKey AppendEntries{..} = case _aeProvenance of
-    NewMsg -> let bdy = S.encode $ AEWire (_aeTerm
+    NewMsg -> let bdy = maybe (error "failure to compress AE") id $ compressHC $ S.encode $ AEWire (_aeTerm
                                           ,_leaderId
                                           ,_prevLogIndex
                                           ,_prevLogTerm
@@ -54,7 +55,7 @@ instance WireFormat AppendEntries where
     Left !err -> Left err
     Right () -> if _digType dig /= AE
       then error $ "Invariant Failure: attempting to decode " ++ show (_digType dig) ++ " with AEWire instance"
-      else case S.decode bdy of
+      else case maybe (Left "Decompression failure") S.decode $ decompress bdy of
         Left err -> Left $! "Failure to decode AEWire: " ++ err
         Right (AEWire (t,lid,pli,pt,les,vts)) -> runEval $ do
           eLes <- rpar (toSeqLogEntry ((decodeLEWire' ts ks <$> les) `using` parList rseq))

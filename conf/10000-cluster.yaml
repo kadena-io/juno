@@ -16,7 +16,7 @@ publicKeys:
     host: '127.0.0.1'
     port: 10003
   - 0bd04e4049684b4201319c3b4371cf25587cb69c5d2ae638beb9ffe9c16cf99d
-heartbeatTimeout: 1500000
+heartbeatTimeout: 50000
 dontDebugFollower: false
 apiPort: 8000
 clientPublicKeys:
@@ -41,8 +41,8 @@ clientPublicKeys:
     port: 10004
   - 0d697028fee9ca00a395c25d489f877ef68cd3725d5aa134e1f1fe98cc0b3922
 electionTimeoutRange:
-- 3000000
-- 6000000
+- 100000
+- 200000
 otherNodes:
 - fullAddr: tcp://127.0.0.1:10001
   host: '127.0.0.1'

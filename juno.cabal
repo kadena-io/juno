@@ -104,11 +104,13 @@ library
                      , ekg-core >= 0.1.1.0 && < 0.2
                      , ekg-json
                      , enclosed-exceptions
+                     , enclosed-exceptions
                      , filepath
                      , ghc-prim
                      , hspec
                      , lens
                      , lifted-base
+                     , lz4
                      , megaparsec >= 4.2.0 && < 4.3
                      , monad-control
                      , monad-loops
@@ -131,6 +133,7 @@ library
                      , transformers
                      , trifecta
                      , unagi-chan
+                     , unix >= 2.7.1.0
                      , unordered-containers
                      , vector >= 0.11.0.0
                      , vector-space >= 0.10.2 && < 0.11

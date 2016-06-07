@@ -8,7 +8,7 @@ module Juno.Runtime.MessageReceiver
   , ReceiverEnv(..)
   ) where
 
-import qualified Control.Concurrent.Lifted as CL
+import Control.Concurrent (forkIO)
 import Control.Lens
 import Control.Monad
 import Control.Monad.Reader
@@ -19,6 +19,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Serialize as S
 import qualified Data.Set as Set
 
+import Juno.Util.Combinator (foreverRetry)
 import Juno.Types hiding (getMessages, getNewCommands, getNewEvidence, enqueue, debugPrint, nodeId, getRvAndRVRs)
 
 data ReceiverEnv = ReceiverEnv
@@ -33,7 +34,7 @@ data ReceiverEnv = ReceiverEnv
 makeLenses ''ReceiverEnv
 
 runMessageReceiver :: ReceiverEnv -> IO ()
-runMessageReceiver env = void $ CL.fork $ runReaderT messageReceiver env
+runMessageReceiver env = void $ foreverRetry "MSG_RECEIVER_TURBO" $ runReaderT messageReceiver env
 
 -- | Thread to take incoming messages and write them to the event queue.
 -- THREAD: MESSAGE RECEIVER (client and server), no state updates
@@ -47,7 +48,7 @@ messageReceiver = do
   debug <- view debugPrint
   -- KeySet <$> view (cfg.publicKeys) <*> view (cfg.clientPublicKeys)
   ks <- view keySet
-  _ <- liftIO $ CL.fork $ runReaderT rvAndRvrFastPath env
+  void $ liftIO $ foreverRetry "RV_AND_RVR_MSGRECVER" $ runReaderT rvAndRvrFastPath env
   liftIO $ forever $ do
     (alotOfAers, invalidAers) <- toAlotOfAers <$> getAers 2000
     unless (alotOfAers == mempty) $ enqueueEvent $ AERs alotOfAers

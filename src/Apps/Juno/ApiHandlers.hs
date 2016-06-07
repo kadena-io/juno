@@ -28,6 +28,7 @@ import Data.Ratio
 import Data.Aeson (encode, object, (.=))
 import qualified Data.Aeson as JSON
 import Snap.Core
+import System.Posix.Files
 
 import Apps.Juno.JsonTypes
 import Apps.Juno.Ledger
@@ -57,7 +58,18 @@ apiRoutes = route [
              ,("api/ledger-query", ledgerQuery)
               -- demo endpoints
              ,("api/juno/v1/transfer", apiWrapper transferDemoReqHandler)
+            ,("ui",serveUI)
              ]
+
+serveUI :: MonadSnap m => m ()
+serveUI = do
+  p <- (("demoui/public/"++) . BSC.unpack . rqPathInfo) <$> getRequest
+  e <- liftIO $ fileExist p
+  if e then sendFile p else withResponse $ \r -> do
+            writeBS "Error 404: Not Found"
+            liftIO $ putStrLn $ "Error 404: Not Found: " ++ p
+            finishWith (setResponseStatus 404 "Not Found" r)
+
 
 apiWrapper :: (BLC.ByteString -> Either BLC.ByteString [CommandEntry]) -> ReaderT ApiEnv Snap ()
 apiWrapper requestHandler = do

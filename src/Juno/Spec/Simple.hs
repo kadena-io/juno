@@ -19,6 +19,7 @@ import Juno.Messaging.ZMQ
 import Juno.Monitoring.Server (startMonitoring)
 import Juno.Runtime.Api.ApiServer
 
+import System.IO (BufferMode(..),stdout,stderr,hSetBuffering)
 import Control.Lens
 import Control.Monad
 import Control.Concurrent (modifyMVar_, yield, threadDelay, takeMVar, putMVar, newMVar, MVar)
@@ -29,6 +30,7 @@ import qualified Control.Concurrent.Chan.Unagi.Bounded as Bounded
 
 import Data.ByteString (ByteString)
 import qualified Data.Map as Map
+import Data.Thyme.Calendar (showGregorian)
 import Data.Thyme.Clock (getCurrentTime)
 import Data.Thyme.LocalTime
 
@@ -78,13 +80,13 @@ getConfig = do
 
 showDebug' :: String -> IO ()
 showDebug' msg = do
-  (ZonedTime (LocalTime _ t) _) <- getZonedTime
-  putStrLn $ (take 15 $ show t) ++ " " ++ msg
+  (ZonedTime (LocalTime d t) _) <- getZonedTime
+  putStrLn $ (showGregorian d) ++ "T" ++ (take 15 $ show t) ++ " " ++ msg
 
 showDebug :: NodeID -> String -> IO ()
 showDebug _ msg = do
-  (ZonedTime (LocalTime _ t) _) <- getZonedTime
-  putStrLn $ (take 15 $ show t) ++ " " ++ msg
+  (ZonedTime (LocalTime d t) _) <- getZonedTime
+  putStrLn $ (showGregorian d) ++ "T" ++ (take 15 $ show t) ++ " " ++ msg
 
 noDebug :: NodeID -> String -> IO ()
 noDebug _ _ = return ()
@@ -223,8 +225,14 @@ updateCmdMapFn cmdMapMvar rid cmdStatus =
      )
     )
 
+setLineBuffering :: IO ()
+setLineBuffering = do
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stderr LineBuffering
+
 runClient :: (Command -> IO CommandResult) -> IO (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
 runClient applyFn getEntries cmdStatusMap' = do
+  setLineBuffering
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
   (inboxWrite, inboxRead) <- NoBlock.newChan
@@ -254,6 +262,7 @@ runClient applyFn getEntries cmdStatusMap' = do
 runJuno :: (Command -> IO CommandResult) -> InChan (RequestId, [CommandEntry])
         -> OutChan (RequestId, [CommandEntry]) -> CommandMVarMap -> IO ()
 runJuno applyFn toCommands getApiCommands sharedCmdStatusMap = do
+  setLineBuffering
   rconf <- getConfig
   me <- return $ nodeIDtoAddr $ rconf ^. nodeId
   -- Start The Api Server, communicates with the Juno protocol via sharedCmdStatusMap

@@ -7,10 +7,8 @@ export default function SwiftDetail(props) {
     return (<div></div>);
   }
   const data = props.txData[props.branch];
-  const swifts = data["swifts"];
   const trans = data["trans"];
-  const txId = Object.keys(swifts)[0];
-  const sw = swifts[txId];
+
   var rows = [];
   trans.map(o => {
     rows.push(
@@ -30,10 +28,16 @@ export default function SwiftDetail(props) {
      <td>{ prettyMoneyPrint(o.amount) }</td>
         </tr>));
   });
-  return detailPane
-  (`Swift Details [${txId}]`,
-   (<div className="panel-body">
-    <div>
+
+  var txDeets = null;
+  var panelTitle = null;
+  const swifts = data["swifts"];
+  var txId = Object.keys(swifts)[0];
+  if (txId != null) {
+    const sw = swifts[txId];
+    panelTitle = `Swift Details [${txId}]`;
+    txDeets =
+      (<div>
     <div style={{ width: '50%', float: 'left', paddingRight: '10px'}}>
     <table style={{width: '100%', tableLayout: 'fixed'}} className="table table-striped"><tbody>
     <tr><td>Senders Reference: { sw.ref }</td></tr>
@@ -51,8 +55,22 @@ export default function SwiftDetail(props) {
     <tr><td>Beneficiary Customer:<br/>{ sw.beneficiaryAcctDescription }</td></tr>
     </tbody></table>
     </div>
-    </div><br/>
-
+       </div>);
+  } else { //not a SWIFT tx (txId == null)
+    const inputs = data["inputs"];
+    txId = Object.keys(inputs)[0];
+    const inp = inputs[txId];
+    panelTitle = `Message Body [${txId}]`;
+    txDeets =
+      (<div style={{ width: '100%', float: 'left', paddingRight: '10px'}}>
+       <pre>{ inp }</pre>
+       </div>);
+  }
+  return detailPane
+  (panelTitle,
+   (<div className="panel-body">
+    { txDeets }
+    <br/>
     <h3 style={{clear: 'both'}}>Transaction History</h3>
     <table style={{width: '100%', tableLayout: 'fixed'}} className="table table-striped">
     <thead><tr><td>Account Type</td><td>Account Name</td><td>Account Number</td>

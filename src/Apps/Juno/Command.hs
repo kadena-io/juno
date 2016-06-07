@@ -32,7 +32,7 @@ import Apps.Juno.Ledger (runQuery, convertQuery)
 -- state of hopper
 newtype JunoEnv = JunoEnv {getStateMVar :: MV.MVar (DEval.PersistentState
                                                   , Map.Map DEval.TransactionId SWIFT
-                                                  , Map.Map RequestId Text -- input to save.
+                                                  , Map.Map DEval.TransactionId Text -- input to save.
                                                    )
                           }
 
@@ -87,9 +87,9 @@ runCommand env Command{_cmdEntry = cmd'@_, _cmdRequestId = rid@_} = do
                 MV.putMVar mvar orgState
                 return $ BSC.pack $ prettyLedger bals
 
-            CommandInputQuery rid' -> do
+            CommandInputQuery _rid' -> do
                  MV.putMVar mvar orgState
-                 return $ BSC.pack $ show $ Map.lookup rid' store
+                 return $ BSC.pack $ "UNSUPPORTED" -- TODO show $ Map.lookup rid' store
 
             Program input term -> do
                 case DTerm.evaluableHopliteTerm term of
@@ -103,7 +103,7 @@ runCommand env Command{_cmdEntry = cmd'@_, _cmdRequestId = rid@_} = do
                                 return $ BSC.pack $ "Execution issue " ++ show err
                             Right (DEval.InterpreterOutput (DEval.InterpreterDiff _balsDiff ops)
                                                         nextPs) -> do
-                                MV.putMVar mvar (nextPs, ss, Map.insert rid input store)
+                                MV.putMVar mvar (nextPs, ss, Map.insert (ps' ^. DEval.persistentNextTxId) input store)
                                 return $ BSC.pack $ "Success"
                                         ++ "\n## Transaction Log ##\n" ++ unlines (prettyOpLog . snd <$> ops)
                                         ++ "\n## Previous Ledger ## " ++ prettyLedger bals
@@ -125,16 +125,17 @@ runCommand env Command{_cmdEntry = cmd'@_, _cmdRequestId = rid@_} = do
                                                         nextPs) -> do
                                 nextSs <- return $ Map.insert (ps' ^. DEval.persistentNextTxId) s ss
                                 MV.putMVar mvar (nextPs, nextSs, store)
-                                (DEval.TransactionId tid) <- return $ (ps ^. DEval.persistentNextTxId)
+                                (DEval.TransactionId tid) <- return $ (ps' ^. DEval.persistentNextTxId)
                                 return $ BLC.toStrict $ encode $
                                     object [ "status" .= ("Success" :: T.Text)
                                            , "transId" .= show tid
-                                           , "currentState" .= (BLC.unpack $ encodePretty (convertQuery (nextPs ^. DEval.persistentTxes, nextSs)))
+                                           , "currentState" .= (BLC.unpack $ encodePretty
+                                                                (convertQuery (nextPs ^. DEval.persistentTxes, nextSs, store)))
                                            ]
 
             LedgerQueryCmd v -> do
               MV.putMVar mvar orgState
-              res <- return $ runQuery v (ps ^. DEval.persistentTxes, ss)
+              res <- return $ runQuery v (ps ^. DEval.persistentTxes, ss, store)
               return $ BLC.toStrict $ encodePretty res
 
 createNonExistentAccts :: DEval.PersistentState -> CommandEntry -> DEval.PersistentState
