@@ -41,7 +41,7 @@ See [Performance and Crypto](#performance-and-crypto-new-april-2016) for full de
 
 ## Introduction
 
-Juno is a BFT Consensus-based Distributed Cryptoledger providing an alternative to current Blockchain-based Smart-Contract systems.
+Juno is a [BFT](https://en.wikipedia.org/wiki/Byzantine_fault_tolerance) Consensus-based Distributed Cryptoledger providing an alternative to current Blockchain-based Smart-Contract systems.
 
 Blockchain-based approaches to Smart Contract systems are a mismatch for many enterprise applications, as they are purpose-built for *anonymous participation*, necessitating computationally-intensive solutions fault-tolerance and consensus (ie mining, proof-of-stake). Enterprise applications generally have no need to support anonymous actors, so the utility of using consensus algorithms like Paxos or Raft is clear. However no clear solution exists that can provide the Byzantine fault-tolerant ([BFT](https://en.wikipedia.org/wiki/Byzantine_fault_tolerance)) features of a blockchain on a consensus platform.
 
