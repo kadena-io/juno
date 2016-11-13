@@ -4,6 +4,21 @@
 <h1 align="center">Juno</h1>
 <h6 align="center">Byzantine Fault Tolerant Raft With Smart Contracts</h6>
 
+NOTE: This is the Juno distributed ledger released in March 2016. 
+It neither uses ScalableBFT nor the Pact Smart Contract language.
+For information about Kadena's proprietary high-performance scalable blockchain, please go to http://kadena.io.
+
+#### Update (2016 Nov 13)
+
+Juno is not longer under active development and hasn't been for some time. 
+There were fundamental issues with the protocol and implementation that removed further stability, performance, and scalability gains.
+
+ScalableBFT (protocol and implementation) fixes these issues, achieving 8k-12k transactions per second, fixing or avoiding many of the stability issues with the Tangaroa protocol, and maintaining constant performance whether the cluster runs on 4 servers or 4000. 
+
+Please see http://kadena.io details.
+
+NB: we plan to upgrade Juno to run the Pact Smart Contract language soon so that people can play with it on a true distributed cluster.
+
 #### New Features in 0.0.0.2 Release (2016 April 29)
 
 * **[Performance Improvements](#performance-and-crypto-new-april-2016)**: Juno can achieve consensus for **2000 commits/second**; with client/gateway batching performance jumps to to **~4000/sec**. See demo gif for details.
