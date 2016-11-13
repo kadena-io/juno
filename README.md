@@ -4,8 +4,7 @@
 <h1 align="center">Juno</h1>
 <h6 align="center">Byzantine Fault Tolerant Raft With Smart Contracts</h6>
 
-NOTE: This is the Juno distributed ledger released in March 2016. 
-It neither uses ScalableBFT nor the Pact Smart Contract language.
+**NOTE: This is not Kadena's blockchain (ScalableBFT) nor does this blockchain run the Pact Smart Contract language.**
 For information about Kadena's proprietary high-performance scalable blockchain, please go to http://kadena.io.
 
 #### Update (2016 Nov 13)
