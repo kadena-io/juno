@@ -26,13 +26,19 @@
         <stringProp name="ThreadGroup.delay"></stringProp>
       </ThreadGroup>
       <hashTree>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="TSLA batch" enabled="true">
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Multiple Commands" enabled="true">
           <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
           <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{ &quot;payload&quot;: { &quot;account&quot;: &quot;TSLA&quot;, &quot;amount&quot;: 50.0 }, &quot;digest&quot;: { &quot;hash&quot;: &quot;myhash&quot;, &quot;key&quot;: &quot;string&quot; } }</stringProp>
+                <stringProp name="Argument.value">{&quot;payload&quot;:{&quot;cmds&quot;:&#xd;
+[&quot;{\&quot;account\&quot;:\&quot;WATER\&quot;}&quot;,&#xd;
+&quot;{\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&quot;{\&quot;amount\&quot;:100,\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&#xd;
+&quot;{\&quot;amount\&quot;:1000,\&quot;account\&quot;:\&quot;TSLA\&quot;}&quot;,&#xd;
+&quot;{\&quot;amount\&quot;:100,\&quot;account\&quot;:\&quot;KALE\&quot;}&quot;,&#xd;
+&quot;{\&quot;amount\&quot;:200,\&quot;account\&quot;:\&quot;KALE\&quot;}&quot;,&#xd;
+&quot;{\&quot;data\&quot;:\&quot;\&quot;,\&quot;code\&quot;:\&quot;transfer(000-&gt;100-&gt;101-&gt;102-&gt;103-&gt;003, 100%1)\&quot;}&quot;]},&quot;digest&quot;:{&quot;hash&quot;:&quot;hashy&quot;,&quot;key&quot;:&quot;mykey&quot;}}</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>
@@ -43,7 +49,7 @@
           <stringProp name="HTTPSampler.response_timeout"></stringProp>
           <stringProp name="HTTPSampler.protocol"></stringProp>
           <stringProp name="HTTPSampler.contentEncoding"></stringProp>
-          <stringProp name="HTTPSampler.path">/api/juno/v1/accounts/adjust/batch</stringProp>
+          <stringProp name="HTTPSampler.path">/api/juno/v1/cmd/batch</stringProp>
           <stringProp name="HTTPSampler.method">POST</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
