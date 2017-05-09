@@ -9,6 +9,7 @@ copyright:           Copyright (C) 2014-2015 Chris Copeland, Copyright 2015-2016
 
 license:             BSD3
 license-file:        LICENSE
+tested-with:         GHC == 7.10.3
 
 category:            Network
 build-type:          Simple
