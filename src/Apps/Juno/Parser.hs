@@ -6,6 +6,8 @@ module Apps.Juno.Parser (
   HopperLiteAdminCommand (..)
   ,SwiftBlob(..)
   ,readHopper
+  ,programCodeDelimiter
+  ,getAccountsFromTransferCommand
   ) where
 
 import Control.Monad
@@ -25,9 +27,11 @@ import Schwifty.Swift.M105.Types
 import Schwifty.Swift.M105.Parser
 import Apps.Juno.Ledger
 
-import Language.Hopper.Internal.Core.TermDemoWare (DemoTerm(..))
-import Language.Hopper.Internal.Core.Literal (Literal(..))
-import Language.Hopper.Transmatic
+import Juno.Hoplite.Term (HopliteTerm(..))
+import Juno.Hoplite.Types (Literal(..))
+import Juno.Hoplite.Transmatic
+
+import Juno.Types.Base (RequestId(..))
 
 -- sample for reference: "{\"_swiftCommand\":\"bar\",\"_swiftText\":\"foo\"}"
 data SwiftBlob = SwiftBlob {
@@ -36,13 +40,14 @@ data SwiftBlob = SwiftBlob {
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 data HopperLiteAdminCommand
-  = Program DemoTerm
+  = Program Text HopliteTerm -- input to store with term.
   | CreateAccount Text
   | AdjustAccount Text Rational
   | ObserveAccount Text
   | ObserveAccounts
-  | SwiftPayment SWIFT DemoTerm
+  | SwiftPayment SWIFT HopliteTerm
   | LedgerQueryCmd LedgerQuery
+  | CommandInputQuery RequestId
   deriving (Eq, Show)
 
 hopperliteParser :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
@@ -50,7 +55,10 @@ hopperliteParser = createAccount
                    <|> adjustAccount
                    <|> observeAccounts
                    <|> observeAccount
+                   <|> commandInputQuery -- query the input of a previous cmd via RequestId
+                   <|> getPrimOpsWithData
                    <|> getPrimOps
+                   <|> transmaticAndData -- Program data code
                    <|> transmatic
                    <|> try swiftPayment
                    <|> try ledgerQueryCmd
@@ -74,13 +82,29 @@ convertBlob (SwiftBlob t c) =
   case Atto.parseOnly getPrimOps (BSC.pack c) of
     Left e -> Left $ "Syntax Error: " ++ e
     Right (Left e) -> Left $ "Language Error: " ++ e
-    Right (Right (Program v)) -> case parseSwift t of
+    Right (Right (Program _ v)) -> case parseSwift t of
       Left e -> Left $ "Swift Parsing Error: " ++ e
       Right s -> Right $ SwiftPayment s v
     Right o -> Left $ "Invariant Failure: expected Program but got " ++ show o
 
+-- Atto.parseOnly transmatic "transfer(000->001,1192 % 1)"
 transmatic :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
-transmatic = fmap Program . compile <$> expr
+transmatic = fmap (Program "") . compile <$> expr
+
+-- Atto.parseOnly transmaticAndData "saveme##CODEtransfer(000->001,1192 % 1)"
+transmaticAndData :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
+transmaticAndData = do
+  input <- manyTill anyChar (string programCodeDelimiter) -- eats ##CODE
+  fmap (Program $ T.pack input) . compile <$> expr
+
+programCodeDelimiter :: String
+programCodeDelimiter = "##CODE"
+
+getAccountsFromTransferCommand :: (Monad m, TokenParsing m) => m [Text]
+getAccountsFromTransferCommand = do
+  _ <- optional $ manyTill anyChar (string programCodeDelimiter)
+  (accts,_) <- transfer
+  return accts
 
 readHopper :: BSC.ByteString -> Either String HopperLiteAdminCommand
 readHopper m = case Atto.parseOnly hopperliteParser m of
@@ -89,7 +113,12 @@ readHopper m = case Atto.parseOnly hopperliteParser m of
   Right (Right v) -> Right v
 
 getPrimOps :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
-getPrimOps = fmap (fmap Program . hopperify) primOps
+getPrimOps = fmap (fmap (Program "") . hopperify) primOps
+
+getPrimOpsWithData :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
+getPrimOpsWithData = do
+  input <- manyTill anyChar (string programCodeDelimiter) -- eats ##CODE
+  fmap (fmap (Program $ T.pack input) . hopperify) primOps
 
 createAccount :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
 createAccount = (Right . CreateAccount . T.pack) <$ ssString "CreateAccount" <*> some anyChar
@@ -109,6 +138,18 @@ observeAccounts :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdmin
 observeAccounts = do
   _ <- ssString "ObserveAccounts"
   return $ Right ObserveAccounts
+
+-- Atto.parseOnly commandInputQuery "CommandInputQuery 123"
+commandInputQuery :: (Monad m, TokenParsing m) => m (Either String HopperLiteAdminCommand)
+commandInputQuery = do
+  _ <- ssString "CommandInputQuery" >> many space
+  ints <- many integer
+  let rid' = fromDigits ints
+  return $ Right $ CommandInputQuery (RequestId $ fromIntegral rid')
+ where
+  fromDigits :: [Integer] -> Integer
+  fromDigits = foldl toDigit 0
+  toDigit num d = 10*num + d
 
 -- negative representation: -10%1, (-10)%1, ((-10)%1) (-10%1)
 -- positive representation:  10%1, (10)%1, ((10)%1), (10%1)
@@ -139,7 +180,7 @@ data Transfer = Transfer {_tRoute :: [Text], _tAmt :: Rational}
               deriving (Eq, Show)
 
 class Hopperify a where
-  hopperify :: a -> Either String DemoTerm
+  hopperify :: a -> Either String HopliteTerm
 
 instance Hopperify Transfer where
   hopperify (Transfer [] _) = Left "Error: No Route Specified!"
@@ -149,7 +190,7 @@ instance Hopperify Transfer where
   hopperify (Transfer (f:t:rest) a) = Right $ Let "t" (PrimApp "transfer" [ELit (LText f),ELit (LText t),ELit (LRational a),ELit (LText "cryptoSig")]) (go $ Transfer (t:rest) a)
     where
       -- we only want to start recurring down when we have a > 2 step transfer as a 2 step transfer is the base case (1 step has a different form)
-      go :: Transfer -> DemoTerm
+      go :: Transfer -> HopliteTerm
       go (Transfer [] _) = error "Invariant error, you shouldn't be able to hit this part of hopperify"
       go (Transfer [_] _) = error "Invariant error, you shouldn't be able to hit this part of hopperify"
       go (Transfer [_,_] _) = error "Invariant error, you shouldn't be able to hit this part of hopperify"

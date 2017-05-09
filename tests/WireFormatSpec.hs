@@ -8,8 +8,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
-import Juno.Runtime.Types
-
+import Juno.Types
 
 spec :: Spec
 spec = describe "WireFormat RoundTrips" testWireRoundtrip
@@ -95,9 +94,9 @@ testWireRoundtrip = do
 -- NodeID's + Keys for Client (10002), Leader (10000) and Follower (10001)
 -- #######################################################################
 nodeIdLeader, nodeIdFollower, nodeIdClient :: NodeID
-nodeIdLeader = NodeID "localhost" 10000
-nodeIdFollower = NodeID "localhost" 10001
-nodeIdClient = NodeID "localhost" 10002
+nodeIdLeader = NodeID "localhost" 10000 "tcp://127.0.0.1:10000"
+nodeIdFollower = NodeID "localhost" 10001 "tcp://127.0.0.1:10001"
+nodeIdClient = NodeID "localhost" 10002 "tcp://127.0.0.1:10002"
 
 privKeyLeader, privKeyFollower, privKeyClient :: PrivateKey
 privKeyLeader = maybe (error "bad leader key") id $ importPrivate "\204m\223Uo|\211.\144\131\&5Xmlyd$\165T\148\&11P\142m\249\253$\216\232\220c"
@@ -163,6 +162,7 @@ cmdrRPC = CommandResponse
   , _cmdrLeaderId   = nodeIdLeader
   , _cmdrNodeId     = nodeIdLeader
   , _cmdrRequestId  = RequestId 1
+  , _cmdrLatency    = 1
   , _cmdrProvenance = NewMsg
   }
 
@@ -260,6 +260,7 @@ aerRPC = AppendEntriesResponse
   , _aerConvinced  = True
   , _aerIndex      = LogIndex 1
   , _aerHash       = "\244\136\187c\222\164\131\178;D)M\DEL\142|\251Kv\213\186\247q;3`\194\227O\US\223Q\157"
+  , _aerWasVerified = True
   , _aerProvenance = NewMsg
   }
 
@@ -273,8 +274,8 @@ rvRPC :: RequestVote
 rvRPC = RequestVote
   { _rvTerm        = Term 0
   , _rvCandidateId = nodeIdLeader
-  , _lastLogIndex  = LogIndex (-1)
-  , _lastLogTerm   = Term (-1)
+  , _rvLastLogIndex  = LogIndex (-1)
+  , _rvLastLogTerm   = Term (-1)
   , _rvProvenance  = NewMsg
   }
 

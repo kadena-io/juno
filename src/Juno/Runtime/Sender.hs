@@ -23,17 +23,15 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
 import Data.Serialize
 
 import Juno.Util.Util
-import Juno.Runtime.Types
+import Juno.Types
 import Juno.Runtime.Timer (resetLastBatchUpdate)
 
 createAppendEntries' :: NodeID
                    -> Map NodeID LogIndex
-                   -> Seq LogEntry
+                   -> Log LogEntry
                    -> Term
                    -> NodeID
                    -> Set NodeID
@@ -45,12 +43,8 @@ createAppendEntries' target lNextIndex' es ct nid vts yesVotes =
     (pli,plt) = logInfoForNextIndex mni es
     vts' = if Set.member target vts then Set.empty else yesVotes
   in
-    -- If we send too big of an AppendEntries we can lock their system...
-    AE' $ AppendEntries ct nid pli plt (Seq.take 8000 $ Seq.drop (fromIntegral $ pli + 1) es) vts' NewMsg
+    AE' $ AppendEntries ct nid pli plt (getEntriesAfter pli es) vts' NewMsg
 
--- TODO: There seems to be needless construction then destruction of the non-wire message types
---       Not sure if that could impact performance or if it will be unrolled/magic-ified
--- no state update, uses state
 sendAppendEntries :: Monad m => NodeID -> Raft m ()
 sendAppendEntries target = do
   lNextIndex' <- use lNextIndex
@@ -63,7 +57,6 @@ sendAppendEntries target = do
   resetLastBatchUpdate
   debug $ "sendAppendEntries: " ++ show ct
 
--- no state update
 sendAllAppendEntries :: Monad m => Raft m ()
 sendAllAppendEntries = do
   lNextIndex' <- use lNextIndex
@@ -85,27 +78,27 @@ createAppendEntriesResponse :: Monad m => Bool -> Bool -> Raft m AppendEntriesRe
 createAppendEntriesResponse success convinced = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  case createAppendEntriesResponse' success convinced ct nid lindex lhash of
+  es <- use logEntries
+  case createAppendEntriesResponse' success convinced ct nid
+           (maxIndex es) (lastLogHash es) of
     AER' aer -> return aer
     _ -> error "deep invariant error"
 
--- no state update but uses state
 sendAppendEntriesResponse :: Monad m => NodeID -> Bool -> Bool -> Raft m ()
 sendAppendEntriesResponse target success convinced = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  sendRPC target $ createAppendEntriesResponse' success convinced ct nid lindex lhash
+  es <- use logEntries
+  sendRPC target $ createAppendEntriesResponse' success convinced ct nid
+              (maxIndex es) (lastLogHash es)
   debug $ "Sent AppendEntriesResponse: " ++ show ct
 
--- no state update but uses state
 sendAllAppendEntriesResponse :: Monad m => Raft m ()
 sendAllAppendEntriesResponse = do
   ct <- use term
   nid <- view (cfg.nodeId)
-  (_, lindex, lhash) <- lastLogInfo <$> use logEntries
-  aer <- return $ createAppendEntriesResponse' True True ct nid lindex lhash
+  es <- use logEntries
+  aer <- return $ createAppendEntriesResponse' True True ct nid (maxIndex es) (lastLogHash es)
   oNodes <- view (cfg.otherNodes)
   sendRPCs $ (,aer) <$> Set.toList oNodes
 
@@ -114,26 +107,9 @@ createRequestVoteResponse term' logIndex' myNodeId' target vote = do
   tell ["Created RequestVoteResponse: " ++ show term']
   return $ RequestVoteResponse term' logIndex' myNodeId' vote target NewMsg
 
--- no state update
 sendResults :: Monad m => [(NodeID, CommandResponse)] -> Raft m ()
 sendResults results = sendRPCs $ second CMDR' <$> results
 
--- called by leaders sending appendEntries.
--- given a replica's nextIndex, get the index and term to send as
--- prevLog(Index/Term)
-logInfoForNextIndex :: Maybe LogIndex -> Seq LogEntry -> (LogIndex,Term)
-logInfoForNextIndex mni es =
-  case mni of
-    Just ni -> let pli = ni - 1 in
-      case seqIndex es $ fromIntegral pli of
-        Just LogEntry{..} -> (pli, _leTerm)
-         -- this shouldn't happen, because nextIndex - 1 should always be at
-         -- most our last entry
-        Nothing -> (startIndex, startTerm)
-    Nothing -> (startIndex, startTerm)
-
-
--- TODO: figure out if there is a needless performance hit here (looking up these constants every time?)
 sendRPC :: Monad m => NodeID -> RPC -> Raft m ()
 sendRPC target rpc = do
   send <- view (rs.sendMessage)

@@ -1,36 +1,63 @@
 clientTimeoutLimit: 50000
 publicKeys:
-- - host: '127.0.0.1'
+- - fullAddr: tcp://127.0.0.1:10000
+    host: '127.0.0.1'
     port: 10000
-  - adc1fa8f4f6f14e0687ab9e78e75775214ff186c33cf5bdc5db7db90fb471c9b
-- - host: '127.0.0.1'
+  - 9b58735cb5f329c49fe7922177ab8947b6d615f9bfadb1967c79cf211a219eab
+- - fullAddr: tcp://127.0.0.1:10001
+    host: '127.0.0.1'
     port: 10001
-  - 5b7409cc34ac8bffd82ab3b995ad639ac879417d86c8ed42b1d293d556b665c9
-- - host: '127.0.0.1'
+  - 9e0f7aba65edab698a726c88249a8ff3079b11e2d905dce3416a0dc73a223343
+- - fullAddr: tcp://127.0.0.1:10002
+    host: '127.0.0.1'
     port: 10002
-  - a1adc20b14c602925dd3c7ab4f2ead58d140139cbbfd659fc80b7e5ae7b8919d
-- - host: '127.0.0.1'
+  - 97f4ff8d9aab8492e872a394a3aecfc7c25dd990c234df14677670cdfdec3f1f
+- - fullAddr: tcp://127.0.0.1:10003
+    host: '127.0.0.1'
     port: 10003
-  - 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
-heartbeatTimeout: 1500000
+  - 0bd04e4049684b4201319c3b4371cf25587cb69c5d2ae638beb9ffe9c16cf99d
+heartbeatTimeout: 50000
+dontDebugFollower: false
+apiPort: 8000
 clientPublicKeys:
-- - host: '127.0.0.1'
+- - fullAddr: tcp://127.0.0.1:10000
+    host: '127.0.0.1'
+    port: 10000
+  - 9b58735cb5f329c49fe7922177ab8947b6d615f9bfadb1967c79cf211a219eab
+- - fullAddr: tcp://127.0.0.1:10001
+    host: '127.0.0.1'
+    port: 10001
+  - 9e0f7aba65edab698a726c88249a8ff3079b11e2d905dce3416a0dc73a223343
+- - fullAddr: tcp://127.0.0.1:10002
+    host: '127.0.0.1'
+    port: 10002
+  - 97f4ff8d9aab8492e872a394a3aecfc7c25dd990c234df14677670cdfdec3f1f
+- - fullAddr: tcp://127.0.0.1:10003
+    host: '127.0.0.1'
+    port: 10003
+  - 0bd04e4049684b4201319c3b4371cf25587cb69c5d2ae638beb9ffe9c16cf99d
+- - fullAddr: tcp://127.0.0.1:10004
+    host: '127.0.0.1'
     port: 10004
-  - 3b0761012bcea5b6335427260294ea38e35725142ba08b8ffddbf36c9dc5a5d1
+  - 0d697028fee9ca00a395c25d489f877ef68cd3725d5aa134e1f1fe98cc0b3922
 electionTimeoutRange:
-- 3000000
-- 6000000
+- 100000
+- 200000
 otherNodes:
-- host: '127.0.0.1'
+- fullAddr: tcp://127.0.0.1:10000
+  host: '127.0.0.1'
   port: 10000
-- host: '127.0.0.1'
+- fullAddr: tcp://127.0.0.1:10001
+  host: '127.0.0.1'
   port: 10001
-- host: '127.0.0.1'
+- fullAddr: tcp://127.0.0.1:10002
+  host: '127.0.0.1'
   port: 10002
-myPublicKey: 6c498a90e2cfc6f75cfd521d24f487a2e073f68439d409e65375bd03e05b099a
+myPublicKey: 0bd04e4049684b4201319c3b4371cf25587cb69c5d2ae638beb9ffe9c16cf99d
 nodeId:
+  fullAddr: tcp://127.0.0.1:10003
   host: '127.0.0.1'
   port: 10003
 enableDebug: true
-myPrivateKey: 22d9d7780031295dbb230b775d9c90fa0956cc7b6a6973a9b3282cbbf18959b7
-batchTimeDelta: 1 % 10
+myPrivateKey: 8a8bea0e250ef166b86bcbfa1565af95bc8525b71b289b53b5494ee04754b202
+batchTimeDelta: 1 % 100

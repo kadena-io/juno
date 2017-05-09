@@ -4,8 +4,9 @@ module ParserSpec where
 import Test.Hspec
 import Apps.Juno.Parser
 import Data.Ratio
-import Language.Hopper.Internal.Core.TermDemoWare (DemoTerm(..))
-import Language.Hopper.Internal.Core.Literal (Literal(..))
+import Data.Text as T
+import Juno.Hoplite.Term
+import Juno.Hoplite.Types (Literal(..))
 
 spec :: Spec
 spec = do
@@ -31,17 +32,17 @@ testAdmins = do
 testHopperLite :: Spec
 testHopperLite = do
   it "does the thing" $ readHopper "transfer(foo->bar,101%100)" `shouldBe`
-         (Right (Program (Let "t" (PrimApp "transfer"
+         Right (Program T.empty (Let "t" (PrimApp "transfer"
                                    [ELit (LText "foo"),ELit (LText "bar"),
                                     ELit (LRational (101 % 100)),ELit (LText "cryptSig")])
-                          (V "t"))))
+                                 (V "t")))
 
 
 testTransmatic :: Spec
 testTransmatic = do
   it "does the stuff" $ readHopper "(#transfer \"foo\" \"bar\" (% 110 100) \"baz\")" `shouldBe`
-     Right (Program (PrimApp "transfer"
-                     [ELit (LText "foo"),
-                      ELit (LText "bar"),
-                      ELit (LRational (11 % 10)),
-                      ELit (LText "baz")]))
+     Right (Program  T.empty (PrimApp "transfer"
+                              [ELit (LText "foo"),
+                               ELit (LText "bar"),
+                               ELit (LRational (11 % 10)),
+                               ELit (LText "baz")]))
