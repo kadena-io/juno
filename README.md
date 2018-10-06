@@ -194,7 +194,7 @@ Followers also apply the final transfer command around this time.
 
 #### 2. Client/Gateway Batching
 
-In scenarios where a gateway or middleware piece is submitting commands into the ledger, the opportunity exists to batch these commands before submission, which can acheive stellar performance.
+In scenarios where a gateway or middleware piece is submitting commands into the ledger, the opportunity exists to batch these commands before submission, which can achieve stellar performance.
 
 In the demo, the `batch test:N` simulates this use case. Note that while the commands are batched, the transactions are still distict log entries with independent verification and execution; thus if one transaction fails the others are not impacted.
 
